@@ -268,3 +268,41 @@ input.cell.saved { background: color-mix(in oklab, var(--good) 18%, transparent)
   .brand-sub { display: none; }
   .kpi .value { font-size: 23px; }
 }
+
+/* ---------- balance ---------- */
+.segmented { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; gap: 2px; flex-wrap: wrap; }
+.seg-btn { font: 600 13.5px var(--font-body); border: none; background: none; color: var(--text-secondary); padding: 7px 12px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
+.seg-btn[aria-selected="true"] { background: var(--surface); color: var(--text-primary); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.balance-controles { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.balance-cuerpo { display: flex; flex-direction: column; gap: 18px; }
+.input-corto { width: 70px; }
+.card-tabla { padding: 0; overflow: hidden; }
+table.balance { min-width: 1240px; font-size: 13px; }
+table.balance-anual { min-width: 520px; }
+table.balance th, table.balance td { padding: 7px 10px; white-space: nowrap; }
+table.balance tbody th { font-weight: 400; text-align: left; }
+table.balance .sticky-col { position: sticky; left: 0; background: var(--surface); z-index: 1; min-width: 210px; box-shadow: 1px 0 0 var(--border); }
+table.balance thead .sticky-col { background: var(--surface-2); }
+table.balance tr.titulo > th { background: var(--surface-2); font-family: var(--font-display); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-secondary); font-weight: 600; padding-top: 12px; }
+table.balance tr.total > * { font-weight: 700; border-top: 1px solid var(--border-strong); }
+table.balance tr.final > * { font-weight: 700; border-top: 2px solid var(--text-primary); background: color-mix(in oklab, var(--accent) 7%, var(--surface)); }
+table.balance tr.sub > * { color: var(--text-secondary); font-style: italic; }
+table.balance tr.sub-indent > th { padding-left: 26px; color: var(--text-secondary); }
+table.balance tr.vacia > * { color: var(--text-muted); }
+table.balance td.neg { color: var(--critical); }
+.kpi .value.critical { color: var(--critical); }
+
+@media print {
+  @page { size: A4 landscape; margin: 10mm; }
+  body { background: #fff; color: #000; padding: 0; font-size: 10px; }
+  .topbar, .tabs, .no-print, .banner, .toast-zone, .btn { display: none !important; }
+  .page { max-width: none; padding: 0; }
+  .card { border: none; box-shadow: none; padding: 0; }
+  .table-wrap { overflow: visible !important; }
+  table.balance { min-width: 0; width: 100%; font-size: 8.5px; }
+  table.balance th, table.balance td { padding: 2px 4px; }
+  table.balance .sticky-col { position: static; min-width: 0; box-shadow: none; }
+  .kpi-row.kpi-4 { grid-template-columns: repeat(4, 1fr); }
+  tr { break-inside: avoid; }
+}
+.card-tabla .table-wrap { border: none; border-radius: 0; }
