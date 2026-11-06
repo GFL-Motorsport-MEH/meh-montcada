@@ -1,0 +1,12 @@
+# Nunca subir datos reales de la academia
+*.csv
+*.xlsx
+*.xlsm
+*.json
+!app/**/*.json
+extract/
+import/
+test/fixtures.json
+test/shots/
+.netlify/
+__pycache__/
