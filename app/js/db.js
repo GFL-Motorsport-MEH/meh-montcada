@@ -91,8 +91,16 @@ export async function borrarGasto(id) {
 }
 
 // ---------- ingresos ----------
+const INGRESO_COLS = 'id,curso_id,trimestre,mes,grupo,level,tipo,cantidad';
 export async function getIngresos(cursoId) {
-  return selectAll('ingresos', 'id,curso_id,trimestre,mes,grupo,level,tipo,cantidad', (q) => q.eq('curso_id', cursoId).order('id', { ascending: true }));
+  return selectAll('ingresos', INGRESO_COLS, (q) => q.eq('curso_id', cursoId).order('id', { ascending: true }));
+}
+
+export async function crearIngreso(datos) {
+  return check(await supabase.from('ingresos').insert(datos).select(INGRESO_COLS).single());
+}
+export async function actualizarIngreso(id, cambios) {
+  return check(await supabase.from('ingresos').update(cambios).eq('id', id).select(INGRESO_COLS).single());
 }
 
 // ---------- usuarios ----------

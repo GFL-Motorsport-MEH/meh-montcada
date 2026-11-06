@@ -196,6 +196,28 @@ td .line2 { display: block; font-size: 12.5px; color: var(--text-muted); }
 .table-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13.5px; color: var(--text-secondary); }
 .empty { padding: 40px 20px; text-align: center; color: var(--text-secondary); }
 
+/* ---------- ingresos (cuadricula editable) ---------- */
+.kpi-row.kpi-4 { grid-template-columns: repeat(4, 1fr); }
+table.grid-ing { min-width: 1560px; font-size: 13px; }
+table.grid-ing th, table.grid-ing td { padding: 0; }
+table.grid-ing thead th, table.grid-ing tfoot th, table.grid-ing tfoot td, table.grid-ing td.total-col { padding: 8px 10px; }
+table.grid-ing tbody th { padding: 6px 10px; font-weight: 400; text-align: left; white-space: nowrap; }
+table.grid-ing .grupo { font-weight: 600; display: block; }
+table.grid-ing tr.grupo-inicio > * { border-top: 2px solid var(--border-strong); }
+table.grid-ing .sticky-col { position: sticky; left: 0; background: var(--surface); z-index: 1; min-width: 150px; box-shadow: 1px 0 0 var(--border); }
+table.grid-ing thead .sticky-col { background: var(--surface-2); }
+table.grid-ing tfoot > tr > * { background: var(--surface-2); font-weight: 600; border-top: 2px solid var(--border-strong); font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+table.grid-ing tfoot th.sticky-col { text-align: left; font-family: var(--font-body); }
+table.grid-ing td.total-col { font-weight: 600; background: var(--surface-2); white-space: nowrap; }
+input.cell {
+  border: 1px solid transparent; border-radius: 0; background: transparent; width: 100%; min-width: 98px;
+  padding: 7px 8px; text-align: right; font: 13px var(--font-mono); font-variant-numeric: tabular-nums;
+}
+input.cell:hover { border-color: var(--border); }
+input.cell:focus { background: var(--surface); border-color: var(--accent); outline: none; }
+input.cell.saving { opacity: .5; }
+input.cell.saved { background: color-mix(in oklab, var(--good) 18%, transparent); transition: background .8s ease; }
+
 /* ---------- drawer / modal ---------- */
 .overlay { position: fixed; inset: 0; background: var(--overlay); z-index: 60; display: flex; justify-content: flex-end; }
 .drawer {
@@ -232,11 +254,12 @@ td .line2 { display: block; font-size: 12.5px; color: var(--text-muted); }
 .users-help ol { margin: 6px 0 0; padding-left: 20px; }
 
 @media (max-width: 900px) {
+  .kpi-row.kpi-4 { grid-template-columns: 1fr 1fr; }
   .filters { grid-template-columns: 1fr 1fr; }
   .filters .search { grid-column: 1 / -1; }
 }
 @media (max-width: 720px) {
-  .kpi-row, .chart-row { grid-template-columns: 1fr; }
+  .kpi-row, .kpi-row.kpi-4, .chart-row { grid-template-columns: 1fr; }
   .form-section { grid-template-columns: 1fr; }
   .brand-sub { display: none; }
   .kpi .value { font-size: 23px; }
