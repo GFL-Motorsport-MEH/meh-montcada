@@ -60,12 +60,28 @@ if res_path.exists():
     for i, (cu, mes, gr, n) in enumerate(x for x in R["alumnos"] if x[3]):
         alumnos_mes.append({"id": f"alu-{i}", "curso_id": cid[cu], "mes": mes, "grupo": gr, "alumnos": n})
 
+# facturacion (facturacion_import.csv), con la misma clave que la columna generada de la BD
+facturacion = []
+fpath = src / "facturacion_import.csv"
+if fpath.exists():
+    with open(fpath, encoding="utf-8") as f:
+        for i, r in enumerate(csv.DictReader(f)):
+            for c in ("qty", "cantidad", "iva", "importe", "total"):
+                r[c] = float(r[c]) if r[c] not in ("", None) else None
+            for c in list(r):
+                if r[c] == "":
+                    r[c] = None
+            r["id"] = f"fac-{i}"
+            imp = "" if r["importe"] is None else f"{r['importe']:.2f}"
+            r["clave_linea"] = "|".join([r["id_crm"] or "", r["num_recibo"] or "", r["num_factura"] or "", r["descripcion"] or "", imp])
+            facturacion.append(r)
+
 profiles = [
     {"id": "00000000-0000-0000-0000-00000000aaaa", "nombre": "Admin", "email": "admin@example.com", "rol": "admin", "activo": True, "created_at": "2026-11-05T10:00:00Z"},
     {"id": "00000000-0000-0000-0000-00000000bbbb", "nombre": "Empleado", "email": "empleado@example.com", "rol": "empleado", "activo": False, "created_at": "2026-11-05T11:00:00Z"},
 ]
 json.dump({"cursos": cursos, "categorias": categorias, "subcategorias": subcategorias, "gastos": gastos, "ingresos": ingresos, "profiles": profiles,
-           "ingresos_metodo": ingresos_metodo, "alumnos_mes": alumnos_mes},
+           "ingresos_metodo": ingresos_metodo, "alumnos_mes": alumnos_mes, "facturacion": facturacion},
           open(TEST / "fixtures.json", "w", encoding="utf-8"), ensure_ascii=False)
 print(f"gastos {len(gastos)} (excepciones de mes aplicadas: {encontradas}/{len(EXC)}), ingresos {len(ingresos)}, "
       f"cobros por modalidad {len(ingresos_metodo)}, alumnos/mes {len(alumnos_mes)}")

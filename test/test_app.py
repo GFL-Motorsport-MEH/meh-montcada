@@ -225,6 +225,38 @@ try:
         page.get_by_role("tab", name="Balance del curso").click()
         page.screenshot(path=str(SHOTS / "balance.png"), full_page=True)
 
+        print("7e. facturación")
+        page.get_by_role("link", name="Facturación").click()
+        expect(page.locator("table.tabla-fact")).to_be_visible()
+        cnt = page.locator(".section-head .count").first.inner_text()
+        check(cnt == E["fact_lineas_curso"], f"facturación: líneas del curso ({cnt})")
+        kpi = page.locator(".kpi .value").first.inner_text().replace("\u00a0", " ")
+        check(kpi == E["fact_total_curso"], f"facturación: total facturado del curso ({kpi})")
+        check(E["fact_huecos"] in page.locator("details.huecos summary").inner_text(), "saltos de numeración detectados")
+        check(page.locator("table.resumen-trimestral tbody tr").count() >= 4, "resumen trimestral")
+        page.get_by_label("Buscar").fill("Alexandra Giménez")
+        cb = page.locator("table.tabla-fact tbody tr").first.locator("input[type=checkbox]").first
+        cb.check()
+        page.wait_for_timeout(200)
+        check(page.evaluate("window.__mock.db.facturacion.find(x => x.id === 'fac-0').mimag_comprobacion") == "True", "casilla MIMAG se guarda")
+        page.get_by_label("Buscar").fill("")
+        csvp = SHOTS.parent / "crm_prueba.csv"
+        csvp.write_text("nombre_centro;nombre_alumno;numero_referencia;fecha_pago;tipoOperacion;fechaOperacion;numero_factura;numero_recibo;metodo_pago;modalidad_pago;descripcion;cantidad;precio;iva;importe;total\n"
+            "MONTCADA - MEH;Alexandra Giménez Flores;134;2026-06-28 10:00:00;CREACION;2026-06-28;n/a;MC/26/3098;Efectivo;Mensual;Mensualidad de niños - (Ingles para Niños - Nivel 2 (Junio));1;55;0;55;55\n"
+            "MONTCADA - MEH;Alumno Nuevo;999;30/06/2026;CREACION;30/06/2026;n/a;MC/26/3620;Tarjeta;Mensual;Mensualidad prueba;1;60,5;0;60,5;60,5\n", encoding="utf-8")
+        page.locator("input[type=file]").set_input_files(str(csvp))
+        dlg = page.get_by_role("alertdialog")
+        expect(dlg).to_contain_text("1 nuevas")
+        expect(dlg).to_contain_text("1 ya importadas")
+        dlg.get_by_role("button", name="Importar 1 líneas").click()
+        expect(page.locator(".section-head .count").first).to_contain_text("5141 líneas")
+        nuevo = page.evaluate("window.__mock.db.facturacion.find(x => x.num_recibo === 'MC/26/3620')")
+        check(nuevo and nuevo["fecha_pago"] == "2026-06-30" and nuevo["cantidad"] == 60.5, f"línea importada con fecha y cantidad correctas ({nuevo and nuevo['fecha_pago']})")
+        page.locator("input[type=file]").set_input_files(str(csvp))
+        expect(page.locator(".toast").last).to_contain_text("No hay líneas nuevas")
+        check(True, "reimportar el mismo archivo no duplica")
+        page.screenshot(path=str(SHOTS / "facturacion.png"))
+
         print("8. usuarios (admin)")
         page.get_by_role("link", name="Usuarios").click()
         expect(page.get_by_text("1 pendientes de activar")).to_be_visible()

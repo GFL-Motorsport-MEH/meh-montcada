@@ -125,6 +125,23 @@ export async function actualizarAlumnosMes(id, cambios) {
   return check(await supabase.from('alumnos_mes').update(cambios).eq('id', id).select(ALU_COLS).single());
 }
 
+// ---------- facturación (import del CRM) ----------
+export const FACT_COLS = 'id,centro,alumno,id_crm,fecha_pago,tipo_operacion,fecha_operacion,num_factura,num_recibo,metodo_pago,modalidad_pago,descripcion,qty,cantidad,iva,importe,total,mimag_comprobacion,fiscontal_comprobacion';
+export async function getFacturacion() {
+  return selectAll('facturacion', FACT_COLS, (q) => q.order('fecha_pago', { ascending: false }).order('id', { ascending: true }));
+}
+export async function actualizarFacturacion(id, cambios) {
+  return check(await supabase.from('facturacion').update(cambios).eq('id', id).select(FACT_COLS).single());
+}
+// Inserta las líneas nuevas; las que ya existen (misma clave_linea) se ignoran en la BD.
+export async function insertarFacturacion(lineas) {
+  const out = [];
+  for (let i = 0; i < lineas.length; i += 500) {
+    out.push(...check(await supabase.from('facturacion').upsert(lineas.slice(i, i + 500), { onConflict: 'clave_linea', ignoreDuplicates: true }).select(FACT_COLS)));
+  }
+  return out;
+}
+
 // ---------- usuarios ----------
 export async function getPerfiles() {
   return check(await supabase.from('profiles').select('*').order('created_at', { ascending: true }));

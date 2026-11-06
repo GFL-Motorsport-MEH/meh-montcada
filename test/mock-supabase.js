@@ -10,6 +10,7 @@ const listeners = [];
 const emit = (ev) => listeners.forEach((cb) => cb(ev, session));
 let nextId = 1;
 window.__mock = { db, calls: [] };
+window.__claveFact = (r) => [r.id_crm ?? '', r.num_recibo ?? '', r.num_factura ?? '', r.descripcion ?? '', r.importe == null || r.importe === '' ? '' : Number(r.importe).toFixed(2)].join('|');
 
 class Q {
   constructor(table) { this.t = table; this.filters = []; this.orders = []; this.op = 'select'; }
@@ -21,6 +22,7 @@ class Q {
   single() { this.single_ = 'one'; return this; }
   insert(obj) { this.op = 'insert'; this.payload = obj; return this; }
   update(obj) { this.op = 'update'; this.payload = obj; return this; }
+  upsert(obj, opts = {}) { this.op = 'upsert'; this.payload = obj; this.upOpts = opts; return this; }
   delete(opts) { this.op = 'delete'; this.countOpt = opts && opts.count; return this; }
   then(res, rej) { return Promise.resolve().then(() => this.exec()).then(res, rej); }
   exec() {
@@ -37,6 +39,20 @@ class Q {
       const row = { id: 'nuevo-' + (nextId++), updated_at: new Date().toISOString(), ...this.payload };
       db[this.t].push(row);
       return { data: this.single_ ? row : [row], error: null };
+    }
+    if (this.op === 'upsert') {
+      if (!activo) return { data: null, error: { message: 'new row violates row-level security policy' } };
+      const col = this.upOpts.onConflict;
+      const clave = (r) => (this.t === 'facturacion' && col === 'clave_linea' ? window.__claveFact(r) : r[col]);
+      const existentes = new Set(db[this.t].map(clave));
+      const nuevos = [];
+      for (const p of [].concat(this.payload)) {
+        if (existentes.has(clave(p))) continue;
+        const row = { id: 'nuevo-' + (nextId++), ...p };
+        if (this.t === 'facturacion') row.clave_linea = window.__claveFact(row);
+        existentes.add(clave(row)); db[this.t].push(row); nuevos.push(row);
+      }
+      return { data: nuevos, error: null };
     }
     if (this.op === 'update') {
       const t = rows.filter(match);

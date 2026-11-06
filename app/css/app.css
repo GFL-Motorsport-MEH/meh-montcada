@@ -306,3 +306,13 @@ table.balance td.neg { color: var(--critical); }
   tr { break-inside: avoid; }
 }
 .card-tabla .table-wrap { border: none; border-radius: 0; }
+
+/* ---------- facturación ---------- */
+.filters.filters-fact { grid-template-columns: 2fr 1fr 1fr 1.2fr 1.2fr 1.3fr; }
+.sub-titulo { font-size: 14px; margin: 4px 0 -6px; color: var(--text-secondary); font-weight: 600; }
+table.resumen-trimestral th[scope=row] { font-weight: 600; text-align: left; }
+details.huecos { padding: 12px 16px; }
+details.huecos summary { cursor: pointer; }
+.lista-huecos { margin: 10px 0 0; padding-left: 20px; columns: 2; font-size: 13px; font-family: var(--font-mono, monospace); }
+td.center, th.center { text-align: center; }
+@media (max-width: 760px) { .filters.filters-fact { grid-template-columns: 1fr 1fr; } .lista-huecos { columns: 1; } }

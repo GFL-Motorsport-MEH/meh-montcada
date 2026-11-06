@@ -102,3 +102,33 @@ export function descargarCSV(nombre, filas) {
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+// ---------- leer archivos (CSV / Excel) ----------
+// CSV con separador ; , o tabulador (se detecta en la primera línea) y comillas dobles. Devuelve array de arrays.
+export function parsearCSV(texto) {
+  texto = texto.replace(/^﻿/, '');
+  const primera = texto.split(/\r?\n/, 1)[0] || '';
+  const sep = [';', '\t', ','].map((s) => [s, primera.split(s).length]).sort((a, b) => b[1] - a[1])[0][0];
+  const filas = []; let fila = [], campo = '', comillas = false;
+  for (let i = 0; i < texto.length; i++) {
+    const c = texto[i];
+    if (comillas) {
+      if (c === '"') { if (texto[i + 1] === '"') { campo += '"'; i++; } else comillas = false; } else campo += c;
+    } else if (c === '"') comillas = true;
+    else if (c === sep) { fila.push(campo); campo = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && texto[i + 1] === '\n') i++;
+      fila.push(campo); filas.push(fila); fila = []; campo = '';
+    } else campo += c;
+  }
+  if (campo !== '' || fila.length) { fila.push(campo); filas.push(fila); }
+  return filas.filter((f) => f.some((v) => String(v).trim() !== ''));
+}
+// Lee .csv, .xlsx o .xls y devuelve las filas de la primera hoja (incluida la cabecera).
+// Para Excel carga SheetJS bajo demanda.
+export async function leerHojaArchivo(file) {
+  if (/\.(csv|txt)$/i.test(file.name)) return parsearCSV(await file.text());
+  const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
+  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
+  return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: null });
+}
