@@ -93,12 +93,19 @@ empresas = [{"id": f"emp-{i}", "nombre_comercial": e["nombre"], "razon_social": 
              "iban": e["iban"].most_common(1)[0][0] if e["iban"] else None, "fecha_registro": None}
             for i, e in enumerate(emp.values())]
 
+# listas (metodo_pago, periodicidad, tipo) con los valores usados en los gastos, como la migracion 0006
+listas = []
+for campo in ("metodo_pago", "periodicidad", "tipo"):
+    cnt = Counter((g.get(campo) or "").strip() for g in gastos if (g.get(campo) or "").strip())
+    for i, (v, _) in enumerate(cnt.most_common()):
+        listas.append({"id": f"lis-{campo}-{i}", "lista": campo, "valor": v, "orden": i + 1})
+
 profiles = [
     {"id": "00000000-0000-0000-0000-00000000aaaa", "nombre": "Admin", "email": "admin@example.com", "rol": "admin", "activo": True, "created_at": "2026-11-05T10:00:00Z"},
     {"id": "00000000-0000-0000-0000-00000000bbbb", "nombre": "Empleado", "email": "empleado@example.com", "rol": "empleado", "activo": False, "created_at": "2026-11-05T11:00:00Z"},
 ]
 json.dump({"cursos": cursos, "categorias": categorias, "subcategorias": subcategorias, "gastos": gastos, "ingresos": ingresos, "profiles": profiles,
-           "ingresos_metodo": ingresos_metodo, "alumnos_mes": alumnos_mes, "facturacion": facturacion, "empresas": empresas},
+           "ingresos_metodo": ingresos_metodo, "alumnos_mes": alumnos_mes, "facturacion": facturacion, "empresas": empresas, "listas": listas},
           open(TEST / "fixtures.json", "w", encoding="utf-8"), ensure_ascii=False)
 print(f"gastos {len(gastos)} (excepciones de mes aplicadas: {encontradas}/{len(EXC)}), ingresos {len(ingresos)}, "
       f"cobros por modalidad {len(ingresos_metodo)}, alumnos/mes {len(alumnos_mes)}")

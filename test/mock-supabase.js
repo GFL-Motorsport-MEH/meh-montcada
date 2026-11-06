@@ -80,6 +80,21 @@ class Q {
 export function createClient() {
   return {
     from: (t) => new Q(t),
+    async rpc(fn, args) {
+      window.__mock.calls.push({ rpc: fn, args });
+      const yo = session && db.profiles.find((p) => p.id === session.user.id);
+      if (!(yo && yo.activo && yo.rol === 'admin')) return { data: null, error: { message: 'Solo un administrador puede cambiar las listas' } };
+      if (fn === 'renombrar_valor_lista') {
+        const { p_lista: l, p_anterior: a, p_nuevo: n } = args;
+        let c = 0;
+        db.gastos.forEach((g) => { if (g[l] === a) { g[l] = n; c++; } });
+        const existe = db.listas.some((x) => x.lista === l && x.valor.toLowerCase() === n.toLowerCase() && x.valor.toLowerCase() !== a.toLowerCase());
+        if (existe) db.listas = db.listas.filter((x) => !(x.lista === l && x.valor === a));
+        else db.listas.forEach((x) => { if (x.lista === l && x.valor === a) x.valor = n; });
+        return { data: c, error: null };
+      }
+      return { data: null, error: { message: 'función desconocida' } };
+    },
     auth: {
       async getSession() { return { data: { session }, error: null }; },
       onAuthStateChange(cb) { listeners.push(cb); setTimeout(() => cb('INITIAL_SESSION', session)); return { data: { subscription: { unsubscribe() {} } } }; },

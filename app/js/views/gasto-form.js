@@ -16,6 +16,8 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado }) {
     check_banca: false, sin_factura: false,
   };
   const sug = state.sugerencias || { tipo: [], empresa: [], periodicidad: [], metodo_pago: [] };
+  // valores de las listas editables (Configuración > Listas) primero; si aún no han cargado, los más usados
+  const deLista = (lista, def) => { const v = (state.listas || []).filter((x) => x.lista === lista).map((x) => x.valor); return v.length ? v : def; };
   let mesTocado = !nuevo && !!g.mes;
   let cursoTocado = !nuevo;
   let sucio = false;
@@ -125,8 +127,8 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado }) {
         campo('Factura (enlace o archivo)', fLink, { full: true }),
         campo('NIF', fNif), campo('IBAN', fIban), campo('SWIFT', fSwift),
         campo('Comentarios', fComentarios, { full: true })),
-      datalist('dl-tipo', sug.tipo), datalist('dl-empresa', [...new Set([...sug.empresa, ...(state.empresas || []).map((e) => e.nombre_comercial)])]),
-      datalist('dl-periodicidad', sug.periodicidad), datalist('dl-metodo', sug.metodo_pago)),
+      datalist('dl-tipo', deLista('tipo', sug.tipo)), datalist('dl-empresa', [...new Set([...sug.empresa, ...(state.empresas || []).map((e) => e.nombre_comercial)])]),
+      datalist('dl-periodicidad', deLista('periodicidad', sug.periodicidad)), datalist('dl-metodo', deLista('metodo_pago', sug.metodo_pago))),
     h('div', { class: 'drawer-foot' },
       h('div', {}, btnBorrar),
       h('div', { style: 'display:flex; gap:8px' },

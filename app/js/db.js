@@ -159,6 +159,30 @@ export async function renombrarEmpresaEnGastos(anterior, nuevo) {
   return filas.length;
 }
 
+// ---------- listas editables ----------
+export async function getListas() {
+  return check(await supabase.from('listas').select('id,lista,valor,orden').order('orden', { ascending: true }));
+}
+export async function crearValorLista(lista, valor, orden) {
+  return check(await supabase.from('listas').insert({ lista, valor, orden }).select('id,lista,valor,orden').single());
+}
+// Cambia el valor en la lista y en todos los gastos (función de la BD, solo admin). Devuelve nº de gastos cambiados.
+export async function renombrarValorLista(lista, anterior, nuevo) {
+  return check(await supabase.rpc('renombrar_valor_lista', { p_lista: lista, p_anterior: anterior, p_nuevo: nuevo }));
+}
+export async function crearCategoria(nombre, orden) {
+  return check(await supabase.from('categorias').insert({ nombre, orden }).select('*').single());
+}
+export async function actualizarCategoria(id, cambios) {
+  return check(await supabase.from('categorias').update(cambios).eq('id', id).select('*').single());
+}
+export async function crearSubcategoria(categoria_id, nombre, orden) {
+  return check(await supabase.from('subcategorias').insert({ categoria_id, nombre, orden }).select('*').single());
+}
+export async function actualizarSubcategoria(id, cambios) {
+  return check(await supabase.from('subcategorias').update(cambios).eq('id', id).select('*').single());
+}
+
 // ---------- usuarios ----------
 export async function getPerfiles() {
   return check(await supabase.from('profiles').select('*').order('created_at', { ascending: true }));

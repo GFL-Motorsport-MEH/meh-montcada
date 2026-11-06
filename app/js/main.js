@@ -10,6 +10,7 @@ import { renderBalance } from './views/balance.js';
 import { renderFacturacion } from './views/facturacion.js';
 import { renderControl } from './views/control.js';
 import { renderConfig } from './views/config.js';
+import './views/config-listas.js';
 
 const root = document.getElementById('app');
 const LS_CURSO = 'meh.curso';
@@ -41,6 +42,7 @@ const ctx = {
     if (state.sugerencias || state._cargandoSug) return;
     state._cargandoSug = true;
     ctx.empresas().catch(() => {});
+    if (!state.listas) db.getListas().then((l) => { state.listas = l; }).catch(() => {});
     db.getSugerenciasGastos().then((filas) => {
       const top = (campo, n = 400) => {
         const cnt = new Map();
