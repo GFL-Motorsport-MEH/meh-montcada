@@ -103,6 +103,28 @@ export async function actualizarIngreso(id, cambios) {
   return check(await supabase.from('ingresos').update(cambios).eq('id', id).select(INGRESO_COLS).single());
 }
 
+// ---------- resumen de ingresos (modalidad de pago y alumnos por mes) ----------
+const MET_COLS = 'id,curso_id,mes,metodo,importe';
+const ALU_COLS = 'id,curso_id,mes,grupo,alumnos';
+export async function getIngresosMetodo(cursoId) {
+  return selectAll('ingresos_metodo', MET_COLS, (q) => q.eq('curso_id', cursoId).order('id', { ascending: true }));
+}
+export async function crearIngresoMetodo(datos) {
+  return check(await supabase.from('ingresos_metodo').insert(datos).select(MET_COLS).single());
+}
+export async function actualizarIngresoMetodo(id, cambios) {
+  return check(await supabase.from('ingresos_metodo').update(cambios).eq('id', id).select(MET_COLS).single());
+}
+export async function getAlumnosMes(cursoId) {
+  return selectAll('alumnos_mes', ALU_COLS, (q) => q.eq('curso_id', cursoId).order('id', { ascending: true }));
+}
+export async function crearAlumnosMes(datos) {
+  return check(await supabase.from('alumnos_mes').insert(datos).select(ALU_COLS).single());
+}
+export async function actualizarAlumnosMes(id, cambios) {
+  return check(await supabase.from('alumnos_mes').update(cambios).eq('id', id).select(ALU_COLS).single());
+}
+
 // ---------- usuarios ----------
 export async function getPerfiles() {
   return check(await supabase.from('profiles').select('*').order('created_at', { ascending: true }));

@@ -2,6 +2,7 @@
 // hojas "20xx.xx Ing" del Excel. Cada celda se edita y se guarda al salir de ella.
 import { h, clear, fmtEUR, fmtEUR2, num, MESES, MESES_CORTO, capitalizar, cargando, toast, descargarCSV } from '../ui.js';
 import { crearIngreso, actualizarIngreso } from '../db.js';
+import { renderResumenIngresos } from './ingresos-resumen.js';
 
 const ORDEN_GRUPOS = ['Babies', 'Kids', 'Teens', 'Adultos', '1 to 1', 'Empresas', 'Activities'];
 const esWP = (tipo) => /welcome/i.test(tipo || '');
@@ -82,7 +83,13 @@ export async function renderIngresos(view, ctx) {
     kpiVals.mensualidades.textContent = fmtEUR(total - wp - extras);
     kpiVals.wp.textContent = fmtEUR(wp);
     kpiVals.extras.textContent = fmtEUR(extras);
+    if (resumen) resumen.refrescar();
   }
+  function totalesPorMes() {
+    return MESES.map((m) => filas.reduce((s, f) => s + num(f.celdas[m]?.cantidad), 0));
+  }
+  let resumen = null;
+  const resumenCont = h('div', { class: 'resumen-cont' });
 
   async function guardar(f, mes, input) {
     const valor = leerImporte(input.value);
@@ -202,6 +209,8 @@ export async function renderIngresos(view, ctx) {
           MESES_CORTO.map((m) => h('th', { scope: 'col', class: 'num' }, m)),
           h('th', { scope: 'col', class: 'num' }, 'Total'))),
         tbody,
-        h('tfoot', {}, h('tr', {}, h('th', { scope: 'row', class: 'sticky-col' }, 'Total'), totalWP, MESES.map((m) => totalesMes[m]), totalGeneral)))));
+        h('tfoot', {}, h('tr', {}, h('th', { scope: 'row', class: 'sticky-col' }, 'Total'), totalWP, MESES.map((m) => totalesMes[m]), totalGeneral)))),
+    resumenCont);
   pintarFilas();
+  resumen = await renderResumenIngresos(resumenCont, ctx, curso, totalesPorMes);
 }

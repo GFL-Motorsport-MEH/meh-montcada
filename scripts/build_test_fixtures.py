@@ -49,10 +49,23 @@ for i, r in enumerate(csv.DictReader(open(src / "ingresos_import.csv", encoding=
     x["cantidad"] = float(x["cantidad"])
     ingresos.append(x)
 
+# resumen de las hojas "Ing" (scripts/extract_ingresos_resumen.py), si existe
+ingresos_metodo, alumnos_mes = [], []
+res_path = src / "extract" / "ingresos_resumen.json"
+if res_path.exists():
+    R = json.load(open(res_path, encoding="utf-8"))
+    cid = {c["nombre"]: c["id"] for c in cursos}
+    for i, (cu, mes, met, v) in enumerate(x for x in R["metodos"] if x[3]):
+        ingresos_metodo.append({"id": f"met-{i}", "curso_id": cid[cu], "mes": mes, "metodo": met, "importe": v})
+    for i, (cu, mes, gr, n) in enumerate(x for x in R["alumnos"] if x[3]):
+        alumnos_mes.append({"id": f"alu-{i}", "curso_id": cid[cu], "mes": mes, "grupo": gr, "alumnos": n})
+
 profiles = [
     {"id": "00000000-0000-0000-0000-00000000aaaa", "nombre": "Admin", "email": "admin@example.com", "rol": "admin", "activo": True, "created_at": "2026-11-05T10:00:00Z"},
     {"id": "00000000-0000-0000-0000-00000000bbbb", "nombre": "Empleado", "email": "empleado@example.com", "rol": "empleado", "activo": False, "created_at": "2026-11-05T11:00:00Z"},
 ]
-json.dump({"cursos": cursos, "categorias": categorias, "subcategorias": subcategorias, "gastos": gastos, "ingresos": ingresos, "profiles": profiles},
+json.dump({"cursos": cursos, "categorias": categorias, "subcategorias": subcategorias, "gastos": gastos, "ingresos": ingresos, "profiles": profiles,
+           "ingresos_metodo": ingresos_metodo, "alumnos_mes": alumnos_mes},
           open(TEST / "fixtures.json", "w", encoding="utf-8"), ensure_ascii=False)
-print(f"gastos {len(gastos)} (excepciones de mes aplicadas: {encontradas}/{len(EXC)}), ingresos {len(ingresos)}")
+print(f"gastos {len(gastos)} (excepciones de mes aplicadas: {encontradas}/{len(EXC)}), ingresos {len(ingresos)}, "
+      f"cobros por modalidad {len(ingresos_metodo)}, alumnos/mes {len(alumnos_mes)}")

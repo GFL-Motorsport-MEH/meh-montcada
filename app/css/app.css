@@ -209,6 +209,10 @@ table.grid-ing thead .sticky-col { background: var(--surface-2); }
 table.grid-ing tfoot > tr > * { background: var(--surface-2); font-weight: 600; border-top: 2px solid var(--border-strong); font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
 table.grid-ing tfoot th.sticky-col { text-align: left; font-family: var(--font-body); }
 table.grid-ing td.total-col { font-weight: 600; background: var(--surface-2); white-space: nowrap; }
+table.grid-mini { min-width: 1240px; }
+table.grid-mini tr.fila-info > * { font-weight: 400; color: var(--text-secondary); border-top: 1px solid var(--border); }
+.resumen-cont { display: flex; flex-direction: column; gap: 18px; }
+.resumen-ing { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
 input.cell {
   border: 1px solid transparent; border-radius: 0; background: transparent; width: 100%; min-width: 98px;
   padding: 7px 8px; text-align: right; font: 13px var(--font-mono); font-variant-numeric: tabular-nums;
