@@ -1,11 +1,17 @@
-"""Prueba de extremo a extremo de la app con un Supabase simulado (sin red)."""
-import re, subprocess, sys, time, pathlib
+"""Prueba de extremo a extremo de la app con un Supabase simulado (sin red).
+
+Necesita dos archivos que NO se suben al repo porque contienen datos reales:
+  test/fixtures.json   datos de la BD (scripts/build_test_fixtures.py)
+  test/esperados.json  cifras del Excel con las que se compara el panel
+"""
+import json, re, subprocess, sys, time, pathlib
 from playwright.sync_api import sync_playwright, expect
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 WEB, TEST = ROOT / "app", ROOT / "test"
 SHOTS = TEST / "shots"; SHOTS.mkdir(exist_ok=True)
 URL = "http://127.0.0.1:8765/"
+E = json.load(open(TEST / "esperados.json", encoding="utf-8"))
 SUPA = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm"
 
 srv = subprocess.Popen([sys.executable, "-m", "http.server", "8765", "--bind", "127.0.0.1"], cwd=WEB,
@@ -33,7 +39,7 @@ try:
         print("1. login")
         page.goto(URL)
         expect(page.get_by_role("heading", name="Iniciar sesión")).to_be_visible()
-        page.get_by_label("Email").fill("gflmotorsport@hotmail.com")
+        page.get_by_label("Email").fill(E["admin_email"])
         page.get_by_label("Contraseña").fill("mala")
         page.get_by_role("button", name="Entrar").click()
         expect(page.get_by_role("alert")).to_contain_text("incorrectos")
@@ -43,24 +49,24 @@ try:
         expect(page.locator(".kpi").first).to_be_visible(timeout=10000)
 
         print("2. panel (curso por defecto = último con datos)")
-        check(page.locator("select[aria-label=Curso]").input_value() == "3ade6f39-b766-4a9d-a859-1e9d31cb51fc", "curso por defecto 2025.26")
+        check(page.locator("select[aria-label=Curso]").input_value() == E["curso_actual_id"], "curso por defecto = último con datos")
         kpis = page.locator(".kpi .value").all_inner_texts()
         print("   KPIs:", kpis)
-        check(kpis[0].replace(" ", " ") == "352.665 €", "ingresos 2025.26 = 352.665 € (Excel 352.664,78)")
-        check(kpis[1].replace(" ", " ") == "295.211 €", "gastos 2025.26 = 295.211 € (Excel 295.210,56)")
-        check(kpis[2].replace(" ", " ") == "57.454 €", "balance = 57.454 €")
+        check(kpis[0].replace("\u00a0", " ") == E["kpi_ingresos"], "KPI ingresos = Excel")
+        check(kpis[1].replace("\u00a0", " ") == E["kpi_gastos"], "KPI gastos = Excel")
+        check(kpis[2].replace("\u00a0", " ") == E["kpi_balance"], "KPI balance = Excel")
         bars = page.locator("svg.chart").first.locator("rect.bar")
         check(bars.count() == 24, "24 barras mensuales")
         # valores de las barras (title) vs gráfico del Excel
         titles = page.locator("svg.chart").first.locator("rect.bar title").evaluate_all("els => els.map(e => e.textContent)")
         sep_gas = [t for t in titles if t.startswith("Septiembre · Gastos")][0]
-        check("21.828,15" in sep_gas, "gastos septiembre sin Inv/WP = 21.828,15 (Excel)")
+        check(E["sep_gastos"] in sep_gas, "gastos septiembre sin Inv/WP = Excel")
         jun_gas = [t for t in titles if t.startswith("Junio · Gastos")][0]
-        check("27.235,74" in jun_gas, "gastos junio = 27.235,74 (Excel)")
+        check(E["jun_gastos"] in jun_gas, "gastos junio = Excel")
         mar_ing = [t for t in titles if t.startswith("Marzo · Ingresos")][0]
-        check("35.531,50" in mar_ing, "ingresos marzo = 35.531,50 (Excel)")
+        check(E["mar_ingresos"] in mar_ing, "ingresos marzo = Excel")
         cat = page.locator("svg.chart").nth(1).locator("rect.bar title").evaluate_all("els => els.map(e => e.textContent)")
-        check(cat[0].startswith("Trabajadores") and "154.462,95" in cat[0], "categoría mayor = Trabajadores 154.462,95")
+        check(cat[0].startswith("Trabajadores") and E["trabajadores"] in cat[0], "categoría mayor = Trabajadores (Excel)")
         page.get_by_label("Sin Inversión ni WP").uncheck()
         titles2 = page.locator("svg.chart").first.locator("rect.bar title").evaluate_all("els => els.map(e => e.textContent)")
         check(titles2 != titles, "el interruptor cambia el gráfico")
@@ -71,22 +77,22 @@ try:
         page.screenshot(path=str(SHOTS / "panel.png"))
 
         print("3. otro curso")
-        page.select_option("select[aria-label=Curso]", "7f701915-4c78-40f3-b709-65d24424f9ca")
-        expect(page.locator(".kpi .value").nth(1)).to_have_text(re.compile(r"205\.190"))
-        check(True, "2024.25 gastos 205.190 €")
-        page.select_option("select[aria-label=Curso]", "3ade6f39-b766-4a9d-a859-1e9d31cb51fc")
+        page.select_option("select[aria-label=Curso]", E["curso_anterior_id"])
+        expect(page.locator(".kpi .value").nth(1)).to_have_text(re.compile(re.escape(E["kpi_gastos_anterior"])))
+        check(True, "KPI gastos curso anterior = Excel")
+        page.select_option("select[aria-label=Curso]", E["curso_actual_id"])
 
         print("4. gastos: lista y filtros")
         page.get_by_role("link", name="Gastos").click()
-        expect(page.locator(".count")).to_contain_text("774 de 774 gastos")
-        check(True, "774 gastos en 2025.26")
-        page.get_by_label("Buscar").fill("vodafone")
+        expect(page.locator(".count")).to_contain_text(f'{E["n_gastos"]} de {E["n_gastos"]} gastos')
+        check(True, "nº de gastos del curso = Excel")
+        page.get_by_label("Buscar").fill(E["busqueda"])
         n = int(page.locator(".count").inner_text().split(" ")[0])
-        check(0 < n < 774, f"búsqueda 'vodafone' filtra ({n})")
+        check(0 < n < E["n_gastos"], f"la búsqueda filtra ({n})")
         page.get_by_label("Buscar").fill("")
         page.get_by_label("Categoría", exact=True).select_option(label="Trabajadores")
-        expect(page.locator(".count")).to_contain_text("154.462,95")
-        check(True, "filtro categoría Trabajadores suma 154.462,95")
+        expect(page.locator(".count")).to_contain_text(E["trabajadores"])
+        check(True, "filtro categoría Trabajadores suma lo del Excel")
         page.get_by_label("Categoría", exact=True).select_option(value="")
         page.screenshot(path=str(SHOTS / "gastos.png"))
 
@@ -109,11 +115,11 @@ try:
         page.screenshot(path=str(SHOTS / "form.png"))
         drawer.get_by_role("button", name="Guardar gasto").click()
         expect(page.locator(".toast")).to_contain_text("Gasto guardado")
-        expect(page.locator(".count")).to_contain_text("775 de 775")
-        check(True, "gasto creado (775)")
+        expect(page.locator(".count")).to_contain_text(f'{E["n_gastos"] + 1} de {E["n_gastos"] + 1}')
+        check(True, "gasto creado")
         nuevo = page.evaluate("window.__mock.db.gastos.find(g => g.concepto === 'Gasto de prueba automatizada')")
         check(nuevo["cantidad"] == 123.45 and nuevo["mes"] == "abril" and nuevo["categoria_texto"] == "Material" and nuevo["subcategoria_texto"] == "Oficina", "datos guardados correctos")
-        check(nuevo["curso_id"] == "3ade6f39-b766-4a9d-a859-1e9d31cb51fc", "curso asignado por fecha (2025.26)")
+        check(nuevo["curso_id"] == E["curso_actual_id"], "curso asignado por fecha")
 
         print("6. editar y borrar")
         page.get_by_label("Buscar").fill("prueba automatizada")
@@ -125,14 +131,14 @@ try:
         page.locator("tbody tr.clickable").first.click()
         page.locator("form.drawer").get_by_role("button", name="Borrar").click()
         page.locator(".dialog").get_by_role("button", name="Borrar").click()
-        expect(page.locator(".count")).to_contain_text("0 de 774")
-        check(True, "gasto borrado (vuelve a 774)")
+        expect(page.locator(".count")).to_contain_text(f'0 de {E["n_gastos"]}')
+        check(True, "gasto borrado")
         page.get_by_label("Buscar").fill("")
 
         print("7. el panel refleja los cambios del caché")
         page.get_by_role("link", name="Panel").click()
-        expect(page.locator(".kpi .value").nth(1)).to_have_text(re.compile(r"295\.211"))
-        check(True, "panel sigue en 295.211 tras crear+borrar")
+        expect(page.locator(".kpi .value").nth(1)).to_have_text(E["kpi_gastos"].replace(" ", "\u00a0"))
+        check(True, "el panel vuelve a la cifra del Excel tras crear y borrar")
 
         print("8. usuarios (admin)")
         page.get_by_role("link", name="Usuarios").click()
@@ -148,7 +154,7 @@ try:
         page.get_by_role("button", name="Salir").click()
         expect(page.get_by_role("heading", name="Iniciar sesión")).to_be_visible()
         page.evaluate("window.__mock.db.profiles[1].activo = false")
-        page.get_by_label("Email").fill("laura@example.com")
+        page.get_by_label("Email").fill(E["pendiente_email"])
         page.get_by_label("Contraseña").fill("secreto123")
         page.get_by_role("button", name="Entrar").click()
         expect(page.get_by_role("heading", name="Cuenta pendiente de activar")).to_be_visible()
@@ -166,14 +172,14 @@ try:
         m = b.new_page(viewport={"width": 390, "height": 844}, color_scheme="dark")
         preparar(m)
         m.goto(URL)
-        m.get_by_label("Email").fill("gflmotorsport@hotmail.com"); m.get_by_label("Contraseña").fill("secreto123")
+        m.get_by_label("Email").fill(E["admin_email"]); m.get_by_label("Contraseña").fill("secreto123")
         m.get_by_role("button", name="Entrar").click()
         expect(m.locator(".kpi").first).to_be_visible(timeout=10000)
         sw = m.evaluate("document.documentElement.scrollWidth")
         check(sw <= 390, f"sin scroll horizontal en móvil ({sw}px)")
         m.screenshot(path=str(SHOTS / "movil-panel.png"), full_page=True)
         m.get_by_role("link", name="Gastos").click()
-        expect(m.locator(".count")).to_contain_text("774")
+        expect(m.locator(".count")).to_contain_text(str(E["n_gastos"]))
         m.get_by_role("button", name="+ Nuevo gasto").click()
         m.screenshot(path=str(SHOTS / "movil-form.png"))
         b.close()

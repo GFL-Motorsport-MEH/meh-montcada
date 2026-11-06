@@ -1,10 +1,9 @@
 // Sustituto de @supabase/supabase-js para pruebas locales (sin red).
-// Implementa solo lo que usa la app. Usuarios de prueba:
-//   gflmotorsport@hotmail.com / secreto123  (admin activo)
-//   laura@example.com / secreto123          (pendiente de activar)
+// Implementa solo lo que usa la app. Los usuarios salen de fixtures.json
+// (profiles) y todos tienen la contraseña "secreto123".
 const fx = await (await fetch('/__fixtures.json')).json();
 const db = { ...fx };
-const USERS = { 'gflmotorsport@hotmail.com': '00000000-0000-0000-0000-00000000aaaa', 'laura@example.com': '00000000-0000-0000-0000-00000000bbbb' };
+const USERS = Object.fromEntries(fx.profiles.map((p) => [p.email, p.id]));
 const PAGE_MAX = 1000;
 let session = JSON.parse(sessionStorage.getItem('mock.session') || 'null');
 const listeners = [];
