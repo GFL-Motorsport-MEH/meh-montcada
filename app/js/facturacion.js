@@ -29,7 +29,7 @@ export function aFechaISO(v) {
   if (m) return `${m[3]}-${pad(m[2])}-${pad(m[1])}`;
   return null;
 }
-function aNumero(v) {
+export function aNumero(v) {
   if (v === null || v === undefined || v === '') return null;
   if (typeof v === 'number') return Math.round(v * 100) / 100;
   let s = String(v).trim().replace(/\s|€/g, '');

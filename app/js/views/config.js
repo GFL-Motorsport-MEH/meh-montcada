@@ -128,7 +128,9 @@ export async function renderConfig(view, ctx) {
   async function pintar() {
     clear(seg, SECCIONES.map(([id, label]) => h('button', { class: 'seg-btn', role: 'tab', 'aria-selected': String(id === sec), onclick: () => { sec = id; guardarPref(id); pintar(); } }, label)));
     if (sec === 'empresas') await renderEmpresas(cuerpo, ctx);
-    else if (extras[sec]) await extras[sec](cuerpo, ctx);
+    else if (extras[sec]) {
+      try { await extras[sec](cuerpo, ctx); } catch (ex) { console.error(ex); clear(cuerpo, h('div', { class: 'banner error', role: 'alert' }, 'No se ha podido cargar esta sección: ', ex.message)); }
+    }
     else clear(cuerpo, h('div', { class: 'card empty' }, 'Próximamente.'));
   }
   clear(view, h('div', { class: 'section-head no-print' }, seg), cuerpo);

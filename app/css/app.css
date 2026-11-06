@@ -371,3 +371,17 @@ table.tabla-plantillas { min-width: 980px; }
 .sugerencias ul { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .sugerencias li { display: flex; justify-content: space-between; gap: 10px; align-items: center; font-size: 13.5px; }
 .sugerencias .pill { margin-left: 8px; }
+/* ---------- conciliación ---------- */
+.cuentas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.card.cuenta { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; text-align: left; }
+.card.cuenta.nueva { align-items: center; justify-content: center; border-style: dashed; cursor: pointer; font: 600 14px var(--font-body); color: var(--accent); background: transparent; min-height: 110px; }
+.input-cuenta { padding: 5px 8px; font-size: 13px; }
+.card.cuenta .input-cuenta:first-child { font-weight: 600; font-size: 14px; }
+.filters.filters-conc { grid-template-columns: 2fr 1.2fr 1fr 1.2fr; }
+.acciones-mov { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+td.num.pos { color: var(--positive, #15803d); }
+tr.mov-ignorado > td { opacity: .55; }
+.lista-pares { font-size: 12.5px; max-height: 260px; overflow: auto; padding-left: 18px; }
+.candidatos { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow: auto; }
+.candidatos .cand { align-items: flex-start; }
+@media (max-width: 760px) { .filters.filters-conc { grid-template-columns: 1fr 1fr; } }

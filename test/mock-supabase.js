@@ -44,7 +44,7 @@ class Q {
     if (this.op === 'upsert') {
       if (!activo) return { data: null, error: { message: 'new row violates row-level security policy' } };
       const col = this.upOpts.onConflict;
-      const clave = (r) => (this.t === 'facturacion' && col === 'clave_linea' ? window.__claveFact(r) : r[col]);
+      const clave = (r) => (this.t === 'facturacion' && col === 'clave_linea' ? window.__claveFact(r) : col.split(',').map((c) => r[c.trim()]).join('|'));
       const existentes = new Set(db[this.t].map(clave));
       const nuevos = [];
       for (const p of [].concat(this.payload)) {

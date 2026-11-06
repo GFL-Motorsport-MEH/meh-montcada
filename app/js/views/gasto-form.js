@@ -9,12 +9,13 @@ function datalist(id, valores) {
   return h('datalist', { id }, valores.map((v) => h('option', { value: v })));
 }
 
-export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado, onDividido }) {
+export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado, onDividido, inicial }) {
   const { state } = ctx;
   const nuevo = !gasto;
   const g = gasto || {
     curso_id: ctx.cursoActual().id, fecha_factura: hoyISO(), pago: 'True', fiscontal: 'False',
     check_banca: false, sin_factura: false, centro_id: ctx.centroActual()?.id || ctx.centroPrincipal()?.id || null,
+    ...(inicial || {}),
   };
   const sug = state.sugerencias || { tipo: [], empresa: [], periodicidad: [], metodo_pago: [] };
   // valores de las listas editables (Configuración > Listas) primero; si aún no han cargado, los más usados

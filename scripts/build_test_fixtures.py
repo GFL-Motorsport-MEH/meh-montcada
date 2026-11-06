@@ -111,7 +111,7 @@ profiles = [
     {"id": "00000000-0000-0000-0000-00000000bbbb", "nombre": "Empleado", "email": "empleado@example.com", "rol": "empleado", "activo": False, "created_at": "2026-11-05T11:00:00Z"},
 ]
 json.dump({"cursos": cursos, "categorias": categorias, "subcategorias": subcategorias, "gastos": gastos, "ingresos": ingresos, "profiles": profiles,
-           "ingresos_metodo": ingresos_metodo, "alumnos_mes": alumnos_mes, "facturacion": facturacion, "empresas": empresas, "listas": listas, "centros": centros, "plantillas_gasto": []},
+           "ingresos_metodo": ingresos_metodo, "alumnos_mes": alumnos_mes, "facturacion": facturacion, "empresas": empresas, "listas": listas, "centros": centros, "plantillas_gasto": [], "cuentas_bancarias": [], "movimientos_banco": []},
           open(TEST / "fixtures.json", "w", encoding="utf-8"), ensure_ascii=False)
 print(f"gastos {len(gastos)} (excepciones de mes aplicadas: {encontradas}/{len(EXC)}), ingresos {len(ingresos)}, "
       f"cobros por modalidad {len(ingresos_metodo)}, alumnos/mes {len(alumnos_mes)}")

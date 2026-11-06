@@ -221,6 +221,40 @@ export async function borrarPlantilla(id) {
   check(await supabase.from('plantillas_gasto').delete().eq('id', id));
 }
 
+// ---------- conciliación bancaria ----------
+const CTA_COLS = 'id,nombre,banco,iban,referencia,centro_id,activo,orden';
+const MOV_COLS = 'id,cuenta_id,fecha,fecha_valor,concepto,importe,saldo,clave,estado,gasto_id,centro_id,notas,archivo';
+export async function getCuentas() {
+  return check(await supabase.from('cuentas_bancarias').select(CTA_COLS).order('orden', { ascending: true }));
+}
+export async function crearCuenta(datos) {
+  return check(await supabase.from('cuentas_bancarias').insert(datos).select(CTA_COLS).single());
+}
+export async function actualizarCuenta(id, cambios) {
+  return check(await supabase.from('cuentas_bancarias').update(cambios).eq('id', id).select(CTA_COLS).single());
+}
+export async function getMovimientos() {
+  return selectAll('movimientos_banco', MOV_COLS, (q) => q.order('fecha', { ascending: false }).order('id', { ascending: true }));
+}
+// Inserta los movimientos nuevos; los ya importados (misma cuenta y clave) se ignoran.
+export async function insertarMovimientos(movs) {
+  const out = [];
+  for (let i = 0; i < movs.length; i += 500) {
+    out.push(...check(await supabase.from('movimientos_banco').upsert(movs.slice(i, i + 500), { onConflict: 'cuenta_id,clave', ignoreDuplicates: true }).select(MOV_COLS)));
+  }
+  return out;
+}
+export async function actualizarMovimientos(ids, cambios) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += 200) out.push(...check(await supabase.from('movimientos_banco').update(cambios).in('id', ids.slice(i, i + 200)).select(MOV_COLS)));
+  return out;
+}
+export async function marcarGastosBanca(ids, valor = true) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += 200) out.push(...check(await supabase.from('gastos').update({ check_banca: valor }).in('id', ids.slice(i, i + 200)).select(GASTO_COLS)));
+  return out;
+}
+
 // ---------- usuarios ----------
 export async function getPerfiles() {
   return check(await supabase.from('profiles').select('*').order('created_at', { ascending: true }));
