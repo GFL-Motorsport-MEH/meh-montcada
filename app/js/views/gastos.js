@@ -1,6 +1,7 @@
 import { h, clear, fmtEUR2, fmtFecha, num, MESES, capitalizar, tituloCategoria, normalizar, cargando, descargarCSV, mesDeFecha } from '../ui.js';
 import { abrirGastoForm } from './gasto-form.js';
 import { moverGastosACentro } from '../db.js';
+import { generarGastosDelMes } from './plantillas.js';
 import { toast } from '../ui.js';
 
 const POR_PAGINA = 100;
@@ -150,6 +151,7 @@ export async function renderGastos(view, ctx) {
       gasto: g, ctx,
       onGuardado: (nuevo) => { reemplazar(g, nuevo); },
       onBorrado: () => { gastos = gastos.filter((x) => x.id !== g.id); ctx.setGastos(curso.id, gastos); pintar(); },
+      onDividido: (actualizado, creados) => { gastos = gastos.map((x) => (x.id === g.id ? actualizado : x)); gastos.unshift(...creados); ctx.setGastos(curso.id, gastos); pintar(); },
     });
   }
   function reemplazar(viejo, nuevo) {
@@ -181,6 +183,7 @@ export async function renderGastos(view, ctx) {
       h('div', {}, h('h2', {}, `Gastos · ${curso.nombre}`), titulo),
       h('div', { class: 'section-actions' },
         h('button', { class: 'btn', onclick: exportar }, 'Exportar CSV'),
+        h('button', { class: 'btn', onclick: () => generarGastosDelMes(ctx, { curso, gastos, onCreados: (creados) => { gastos.unshift(...creados); ctx.setGastos(curso.id, gastos); pintar(); } }) }, 'Generar gastos del mes'),
         h('button', { class: 'btn primary', onclick: nuevoGasto }, '+ Nuevo gasto'))),
     h('div', { class: 'filters' }, h('div', { class: 'search' }, fQ), fCat, fSub, fMes, fEstado),
     barra,

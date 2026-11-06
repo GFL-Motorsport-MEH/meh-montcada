@@ -70,7 +70,7 @@ export async function getTaxonomia() {
 }
 
 // ---------- gastos ----------
-export const GASTO_COLS = 'id,curso_id,mes,tipo,empresa,factura_nr,fecha_factura,pago,concepto,fecha_pago,cantidad,link_factura,categoria_id,subcategoria_id,categoria_texto,subcategoria_texto,periodicidad,metodo_pago,comentarios,nif,iban,swift,check_banca,fiscontal,sin_factura,centro_id,updated_at';
+export const GASTO_COLS = 'id,curso_id,mes,tipo,empresa,factura_nr,fecha_factura,pago,concepto,fecha_pago,cantidad,link_factura,categoria_id,subcategoria_id,categoria_texto,subcategoria_texto,periodicidad,metodo_pago,comentarios,nif,iban,swift,check_banca,fiscontal,sin_factura,centro_id,division_id,updated_at';
 
 export async function getGastos(cursoId) {
   return selectAll('gastos', GASTO_COLS, (q) => q.eq('curso_id', cursoId).order('fecha_factura', { ascending: false }).order('id', { ascending: true }));
@@ -80,6 +80,10 @@ export async function getSugerenciasGastos() {
 }
 export async function crearGasto(gasto) {
   return check(await supabase.from('gastos').insert(gasto).select(GASTO_COLS).single());
+}
+export async function crearGastos(lista) {
+  if (!lista.length) return [];
+  return check(await supabase.from('gastos').insert(lista).select(GASTO_COLS));
 }
 export async function actualizarGasto(id, cambios) {
   return check(await supabase.from('gastos').update(cambios).eq('id', id).select(GASTO_COLS).single());
@@ -200,6 +204,21 @@ export async function moverGastosACentro(ids, centroId) {
     out.push(...check(await supabase.from('gastos').update({ centro_id: centroId }).in('id', ids.slice(i, i + 200)).select(GASTO_COLS)));
   }
   return out;
+}
+
+// ---------- plantillas de gastos (mensuales y nóminas) ----------
+const PLA_COLS = 'id,grupo,activo,orden,empresa,concepto,cantidad,tipo,categoria_id,subcategoria_id,metodo_pago,periodicidad,dia_pago,centro_id';
+export async function getPlantillas() {
+  return check(await supabase.from('plantillas_gasto').select(PLA_COLS).order('orden', { ascending: true }));
+}
+export async function crearPlantilla(datos) {
+  return check(await supabase.from('plantillas_gasto').insert(datos).select(PLA_COLS).single());
+}
+export async function actualizarPlantilla(id, cambios) {
+  return check(await supabase.from('plantillas_gasto').update(cambios).eq('id', id).select(PLA_COLS).single());
+}
+export async function borrarPlantilla(id) {
+  check(await supabase.from('plantillas_gasto').delete().eq('id', id));
 }
 
 // ---------- usuarios ----------

@@ -1,6 +1,7 @@
 // Formulario lateral para crear / editar un gasto.
 import { h, toast, confirmar, MESES, capitalizar, mesDeFecha, hoyISO, tituloCategoria, fmtEUR2 } from '../ui.js';
-import { crearGasto, actualizarGasto, borrarGasto } from '../db.js';
+import { crearGasto, crearGastos, actualizarGasto, borrarGasto } from '../db.js';
+import { dividirEnMeses, dividirEnCentros } from '../gastos-ops.js';
 
 const esVerdad = (v) => /^(true|1|x|verdadero)$/i.test(String(v ?? '').trim());
 
@@ -8,7 +9,7 @@ function datalist(id, valores) {
   return h('datalist', { id }, valores.map((v) => h('option', { value: v })));
 }
 
-export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado }) {
+export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado, onDividido }) {
   const { state } = ctx;
   const nuevo = !gasto;
   const g = gasto || {
@@ -133,7 +134,9 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado }) {
       datalist('dl-tipo', deLista('tipo', sug.tipo)), datalist('dl-empresa', [...new Set([...sug.empresa, ...(state.empresas || []).map((e) => e.nombre_comercial)])]),
       datalist('dl-periodicidad', deLista('periodicidad', sug.periodicidad)), datalist('dl-metodo', deLista('metodo_pago', sug.metodo_pago))),
     h('div', { class: 'drawer-foot' },
-      h('div', {}, btnBorrar),
+      h('div', { style: 'display:flex; gap:8px; flex-wrap:wrap' }, btnBorrar,
+        nuevo ? null : h('button', { class: 'btn', type: 'button', onclick: () => dividir('meses') }, 'Dividir entre meses'),
+        nuevo || state.centros.filter((c) => c.activo !== false).length < 2 ? null : h('button', { class: 'btn', type: 'button', onclick: () => dividir('centros') }, 'Dividir entre centros')),
       h('div', { style: 'display:flex; gap:8px' },
         h('button', { class: 'btn', type: 'button', onclick: () => cerrar() }, 'Cancelar'), btnGuardar)));
 
@@ -195,6 +198,37 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado }) {
       errGeneral.hidden = false;
       btnGuardar.disabled = false; btnGuardar.textContent = nuevo ? 'Guardar gasto' : 'Guardar cambios';
     }
+  }
+
+  // ---- dividir un gasto guardado entre varios meses o centros ----
+  async function dividir(modo) {
+    if (sucio) { toast('Guarda primero los cambios del gasto.', 'error'); return; }
+    let cuerpo, leer;
+    if (modo === 'meses') {
+      const checks = MESES.map((m) => h('input', { type: 'checkbox', value: m, checked: m === g.mes }));
+      cuerpo = h('div', {}, h('p', {}, `Se repartirán ${fmtEUR2(g.cantidad)} a partes iguales entre los meses que elijas (el gasto actual pasa a ser la primera parte).`),
+        h('div', { class: 'grid-checks' }, MESES.map((m, i) => h('label', { class: 'check small' }, checks[i], capitalizar(m)))));
+      leer = () => checks.filter((c) => c.checked).map((c) => c.value);
+    } else {
+      const activos = state.centros.filter((c) => c.activo !== false);
+      const filas = activos.map((c) => ({ c, chk: h('input', { type: 'checkbox', checked: true }), pct: h('input', { type: 'number', min: 0, max: 100, step: 'any', value: Math.round(10000 / activos.length) / 100, class: 'input-corto', 'aria-label': `% para ${c.nombre}` }) }));
+      cuerpo = h('div', {}, h('p', {}, `Se repartirán ${fmtEUR2(g.cantidad)} entre los centros marcados según el porcentaje.`),
+        h('div', { class: 'reparto-centros' }, filas.map((f) => h('label', { class: 'check small' }, f.chk, ctx.tituloCentro(f.c.nombre), f.pct, '%'))));
+      leer = () => filas.filter((f) => f.chk.checked && Number(f.pct.value) > 0).map((f) => ({ centro_id: f.c.id, peso: Number(f.pct.value) }));
+    }
+    const ok = await confirmar({ titulo: modo === 'meses' ? 'Dividir entre meses' : 'Dividir entre centros', texto: cuerpo, ok: 'Dividir' });
+    if (!ok) return;
+    const sel = leer();
+    if (sel.length < 2) { toast(modo === 'meses' ? 'Elige al menos dos meses.' : 'Elige al menos dos centros con porcentaje.', 'error'); return; }
+    const nombre = (id) => ctx.tituloCentro(state.centros.find((c) => c.id === id)?.nombre || '');
+    const { original, nuevos } = modo === 'meses' ? dividirEnMeses(g, sel) : dividirEnCentros(g, sel, nombre);
+    try {
+      const actualizado = await actualizarGasto(g.id, original);
+      const creados = await crearGastos(nuevos);
+      toast(`Gasto dividido en ${creados.length + 1} partes`);
+      await cerrar(true);
+      (onDividido || (() => {}))(actualizado, creados, g);
+    } catch (ex) { toast('No se ha podido dividir: ' + ex.message, 'error'); }
   }
 
   async function borrar() {

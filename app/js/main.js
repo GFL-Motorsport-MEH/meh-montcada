@@ -12,6 +12,7 @@ import { renderControl } from './views/control.js';
 import { renderConfig } from './views/config.js';
 import './views/config-listas.js';
 import './views/config-centros.js';
+import './views/plantillas.js';
 
 const root = document.getElementById('app');
 const LS_CURSO = 'meh.curso';

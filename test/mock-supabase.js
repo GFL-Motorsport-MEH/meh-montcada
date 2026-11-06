@@ -37,9 +37,9 @@ class Q {
     if (this.t === 'profiles' && !admin) rows = rows.filter((r) => r.id === session.user.id);
     if (this.op === 'insert') {
       if (!activo) return { data: null, error: { message: 'new row violates row-level security policy' } };
-      const row = { id: 'nuevo-' + (nextId++), updated_at: new Date().toISOString(), ...this.payload };
-      db[this.t].push(row);
-      return { data: this.single_ ? row : [row], error: null };
+      const rows = [].concat(this.payload).map((p) => ({ id: 'nuevo-' + (nextId++), updated_at: new Date().toISOString(), ...p }));
+      db[this.t].push(...rows);
+      return { data: this.single_ ? rows[0] : rows, error: null };
     }
     if (this.op === 'upsert') {
       if (!activo) return { data: null, error: { message: 'new row violates row-level security policy' } };
@@ -62,7 +62,7 @@ class Q {
       return { data: this.single_ ? t[0] || null : t, error: this.single_ === 'one' && !t.length ? { message: 'JSON object requested, multiple (or no) rows returned' } : null };
     }
     if (this.op === 'delete') {
-      if (!admin) return { data: null, error: null, count: 0 };
+      if (!(admin || (activo && this.t === 'plantillas_gasto'))) return { data: null, error: null, count: 0 };
       const before = db[this.t].length;
       db[this.t] = db[this.t].filter((r) => !match(r));
       return { data: null, error: null, count: before - db[this.t].length };
