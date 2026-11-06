@@ -100,12 +100,18 @@ for campo in ("metodo_pago", "periodicidad", "tipo"):
     for i, (v, _) in enumerate(cnt.most_common()):
         listas.append({"id": f"lis-{campo}-{i}", "lista": campo, "valor": v, "orden": i + 1})
 
+# centros (migracion 0007): todos los gastos al principal
+centros = [{"id": "cen-montcada", "nombre": "MONTCADA", "principal": True, "activo": True, "orden": 0},
+           {"id": "cen-alcantarilla", "nombre": "ALCANTARILLA", "principal": False, "activo": True, "orden": 1}]
+for g in gastos:
+    g["centro_id"] = "cen-montcada"
+
 profiles = [
     {"id": "00000000-0000-0000-0000-00000000aaaa", "nombre": "Admin", "email": "admin@example.com", "rol": "admin", "activo": True, "created_at": "2026-11-05T10:00:00Z"},
     {"id": "00000000-0000-0000-0000-00000000bbbb", "nombre": "Empleado", "email": "empleado@example.com", "rol": "empleado", "activo": False, "created_at": "2026-11-05T11:00:00Z"},
 ]
 json.dump({"cursos": cursos, "categorias": categorias, "subcategorias": subcategorias, "gastos": gastos, "ingresos": ingresos, "profiles": profiles,
-           "ingresos_metodo": ingresos_metodo, "alumnos_mes": alumnos_mes, "facturacion": facturacion, "empresas": empresas, "listas": listas},
+           "ingresos_metodo": ingresos_metodo, "alumnos_mes": alumnos_mes, "facturacion": facturacion, "empresas": empresas, "listas": listas, "centros": centros},
           open(TEST / "fixtures.json", "w", encoding="utf-8"), ensure_ascii=False)
 print(f"gastos {len(gastos)} (excepciones de mes aplicadas: {encontradas}/{len(EXC)}), ingresos {len(ingresos)}, "
       f"cobros por modalidad {len(ingresos_metodo)}, alumnos/mes {len(alumnos_mes)}")

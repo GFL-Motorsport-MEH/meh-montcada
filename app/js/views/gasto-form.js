@@ -13,7 +13,7 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado }) {
   const nuevo = !gasto;
   const g = gasto || {
     curso_id: ctx.cursoActual().id, fecha_factura: hoyISO(), pago: 'True', fiscontal: 'False',
-    check_banca: false, sin_factura: false,
+    check_banca: false, sin_factura: false, centro_id: ctx.centroActual()?.id || ctx.centroPrincipal()?.id || null,
   };
   const sug = state.sugerencias || { tipo: [], empresa: [], periodicidad: [], metodo_pago: [] };
   // valores de las listas editables (Configuración > Listas) primero; si aún no han cargado, los más usados
@@ -35,6 +35,8 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado }) {
   const cursosVisibles = state.cursosVisibles;
   const fCurso = h('select', { name: 'curso_id', onchange: () => { cursoTocado = true; } },
     cursosVisibles.map((c) => h('option', { value: c.id, selected: c.id === g.curso_id }, c.nombre)));
+  const centrosActivos = state.centros.filter((c) => c.activo !== false || c.id === g.centro_id);
+  const fCentro = h('select', { name: 'centro_id' }, centrosActivos.map((c) => h('option', { value: c.id, selected: c.id === (g.centro_id || ctx.centroPrincipal()?.id) }, ctx.tituloCentro(c.nombre))));
   const fMes = h('select', { name: 'mes', onchange: () => { mesTocado = true; } },
     MESES.map((m) => h('option', { value: m }, capitalizar(m))));
   const fFechaFactura = h('input', { type: 'date', name: 'fecha_factura', value: g.fecha_factura || '' });
@@ -112,7 +114,8 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado }) {
         lEmpresa, campo('Nº factura', fFactura),
         lConcepto,
         lCantidad, campo('Tipo', fTipo, { ayuda: 'Factura, Recibo, Nomina…' }),
-        campo('Curso', fCurso), campo('Mes al que se imputa', fMes, { ayuda: 'Se rellena solo con la fecha de pago; cámbialo si toca otro mes.' })),
+        campo('Curso', fCurso), campo('Mes al que se imputa', fMes, { ayuda: 'Se rellena solo con la fecha de pago; cámbialo si toca otro mes.' }),
+        state.centros.length > 1 ? campo('Centro', fCentro) : null),
       h('div', { class: 'form-section' },
         h('h3', {}, 'Clasificación'),
         lCategoria, lSub,
@@ -169,7 +172,7 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado }) {
     const cat = state.taxonomia.find((c) => c.id === fCategoria.value);
     const sub = cat.subcategorias.find((s) => s.id === fSub.value);
     const datos = {
-      curso_id: fCurso.value, mes: fMes.value,
+      curso_id: fCurso.value, mes: fMes.value, ...(state.centros.length ? { centro_id: fCentro.value || null } : {}),
       fecha_factura: fFechaFactura.value || null, fecha_pago: fFechaPago.value || null,
       tipo: limpio(fTipo.value), empresa: limpio(fEmpresa.value), factura_nr: limpio(fFactura.value),
       concepto: limpio(fConcepto.value), cantidad: Math.round(cantidad * 100) / 100,

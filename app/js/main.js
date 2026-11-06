@@ -11,11 +11,13 @@ import { renderFacturacion } from './views/facturacion.js';
 import { renderControl } from './views/control.js';
 import { renderConfig } from './views/config.js';
 import './views/config-listas.js';
+import './views/config-centros.js';
 
 const root = document.getElementById('app');
 const LS_CURSO = 'meh.curso';
+const LS_CENTRO = 'meh.centro';
 const state = {
-  session: null, perfil: null, cursos: [], cursosVisibles: [], taxonomia: [], cursoId: null,
+  session: null, perfil: null, cursos: [], cursosVisibles: [], taxonomia: [], cursoId: null, centros: [], centroId: '',
   gastos: new Map(), ingresos: new Map(), sugerencias: null, arrancado: false,
 };
 
@@ -36,6 +38,16 @@ const ctx = {
     if (!state.empresas) state.empresas = await db.getEmpresas();
     return state.empresas;
   },
+  // centro elegido arriba ('' = todos). Los gastos sin centro cuentan como del principal.
+  centroActual: () => state.centros.find((c) => c.id === state.centroId) || null,
+  centroPrincipal: () => state.centros.find((c) => c.principal) || state.centros[0] || null,
+  filtrarCentro(lista) {
+    if (!state.centroId) return lista;
+    const principal = ctx.centroPrincipal()?.id;
+    return lista.filter((g) => (g.centro_id || principal) === state.centroId);
+  },
+  // los ingresos todavía no tienen centro: son del principal
+  ingresosDelCentro: (lista) => (!state.centroId || state.centroId === ctx.centroPrincipal()?.id ? lista : []),
   setGastos(cursoId, lista) { state.gastos.set(cursoId, lista); },
   invalidar(cursoId) { state.gastos.delete(cursoId); },
   cargarSugerencias() {
@@ -83,13 +95,24 @@ function pintarShell() {
     h('header', { class: 'topbar' },
       h('div', { class: 'brand' }, h('div', { class: 'brand-mark', 'aria-hidden': 'true' }, 'M'),
         h('div', {}, h('div', { class: 'brand-name' }, 'My English House — Montcada'), h('div', { class: 'brand-sub' }, 'Gestión y contabilidad'))),
-      h('div', { class: 'header-controls' }, cursoSel,
+      h('div', { class: 'header-controls' }, centroSelect(), cursoSel,
         h('div', { class: 'user-chip' }, h('span', { class: 'dot', 'aria-hidden': 'true' }, inicial),
           h('span', {}, `${p.nombre || p.email}${p.rol === 'admin' ? ' · admin' : ''}`),
           h('button', { class: 'btn ghost', onclick: () => renderNuevaPassword(root, { titulo: 'Cambiar contraseña', onDone: async () => { toast('Contraseña cambiada'); await arrancar(); }, onCancel: () => { pintarShell(); pintarVista(); } }) }, 'Contraseña'),
           h('button', { class: 'btn ghost', onclick: salir }, 'Salir')))),
     tabsEl, viewEl));
 }
+
+function centroSelect() {
+  if (state.centros.filter((c) => c.activo !== false).length < 2) return null;
+  const sel = h('select', { class: 'select-inline', 'aria-label': 'Centro', onchange: () => { state.centroId = sel.value; try { localStorage.setItem(LS_CENTRO, sel.value); } catch { /* */ } pintarVista(); } },
+    h('option', { value: '' }, 'Todos los centros'),
+    state.centros.filter((c) => c.activo !== false || c.id === state.centroId).map((c) => h('option', { value: c.id, selected: c.id === state.centroId }, tituloCentro(c.nombre))));
+  return sel;
+}
+export const tituloCentro = (s) => (s || '').toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+ctx.tituloCentro = tituloCentro;
+ctx.repintarCabecera = () => { pintarShell(); pintarVista(); };
 
 function pintarTabs(actual) {
   const tab = (id, label) => h('a', { class: 'tab', href: `#/${id}`, 'aria-current': id === actual ? 'page' : false }, label);
@@ -142,7 +165,9 @@ async function arrancar() {
     return renderPendiente(root, { email: session.user.email, onReintentar: arrancar });
   }
   state.perfil = perfil;
-  const [cursos, taxonomia] = await Promise.all([db.getCursos(), db.getTaxonomia()]);
+  const [cursos, taxonomia, centros] = await Promise.all([db.getCursos(), db.getTaxonomia(), db.getCentros().catch(() => [])]);
+  state.centros = centros;
+  try { const c = localStorage.getItem(LS_CENTRO); state.centroId = centros.some((x) => x.id === c) ? c : ''; } catch { state.centroId = ''; }
   const hoy = hoyISO();
   state.cursos = cursos;
   state.cursosVisibles = cursos.filter((c) => !c.fecha_inicio || c.fecha_inicio <= hoy);
@@ -160,7 +185,7 @@ async function salir() {
 }
 
 function reiniciarEstado() {
-  Object.assign(state, { session: null, perfil: null, cursos: [], cursosVisibles: [], taxonomia: [], cursoId: null, sugerencias: null, empresas: null, arrancado: false });
+  Object.assign(state, { session: null, perfil: null, cursos: [], cursosVisibles: [], taxonomia: [], cursoId: null, sugerencias: null, empresas: null, centros: [], centroId: '', arrancado: false });
   state.gastos.clear(); state.ingresos.clear();
 }
 

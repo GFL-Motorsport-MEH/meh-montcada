@@ -85,7 +85,8 @@ async function vistaAnual(ctx) {
   const cursos = ctx.state.cursosVisibles;
   const datos = [];
   for (const c of cursos) {
-    const [g, i] = await Promise.all([ctx.gastos(c.id), ctx.ingresos(c.id)]);
+    const [g0, i0] = await Promise.all([ctx.gastos(c.id), ctx.ingresos(c.id)]);
+    const g = ctx.filtrarCentro(g0), i = ctx.ingresosDelCentro(i0);
     if (g.length || i.length) datos.push({ curso: c, a: calcularAnual(g, i, ctx.state.taxonomia) });
   }
   const gruposIng = [...new Set(datos.flatMap((d) => [...d.a.ing.keys()]))];
@@ -129,7 +130,8 @@ function vistaInforme(curso, gastos, taxonomia, dim, excluir) {
 export async function renderBalance(view, ctx) {
   clear(view, cargando());
   const curso = ctx.cursoActual();
-  const [gastos, ingresos] = await Promise.all([ctx.gastos(curso.id), ctx.ingresos(curso.id)]);
+  const [g0, i0] = await Promise.all([ctx.gastos(curso.id), ctx.ingresos(curso.id)]);
+  const gastos = ctx.filtrarCentro(g0), ingresos = ctx.ingresosDelCentro(i0);
   let modo = pref('modo', 'curso');
   let isPct = pref('is', 0.25);
   let dim = pref('dim', 'categoria');
@@ -166,7 +168,8 @@ export async function renderBalance(view, ctx) {
     clear(controles, ctrls,
       h('button', { class: 'btn', onclick: () => actual.csv() }, 'Exportar CSV'),
       h('button', { class: 'btn', onclick: () => window.print() }, 'Imprimir / PDF'));
-    const titulo = modo === 'anual' ? 'Balance anual · todos los cursos' : `${MODOS.find((m) => m[0] === modo)[1]} · ${curso.nombre}`;
+    const centro = ctx.centroActual();
+    const titulo = (modo === 'anual' ? 'Balance anual · todos los cursos' : `${MODOS.find((m) => m[0] === modo)[1]} · ${curso.nombre}`) + (centro ? ` · ${ctx.tituloCentro(centro.nombre)}` : '');
     clear(cuerpo,
       actual.kpis ? h('div', { class: 'kpi-row kpi-4' }, actual.kpis.map(([l, v]) => h('div', { class: 'card kpi' }, h('div', { class: 'label' }, l), h('div', { class: 'value ' + (v < 0 ? 'critical' : '') }, fmtEUR(v))))) : null,
       h('div', { class: 'section-head' }, h('div', {}, h('h2', {}, titulo), h('div', { class: 'count' }, actual.nota))),

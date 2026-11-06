@@ -195,6 +195,9 @@ export async function renderIngresos(view, ctx) {
 
   clear(view,
     h('div', { class: 'banner' }, h('span', {}, h('strong', {}, 'Fase de pruebas: '), 'el Excel sigue siendo la referencia. Lo que cambies aquí no se copia al Excel.')),
+    ctx.centroActual() && !ctx.centroActual().principal
+      ? h('div', { class: 'banner warn' }, h('span', {}, 'Los ingresos todavía no se separan por centro: estos son los del centro principal (', ctx.tituloCentro(ctx.centroPrincipal()?.nombre), '). En Balance y Panel, este centro aparece sin ingresos.'))
+      : null,
     h('div', { class: 'kpi-row kpi-4' }, kpi('total', 'Ingresos del curso'), kpi('mensualidades', 'Mensualidades'), kpi('wp', 'Welcome Pack'), kpi('extras', 'Extras (actividades, empresas)')),
     h('div', { class: 'section-head' },
       h('div', {}, h('h2', {}, `Ingresos · ${curso.nombre}`), h('div', { class: 'count' }, 'Haz clic en una celda, escribe el importe y pulsa Intro. Se guarda solo.')),

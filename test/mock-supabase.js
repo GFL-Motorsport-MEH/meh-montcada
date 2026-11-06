@@ -16,6 +16,7 @@ class Q {
   constructor(table) { this.t = table; this.filters = []; this.orders = []; this.op = 'select'; }
   select(cols, opts) { if (this.op === 'select') this.op = 'select'; this.ret = true; this.countOpt = opts && opts.count; return this; }
   eq(c, v) { this.filters.push([c, v]); return this; }
+  in(c, vs) { this.filters.push([c, { in: vs }]); return this; }
   order(c, o = {}) { this.orders.push([c, o.ascending !== false]); return this; }
   range(a, b) { this.rng = [a, b]; return this; }
   maybeSingle() { this.single_ = 'maybe'; return this; }
@@ -31,7 +32,7 @@ class Q {
     const yo = db.profiles.find((p) => p.id === session.user.id);
     const activo = yo && yo.activo; const admin = activo && yo.rol === 'admin';
     let rows = db[this.t];
-    const match = (r) => this.filters.every(([c, v]) => r[c] === v);
+    const match = (r) => this.filters.every(([c, v]) => (v && v.in ? v.in.includes(r[c]) : r[c] === v));
     if (this.t !== 'profiles' && !activo) rows = [];
     if (this.t === 'profiles' && !admin) rows = rows.filter((r) => r.id === session.user.id);
     if (this.op === 'insert') {

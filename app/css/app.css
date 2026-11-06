@@ -347,3 +347,10 @@ table.tabla-empresas td.cell-td { padding: 2px 4px; }
 @media (max-width: 900px) { .listas-grid { grid-template-columns: 1fr; } }
 .cat-item summary input.cell, .lista-valores input.cell, .subs input.cell { flex: 1; min-width: 0; }
 .cat-item summary .muted { white-space: nowrap; }
+/* ---------- centros / selección de gastos ---------- */
+.col-check { width: 34px; text-align: center; }
+.barra-seleccion { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 14px; border-radius: 10px; background: color-mix(in oklab, var(--accent) 10%, var(--surface)); border: 1px solid color-mix(in oklab, var(--accent) 35%, var(--border)); }
+.barra-seleccion[hidden] { display: none; }
+.barra-accion { display: inline-flex; align-items: center; gap: 6px; }
+.banner.warn { background: color-mix(in oklab, #d97706 12%, var(--surface)); border-color: color-mix(in oklab, #d97706 40%, var(--border)); }
+table.tabla-centros { max-width: 760px; }

@@ -70,7 +70,7 @@ export async function getTaxonomia() {
 }
 
 // ---------- gastos ----------
-export const GASTO_COLS = 'id,curso_id,mes,tipo,empresa,factura_nr,fecha_factura,pago,concepto,fecha_pago,cantidad,link_factura,categoria_id,subcategoria_id,categoria_texto,subcategoria_texto,periodicidad,metodo_pago,comentarios,nif,iban,swift,check_banca,fiscontal,sin_factura,updated_at';
+export const GASTO_COLS = 'id,curso_id,mes,tipo,empresa,factura_nr,fecha_factura,pago,concepto,fecha_pago,cantidad,link_factura,categoria_id,subcategoria_id,categoria_texto,subcategoria_texto,periodicidad,metodo_pago,comentarios,nif,iban,swift,check_banca,fiscontal,sin_factura,centro_id,updated_at';
 
 export async function getGastos(cursoId) {
   return selectAll('gastos', GASTO_COLS, (q) => q.eq('curso_id', cursoId).order('fecha_factura', { ascending: false }).order('id', { ascending: true }));
@@ -181,6 +181,25 @@ export async function crearSubcategoria(categoria_id, nombre, orden) {
 }
 export async function actualizarSubcategoria(id, cambios) {
   return check(await supabase.from('subcategorias').update(cambios).eq('id', id).select('*').single());
+}
+
+// ---------- centros ----------
+export async function getCentros() {
+  return check(await supabase.from('centros').select('id,nombre,principal,activo,orden').order('orden', { ascending: true }));
+}
+export async function crearCentro(nombre, orden) {
+  return check(await supabase.from('centros').insert({ nombre, orden }).select('id,nombre,principal,activo,orden').single());
+}
+export async function actualizarCentro(id, cambios) {
+  return check(await supabase.from('centros').update(cambios).eq('id', id).select('id,nombre,principal,activo,orden').single());
+}
+// Mueve varios gastos a otro centro. Devuelve los gastos actualizados.
+export async function moverGastosACentro(ids, centroId) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    out.push(...check(await supabase.from('gastos').update({ centro_id: centroId }).in('id', ids.slice(i, i + 200)).select(GASTO_COLS)));
+  }
+  return out;
 }
 
 // ---------- usuarios ----------
