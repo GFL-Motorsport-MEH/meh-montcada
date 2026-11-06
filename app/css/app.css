@@ -326,3 +326,7 @@ td.center, th.center { text-align: center; }
 .input-link { flex: 1; min-width: 160px; padding: 5px 8px; font-size: 13px; }
 tr.saving { opacity: .5; }
 @media (max-width: 760px) { .filters.filters-3 { grid-template-columns: 1fr; } .acciones-falta { flex-wrap: wrap; min-width: 0; } }
+.filters.filters-2 { grid-template-columns: 2fr 1fr; align-items: center; }
+input.cell.cell-text { text-align: left; font-family: inherit; min-width: 120px; }
+input.cell.cell-iban { min-width: 250px; }
+table.tabla-empresas td.cell-td { padding: 2px 4px; }

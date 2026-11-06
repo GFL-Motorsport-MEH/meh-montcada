@@ -51,6 +51,13 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado }) {
   const fLink = txt('link_factura', g.link_factura, { placeholder: 'Enlace de Drive o nombre del PDF' });
   const fNif = txt('nif', g.nif);
   const fIban = txt('iban', g.iban);
+  // al elegir una empresa de la lista se rellenan su CIF e IBAN (si están vacíos)
+  fEmpresa.addEventListener('change', () => {
+    const e = (state.empresas || []).find((x) => x.nombre_comercial.toLowerCase() === fEmpresa.value.trim().toLowerCase());
+    if (!e) return;
+    if (e.cif && (!fNif.value.trim() || fNif.value.trim() === '0')) fNif.value = e.cif;
+    if (e.iban && (!fIban.value.trim() || fIban.value.trim() === '0')) fIban.value = e.iban;
+  });
   const fSwift = txt('swift', g.swift);
   const fComentarios = h('textarea', { name: 'comentarios' }, g.comentarios || '');
   const cPago = h('input', { type: 'checkbox', checked: esVerdad(g.pago) });
@@ -118,7 +125,7 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado }) {
         campo('Factura (enlace o archivo)', fLink, { full: true }),
         campo('NIF', fNif), campo('IBAN', fIban), campo('SWIFT', fSwift),
         campo('Comentarios', fComentarios, { full: true })),
-      datalist('dl-tipo', sug.tipo), datalist('dl-empresa', sug.empresa),
+      datalist('dl-tipo', sug.tipo), datalist('dl-empresa', [...new Set([...sug.empresa, ...(state.empresas || []).map((e) => e.nombre_comercial)])]),
       datalist('dl-periodicidad', sug.periodicidad), datalist('dl-metodo', sug.metodo_pago)),
     h('div', { class: 'drawer-foot' },
       h('div', {}, btnBorrar),

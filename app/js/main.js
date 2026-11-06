@@ -9,6 +9,7 @@ import { renderUsuarios } from './views/usuarios.js';
 import { renderBalance } from './views/balance.js';
 import { renderFacturacion } from './views/facturacion.js';
 import { renderControl } from './views/control.js';
+import { renderConfig } from './views/config.js';
 
 const root = document.getElementById('app');
 const LS_CURSO = 'meh.curso';
@@ -30,11 +31,16 @@ const ctx = {
     if (!state.ingresos.has(cursoId)) state.ingresos.set(cursoId, await db.getIngresos(cursoId));
     return state.ingresos.get(cursoId);
   },
+  async empresas() {
+    if (!state.empresas) state.empresas = await db.getEmpresas();
+    return state.empresas;
+  },
   setGastos(cursoId, lista) { state.gastos.set(cursoId, lista); },
   invalidar(cursoId) { state.gastos.delete(cursoId); },
   cargarSugerencias() {
     if (state.sugerencias || state._cargandoSug) return;
     state._cargandoSug = true;
+    ctx.empresas().catch(() => {});
     db.getSugerenciasGastos().then((filas) => {
       const top = (campo, n = 400) => {
         const cnt = new Map();
@@ -54,6 +60,7 @@ const RUTAS = {
   balance: { titulo: 'Balance', render: renderBalance },
   facturacion: { titulo: 'Facturación', render: renderFacturacion },
   control: { titulo: 'Control', render: renderControl },
+  config: { titulo: 'Configuración', render: renderConfig },
   usuarios: { titulo: 'Usuarios', render: renderUsuarios, admin: true },
 };
 function rutaActual() {
@@ -85,7 +92,7 @@ function pintarShell() {
 function pintarTabs(actual) {
   const tab = (id, label) => h('a', { class: 'tab', href: `#/${id}`, 'aria-current': id === actual ? 'page' : false }, label);
   const proximamente = (label) => h('span', { class: 'tab disabled', title: 'Próximamente' }, label, h('span', { class: 'soon' }, 'pronto'));
-  clear(tabsEl, tab('panel', 'Panel'), tab('gastos', 'Gastos'), tab('ingresos', 'Ingresos'), tab('balance', 'Balance'), tab('facturacion', 'Facturación'), tab('control', 'Control'),
+  clear(tabsEl, tab('panel', 'Panel'), tab('gastos', 'Gastos'), tab('ingresos', 'Ingresos'), tab('balance', 'Balance'), tab('facturacion', 'Facturación'), tab('control', 'Control'), tab('config', 'Configuración'),
     ctx.esAdmin() ? tab('usuarios', 'Usuarios') : null);
 }
 
@@ -151,7 +158,7 @@ async function salir() {
 }
 
 function reiniciarEstado() {
-  Object.assign(state, { session: null, perfil: null, cursos: [], cursosVisibles: [], taxonomia: [], cursoId: null, sugerencias: null, arrancado: false });
+  Object.assign(state, { session: null, perfil: null, cursos: [], cursosVisibles: [], taxonomia: [], cursoId: null, sugerencias: null, empresas: null, arrancado: false });
   state.gastos.clear(); state.ingresos.clear();
 }
 

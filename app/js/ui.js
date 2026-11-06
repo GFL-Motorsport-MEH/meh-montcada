@@ -83,7 +83,8 @@ export function confirmar({ titulo, texto, ok = 'Aceptar', peligro = false }) {
           h('button', { class: 'btn', onclick: () => cerrar(false) }, 'Cancelar'), btnOk)));
     document.addEventListener('keydown', onKey);
     document.body.append(overlay);
-    btnOk.focus();
+    // se enfoca un poco después para que la misma pulsación de Enter que abrió el diálogo no lo confirme
+    setTimeout(() => btnOk.focus(), 60);
   });
 }
 

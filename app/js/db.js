@@ -142,6 +142,23 @@ export async function insertarFacturacion(lineas) {
   return out;
 }
 
+// ---------- empresas / proveedores ----------
+const EMP_COLS = 'id,nombre_comercial,razon_social,cif,iban,fecha_registro';
+export async function getEmpresas() {
+  return selectAll('empresas', EMP_COLS, (q) => q.order('nombre_comercial', { ascending: true }));
+}
+export async function crearEmpresa(datos) {
+  return check(await supabase.from('empresas').insert(datos).select(EMP_COLS).single());
+}
+export async function actualizarEmpresa(id, cambios) {
+  return check(await supabase.from('empresas').update(cambios).eq('id', id).select(EMP_COLS).single());
+}
+// Cambia el nombre de empresa en todos los gastos (todos los cursos). Devuelve cuántos se han cambiado.
+export async function renombrarEmpresaEnGastos(anterior, nuevo) {
+  const filas = check(await supabase.from('gastos').update({ empresa: nuevo }).eq('empresa', anterior).select('id'));
+  return filas.length;
+}
+
 // ---------- usuarios ----------
 export async function getPerfiles() {
   return check(await supabase.from('profiles').select('*').order('created_at', { ascending: true }));

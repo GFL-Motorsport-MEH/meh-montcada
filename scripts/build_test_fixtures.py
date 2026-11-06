@@ -76,12 +76,29 @@ if fpath.exists():
             r["clave_linea"] = "|".join([r["id_crm"] or "", r["num_recibo"] or "", r["num_factura"] or "", r["descripcion"] or "", imp])
             facturacion.append(r)
 
+# empresas: las usadas en los gastos, con el NIF/IBAN mas repetido (como la carga de la migracion 0005)
+from collections import Counter
+emp = {}
+for g in gastos:
+    n = (g.get("empresa") or "").strip()
+    if not n:
+        continue
+    e = emp.setdefault(n.lower(), {"nombre": n, "nif": Counter(), "iban": Counter()})
+    for c in ("nif", "iban"):
+        v = (g.get(c) or "").strip()
+        if v and v != "0":
+            e[c][v] += 1
+empresas = [{"id": f"emp-{i}", "nombre_comercial": e["nombre"], "razon_social": None,
+             "cif": e["nif"].most_common(1)[0][0] if e["nif"] else None,
+             "iban": e["iban"].most_common(1)[0][0] if e["iban"] else None, "fecha_registro": None}
+            for i, e in enumerate(emp.values())]
+
 profiles = [
     {"id": "00000000-0000-0000-0000-00000000aaaa", "nombre": "Admin", "email": "admin@example.com", "rol": "admin", "activo": True, "created_at": "2026-11-05T10:00:00Z"},
     {"id": "00000000-0000-0000-0000-00000000bbbb", "nombre": "Empleado", "email": "empleado@example.com", "rol": "empleado", "activo": False, "created_at": "2026-11-05T11:00:00Z"},
 ]
 json.dump({"cursos": cursos, "categorias": categorias, "subcategorias": subcategorias, "gastos": gastos, "ingresos": ingresos, "profiles": profiles,
-           "ingresos_metodo": ingresos_metodo, "alumnos_mes": alumnos_mes, "facturacion": facturacion},
+           "ingresos_metodo": ingresos_metodo, "alumnos_mes": alumnos_mes, "facturacion": facturacion, "empresas": empresas},
           open(TEST / "fixtures.json", "w", encoding="utf-8"), ensure_ascii=False)
 print(f"gastos {len(gastos)} (excepciones de mes aplicadas: {encontradas}/{len(EXC)}), ingresos {len(ingresos)}, "
       f"cobros por modalidad {len(ingresos_metodo)}, alumnos/mes {len(alumnos_mes)}")
