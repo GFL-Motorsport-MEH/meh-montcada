@@ -8,6 +8,7 @@ import { renderIngresos } from './views/ingresos.js';
 import { renderUsuarios } from './views/usuarios.js';
 import { renderBalance } from './views/balance.js';
 import { renderFacturacion } from './views/facturacion.js';
+import { renderControl } from './views/control.js';
 
 const root = document.getElementById('app');
 const LS_CURSO = 'meh.curso';
@@ -52,6 +53,7 @@ const RUTAS = {
   ingresos: { titulo: 'Ingresos', render: renderIngresos },
   balance: { titulo: 'Balance', render: renderBalance },
   facturacion: { titulo: 'Facturación', render: renderFacturacion },
+  control: { titulo: 'Control', render: renderControl },
   usuarios: { titulo: 'Usuarios', render: renderUsuarios, admin: true },
 };
 function rutaActual() {
@@ -83,7 +85,7 @@ function pintarShell() {
 function pintarTabs(actual) {
   const tab = (id, label) => h('a', { class: 'tab', href: `#/${id}`, 'aria-current': id === actual ? 'page' : false }, label);
   const proximamente = (label) => h('span', { class: 'tab disabled', title: 'Próximamente' }, label, h('span', { class: 'soon' }, 'pronto'));
-  clear(tabsEl, tab('panel', 'Panel'), tab('gastos', 'Gastos'), tab('ingresos', 'Ingresos'), tab('balance', 'Balance'), tab('facturacion', 'Facturación'),
+  clear(tabsEl, tab('panel', 'Panel'), tab('gastos', 'Gastos'), tab('ingresos', 'Ingresos'), tab('balance', 'Balance'), tab('facturacion', 'Facturación'), tab('control', 'Control'),
     ctx.esAdmin() ? tab('usuarios', 'Usuarios') : null);
 }
 

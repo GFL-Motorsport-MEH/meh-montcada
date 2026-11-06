@@ -257,6 +257,23 @@ try:
         check(True, "reimportar el mismo archivo no duplica")
         page.screenshot(path=str(SHOTS / "facturacion.png"))
 
+        print("7f. control: facturas pendientes")
+        page.get_by_role("link", name="Control").click()
+        cnt = page.locator(".section-head .count").first
+        expect(cnt).to_contain_text("gastos sin factura")
+        n0 = int(cnt.inner_text().split()[0])
+        check(n0 == E["falta_n"], f"facturas pendientes de todos los cursos ({n0})")
+        fila1 = page.locator("table.tabla-falta tbody tr").first
+        fila1.get_by_role("button", name="Sin factura").click()
+        expect(cnt).to_contain_text(f"{n0 - 1} gastos sin factura")
+        check(page.evaluate("window.__mock.db.gastos.filter(g => g.sin_factura === true).length") >= 1, "marcar sin factura se guarda")
+        fila1 = page.locator("table.tabla-falta tbody tr").first
+        fila1.locator("input.input-link").fill("factura_prueba.pdf")
+        fila1.get_by_role("button", name="Guardar").click()
+        expect(cnt).to_contain_text(f"{n0 - 2} gastos sin factura")
+        check(page.evaluate("window.__mock.db.gastos.some(g => g.link_factura === 'factura_prueba.pdf')"), "enlace a factura se guarda")
+        page.screenshot(path=str(SHOTS / "control-faltafact.png"))
+
         print("8. usuarios (admin)")
         page.get_by_role("link", name="Usuarios").click()
         expect(page.get_by_text("1 pendientes de activar")).to_be_visible()
