@@ -292,6 +292,26 @@ export async function guardarParametro(clave, valor) {
   return check(await supabase.from('parametros').update({ valor }).eq('clave', clave).select('clave,valor,etiqueta,orden').single());
 }
 
+// ---------- PDFs de facturas (Storage, bucket privado "facturas") ----------
+// Sube el archivo y devuelve el valor para link_factura: "storage:<ruta>"
+export async function subirFactura(file, carpeta = 'general') {
+  const nombre = file.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w.\-]+/g, '_').slice(-90);
+  const ruta = `${carpeta.replace(/[^\w.\-]+/g, '_')}/${Date.now()}-${nombre}`;
+  const { error } = await supabase.storage.from('facturas').upload(ruta, file, { contentType: file.type || 'application/pdf', upsert: false });
+  if (error) throw new Error(traducirError(error));
+  return `storage:${ruta}`;
+}
+// Devuelve una URL para abrir la factura: enlace firmado (10 min) si está en Storage, o el enlace http tal cual.
+export async function urlFactura(link) {
+  if (!link) return null;
+  if (link.startsWith('storage:')) {
+    const { data, error } = await supabase.storage.from('facturas').createSignedUrl(link.slice(8), 600);
+    if (error) throw new Error(traducirError(error));
+    return data.signedUrl;
+  }
+  return /^https?:\/\//i.test(link) ? link : null;
+}
+
 // ---------- usuarios ----------
 export async function getPerfiles() {
   return check(await supabase.from('profiles').select('*').order('created_at', { ascending: true }));

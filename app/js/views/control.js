@@ -1,6 +1,7 @@
 // Pestaña Control: facturas pendientes (hoja FaltaFACT), conciliación bancaria y FactCheck.
 import { h, clear, fmtEUR2, fmtFecha, num, normalizar, cargando, descargarCSV, toast } from '../ui.js';
 import * as db from '../db.js';
+import { botonSubirFactura } from '../factura-archivo.js';
 
 const SECCIONES = [['faltafact', 'Facturas pendientes'], ['conciliacion', 'Conciliación bancaria'], ['factcheck', 'FactCheck'], ['notas', 'Notas']];
 const LS = 'meh.control';
@@ -59,6 +60,7 @@ async function renderFaltaFact(cont, ctx) {
       h('td', { class: 'num' }, fmtEUR2(num(g.cantidad))),
       h('td', { class: 'acciones-falta' }, link,
         h('button', { class: 'btn small', onclick: () => { const v = link.value.trim(); if (v) guardar(x, { link_factura: v }, tr); else link.focus(); } }, 'Guardar'),
+        botonSubirFactura({ carpeta: () => curso.nombre, onSubido: (l) => guardar(x, { link_factura: l }, tr) }),
         h('button', { class: 'btn small', onclick: () => guardar(x, { sin_factura: true }, tr) }, 'Sin factura')));
     link.addEventListener('keydown', (e) => { if (e.key === 'Enter' && link.value.trim()) guardar(x, { link_factura: link.value.trim() }, tr); });
     return tr;

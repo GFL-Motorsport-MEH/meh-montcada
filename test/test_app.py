@@ -276,6 +276,13 @@ try:
         fila1.get_by_role("button", name="Guardar").click()
         expect(cnt).to_contain_text(f"{n0 - 2} gastos sin factura")
         check(page.evaluate("window.__mock.db.gastos.some(g => g.link_factura === 'factura_prueba.pdf')"), "enlace a factura se guarda")
+        pdf = SHOTS.parent / "factura prueba ñ.pdf"
+        pdf.write_bytes(b"%PDF-1.4 prueba")
+        page.locator("table.tabla-falta tbody tr").first.locator("input[type=file]").set_input_files(str(pdf))
+        expect(cnt).to_contain_text(f"{n0 - 3} gastos sin factura")
+        sub = page.evaluate("window.__mock.subidas[0]")
+        check(sub and sub["bucket"] == "facturas" and sub["path"].endswith("factura_prueba_n.pdf"), f"subir PDF a Storage ({sub and sub['path']})")
+        check(page.evaluate("window.__mock.db.gastos.some(g => (g.link_factura || '').startsWith('storage:'))"), "el gasto guarda el PDF subido")
         page.screenshot(path=str(SHOTS / "control-faltafact.png"))
 
         print("7g. configuración: empresas")

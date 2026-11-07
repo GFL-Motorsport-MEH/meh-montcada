@@ -413,3 +413,7 @@ textarea.input-nota { resize: vertical; }
 table.tabla-tarifas td.neg { color: var(--critical); }
 @media (max-width: 640px) { .nota-cab { grid-template-columns: 1fr; } }
 table.tabla-tarifas th[scope=row], table.tabla-costes th[scope=row] { text-align: left; font-weight: 500; }
+.link-factura { display: flex; gap: 6px; align-items: center; }
+.link-factura input { flex: 1; min-width: 0; }
+.pill-btn { border: none; cursor: pointer; font: inherit; }
+.acciones-falta { min-width: 460px; }

@@ -2,6 +2,7 @@
 import { h, toast, confirmar, MESES, capitalizar, mesDeFecha, hoyISO, tituloCategoria, fmtEUR2 } from '../ui.js';
 import { crearGasto, crearGastos, actualizarGasto, borrarGasto } from '../db.js';
 import { dividirEnMeses, dividirEnCentros } from '../gastos-ops.js';
+import { botonSubirFactura, abrirFactura, esArchivoSubido } from '../factura-archivo.js';
 
 const esVerdad = (v) => /^(true|1|x|verdadero)$/i.test(String(v ?? '').trim());
 
@@ -129,7 +130,10 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado, onDividido, 
           h('label', { class: 'check' }, cBanca, 'Comprobado en el banco'),
           h('label', { class: 'check' }, cSinFactura, 'Sin factura'),
           h('label', { class: 'check' }, cFiscontal, 'Enviado a FISCONTAL')),
-        campo('Factura (enlace o archivo)', fLink, { full: true }),
+        campo('Factura (enlace o archivo)', h('div', { class: 'link-factura' }, fLink,
+          botonSubirFactura({ carpeta: () => state.cursos.find((c) => c.id === fCurso.value)?.nombre || 'general',
+            onSubido: (link, file) => { fLink.value = link; sucio = true; cSinFactura.checked = false; toast(`"${file.name}" subido. Guarda el gasto para conservarlo.`); } }),
+          h('button', { type: 'button', class: 'btn small', onclick: () => { const v = fLink.value.trim(); if (v) abrirFactura(v); } }, 'Abrir')), { full: true }),
         campo('NIF', fNif), campo('IBAN', fIban), campo('SWIFT', fSwift),
         campo('Comentarios', fComentarios, { full: true })),
       datalist('dl-tipo', deLista('tipo', sug.tipo)), datalist('dl-empresa', [...new Set([...sug.empresa, ...(state.empresas || []).map((e) => e.nombre_comercial)])]),

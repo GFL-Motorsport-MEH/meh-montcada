@@ -2,6 +2,7 @@ import { h, clear, fmtEUR2, fmtFecha, num, MESES, capitalizar, tituloCategoria, 
 import { abrirGastoForm } from './gasto-form.js';
 import { moverGastosACentro } from '../db.js';
 import { generarGastosDelMes } from './plantillas.js';
+import { abrirFactura, esArchivoSubido } from '../factura-archivo.js';
 import { toast } from '../ui.js';
 
 const POR_PAGINA = 100;
@@ -108,7 +109,8 @@ export async function renderGastos(view, ctx) {
     if (g.sin_factura) control.push(' ', h('span', { class: 'pill off' }, 'sin factura'));
     else if (g.link_factura) {
       const url = /^https?:\/\//i.test(g.link_factura) ? g.link_factura : null;
-      control.push(' ', url
+      if (esArchivoSubido(g.link_factura)) control.push(' ', h('button', { type: 'button', class: 'pill ok pill-btn', title: 'Abrir el PDF subido', onclick: (e) => { e.stopPropagation(); abrirFactura(g.link_factura); } }, 'PDF ↗'));
+      else control.push(' ', url
         ? h('a', { class: 'pill ok', href: url, target: '_blank', rel: 'noopener noreferrer', onclick: (e) => e.stopPropagation(), title: 'Abrir factura' }, 'factura ↗')
         : h('span', { class: 'pill ok', title: g.link_factura }, 'factura'));
     } else control.push(' ', h('span', { class: 'pill warn', title: 'Sin enlace a la factura' }, 'sin enlace'));

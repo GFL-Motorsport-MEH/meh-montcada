@@ -84,6 +84,12 @@ class Q {
 export function createClient() {
   return {
     from: (t) => new Q(t),
+    storage: {
+      from: (bucket) => ({
+        async upload(path, file) { (window.__mock.subidas ||= []).push({ bucket, path, name: file.name, size: file.size }); return { data: { path }, error: null }; },
+        async createSignedUrl(path) { return { data: { signedUrl: `about:blank#${bucket}/${path}` }, error: null }; },
+      }),
+    },
     async rpc(fn, args) {
       window.__mock.calls.push({ rpc: fn, args });
       const yo = session && db.profiles.find((p) => p.id === session.user.id);
