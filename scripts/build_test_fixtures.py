@@ -111,7 +111,15 @@ profiles = [
     {"id": "00000000-0000-0000-0000-00000000bbbb", "nombre": "Empleado", "email": "empleado@example.com", "rol": "empleado", "activo": False, "created_at": "2026-11-05T11:00:00Z"},
 ]
 json.dump({"cursos": cursos, "categorias": categorias, "subcategorias": subcategorias, "gastos": gastos, "ingresos": ingresos, "profiles": profiles,
-           "ingresos_metodo": ingresos_metodo, "alumnos_mes": alumnos_mes, "facturacion": facturacion, "empresas": empresas, "listas": listas, "centros": centros, "plantillas_gasto": [], "cuentas_bancarias": [], "movimientos_banco": [], "factcheck_manual": []},
+           "ingresos_metodo": ingresos_metodo, "alumnos_mes": alumnos_mes, "facturacion": facturacion, "empresas": empresas, "listas": listas, "centros": centros, "plantillas_gasto": [], "cuentas_bancarias": [], "movimientos_banco": [], "factcheck_manual": [],
+           "notas": [{"id": "nota-1", "fecha": "2026-05-06", "ultimo_cargo": "Transferencia 135€ a La Unio", "comentario": "Todo OK hasta hoy", "hecho": True, "created_at": "2026-05-06T10:00:00Z"},
+                     {"id": "nota-2", "fecha": "2026-04-01", "ultimo_cargo": "Todo OK hasta hoy.", "comentario": None, "hecho": True, "created_at": "2026-04-01T10:00:00Z"}],
+           "tarifas": [{"id": f"tar-{i}", "nombre": n, "cuota": c, "horas_mes": hm, "max_grupo": mg, "orden": i} for i, (n, c, hm, mg) in enumerate(
+               [("Babies", 55, 3, 6), ("Kids 1 dia", 55, 4, 10), ("Kids 2 dias", 75, 8, 10), ("Teenagers", 85, 8, 6), ("Adults", 95, 12, 6), ("1to1", 21, 1, 1)])],
+           "parametros": [{"clave": k, "valor": v, "etiqueta": e, "orden": i} for i, (k, v, e) in enumerate(
+               [("coste_hora_profesor", 25, "Coste por hora de profesor"), ("horas_semanales", 45, "Horas de clase a la semana"),
+                ("gastos_mes_material", 350, "Gastos mensuales de clases (material)"), ("gastos_mes_local", 3000, "Gastos mensuales del local"),
+                ("gastos_mes_gestion", 1200, "Gastos mensuales gestoría / MEH / banco")])]},
           open(TEST / "fixtures.json", "w", encoding="utf-8"), ensure_ascii=False)
 print(f"gastos {len(gastos)} (excepciones de mes aplicadas: {encontradas}/{len(EXC)}), ingresos {len(ingresos)}, "
       f"cobros por modalidad {len(ingresos_metodo)}, alumnos/mes {len(alumnos_mes)}")

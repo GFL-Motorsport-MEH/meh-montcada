@@ -505,6 +505,27 @@ try:
         expect(fc.locator("tbody tr").first).to_contain_text("3T 2025")
         page.screenshot(path=str(SHOTS / "factcheck.png"))
 
+        print("7m. notas y datos de interés")
+        page.get_by_role("link", name="Control").click()
+        page.get_by_role("tab", name="Notas").click()
+        expect(page.locator(".card.nota")).to_have_count(2)
+        page.get_by_role("button", name="+ Nueva nota").click()
+        expect(page.locator(".card.nota")).to_have_count(3)
+        n1 = page.locator(".card.nota").first
+        n1.locator("input[type=text]").fill("Amazon 12,50€")
+        n1.locator("textarea").fill("Falta factura Mercadona")
+        n1.locator("textarea").blur()
+        page.wait_for_timeout(200)
+        check(page.evaluate("window.__mock.db.notas.some(n => n.ultimo_cargo === 'Amazon 12,50€' && n.comentario === 'Falta factura Mercadona' && !n.hecho)"), "nueva nota de revisión se guarda")
+        page.get_by_role("link", name="Balance").click()
+        page.get_by_role("tab", name="Datos de interés").click()
+        tar = page.locator("table.tabla-tarifas")
+        kids = [t.replace("\u00a0", " ") for t in tar.locator("tr", has_text="Kids 1 dia").locator("td").all_inner_texts()]
+        check(kids[2] == "13,75 €" and kids[4] == "137,50 €", f"ingreso por hora como el Excel ({kids})")
+        tot = page.locator("table.tabla-costes tr.total td").first.inner_text().replace("\u00a0", " ")
+        check(tot == "50,28 €", f"coste por hora como el Excel ({tot})")
+        page.screenshot(path=str(SHOTS / "datos-interes.png"), full_page=True)
+
         print("8. usuarios (admin)")
         page.get_by_role("link", name="Usuarios").click()
         expect(page.get_by_text("1 pendientes de activar")).to_be_visible()

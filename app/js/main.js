@@ -15,6 +15,7 @@ import './views/config-centros.js';
 import './views/plantillas.js';
 import './views/conciliacion.js';
 import './views/factcheck.js';
+import './views/notas-datos.js';
 
 const root = document.getElementById('app');
 const LS_CURSO = 'meh.curso';

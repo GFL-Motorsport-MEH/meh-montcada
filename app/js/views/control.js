@@ -2,7 +2,7 @@
 import { h, clear, fmtEUR2, fmtFecha, num, normalizar, cargando, descargarCSV, toast } from '../ui.js';
 import * as db from '../db.js';
 
-const SECCIONES = [['faltafact', 'Facturas pendientes'], ['conciliacion', 'Conciliación bancaria'], ['factcheck', 'FactCheck']];
+const SECCIONES = [['faltafact', 'Facturas pendientes'], ['conciliacion', 'Conciliación bancaria'], ['factcheck', 'FactCheck'], ['notas', 'Notas']];
 const LS = 'meh.control';
 const leerPref = () => { try { return localStorage.getItem(LS) || 'faltafact'; } catch { return 'faltafact'; } };
 const guardarPref = (v) => { try { localStorage.setItem(LS, v); } catch { /* sin almacenamiento */ } };

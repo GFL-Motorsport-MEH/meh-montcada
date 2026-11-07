@@ -263,6 +263,35 @@ export async function guardarFactcheckManual(periodo, campo, valor, texto = null
   return check(await supabase.from('factcheck_manual').upsert({ periodo, campo, valor, texto }, { onConflict: 'periodo,campo' }).select('id,periodo,campo,valor,texto').single());
 }
 
+// ---------- notas (cuaderno de revisiones) ----------
+const NOTA_COLS = 'id,fecha,ultimo_cargo,comentario,hecho,created_at';
+export async function getNotas() {
+  return check(await supabase.from('notas').select(NOTA_COLS).order('fecha', { ascending: false }).order('created_at', { ascending: false }));
+}
+export async function crearNota(datos) {
+  return check(await supabase.from('notas').insert(datos).select(NOTA_COLS).single());
+}
+export async function actualizarNota(id, cambios) {
+  return check(await supabase.from('notas').update(cambios).eq('id', id).select(NOTA_COLS).single());
+}
+
+// ---------- datos de interés (tarifas y parámetros de costes) ----------
+export async function getTarifas() {
+  return check(await supabase.from('tarifas').select('id,nombre,cuota,horas_mes,max_grupo,orden').order('orden', { ascending: true }));
+}
+export async function crearTarifa(datos) {
+  return check(await supabase.from('tarifas').insert(datos).select('id,nombre,cuota,horas_mes,max_grupo,orden').single());
+}
+export async function actualizarTarifa(id, cambios) {
+  return check(await supabase.from('tarifas').update(cambios).eq('id', id).select('id,nombre,cuota,horas_mes,max_grupo,orden').single());
+}
+export async function getParametros() {
+  return check(await supabase.from('parametros').select('clave,valor,etiqueta,orden').order('orden', { ascending: true }));
+}
+export async function guardarParametro(clave, valor) {
+  return check(await supabase.from('parametros').update({ valor }).eq('clave', clave).select('clave,valor,etiqueta,orden').single());
+}
+
 // ---------- usuarios ----------
 export async function getPerfiles() {
   return check(await supabase.from('profiles').select('*').order('created_at', { ascending: true }));

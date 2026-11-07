@@ -1,9 +1,10 @@
 // Pestaña Balance: balance del curso, por subcategorías, comparar cursos e informes.
 import { h, clear, fmtEUR, fmtEUR2, fmtPct, num, MESES, MESES_CORTO, capitalizar, tituloCategoria, cargando, descargarCSV } from '../ui.js';
 import { calcularBalance, calcularSubcategorias, calcularInforme, calcularAnual, DIMENSIONES, GRUPOS_ING } from '../balance.js';
+import { vistaDatosInteres } from './notas-datos.js';
 import { barrasAgrupadas, barrasClasificadas, barrasConSigno, esEstrecho } from '../charts.js';
 
-const MODOS = [['curso', 'Balance del curso'], ['graficos', 'Gráficos'], ['subcat', 'Por subcategorías'], ['anual', 'Comparar cursos'], ['informe', 'Informes']];
+const MODOS = [['curso', 'Balance del curso'], ['graficos', 'Gráficos'], ['subcat', 'Por subcategorías'], ['anual', 'Comparar cursos'], ['informe', 'Informes'], ['datos', 'Datos de interés']];
 const LS = 'meh.balance';
 const pref = (k, def) => { try { return JSON.parse(localStorage.getItem(LS) || '{}')[k] ?? def; } catch { return def; } };
 const guardarPref = (k, v) => { try { const o = JSON.parse(localStorage.getItem(LS) || '{}'); o[k] = v; localStorage.setItem(LS, JSON.stringify(o)); } catch { /* sin almacenamiento */ } };
@@ -197,6 +198,8 @@ export async function renderBalance(view, ctx) {
       actual = vistaCurso(curso, gastos, ingresos, ctx.state.taxonomia, isPct);
     } else if (modo === 'graficos') {
       actual = await vistaGraficos(ctx, curso, gastos, ingresos, isPct);
+    } else if (modo === 'datos') {
+      actual = await vistaDatosInteres(ctx, curso, gastos, ingresos);
     } else if (modo === 'subcat') {
       actual = vistaSubcat(curso, gastos, ctx.state.taxonomia);
     } else if (modo === 'anual') {
