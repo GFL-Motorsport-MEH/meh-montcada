@@ -200,8 +200,8 @@ export async function actualizarCentro(id, cambios) {
 // Mueve varios gastos a otro centro. Devuelve los gastos actualizados.
 export async function moverGastosACentro(ids, centroId) {
   const out = [];
-  for (let i = 0; i < ids.length; i += 200) {
-    out.push(...check(await supabase.from('gastos').update({ centro_id: centroId }).in('id', ids.slice(i, i + 200)).select(GASTO_COLS)));
+  for (let i = 0; i < ids.length; i += 100) {
+    out.push(...check(await supabase.from('gastos').update({ centro_id: centroId }).in('id', ids.slice(i, i + 100)).select(GASTO_COLS)));
   }
   return out;
 }
@@ -246,12 +246,12 @@ export async function insertarMovimientos(movs) {
 }
 export async function actualizarMovimientos(ids, cambios) {
   const out = [];
-  for (let i = 0; i < ids.length; i += 200) out.push(...check(await supabase.from('movimientos_banco').update(cambios).in('id', ids.slice(i, i + 200)).select(MOV_COLS)));
+  for (let i = 0; i < ids.length; i += 100) out.push(...check(await supabase.from('movimientos_banco').update(cambios).in('id', ids.slice(i, i + 100)).select(MOV_COLS)));
   return out;
 }
 export async function marcarGastosBanca(ids, valor = true) {
   const out = [];
-  for (let i = 0; i < ids.length; i += 200) out.push(...check(await supabase.from('gastos').update({ check_banca: valor }).in('id', ids.slice(i, i + 200)).select(GASTO_COLS)));
+  for (let i = 0; i < ids.length; i += 100) out.push(...check(await supabase.from('gastos').update({ check_banca: valor }).in('id', ids.slice(i, i + 100)).select(GASTO_COLS)));
   return out;
 }
 
