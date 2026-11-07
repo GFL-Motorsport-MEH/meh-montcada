@@ -485,6 +485,22 @@ try:
         expect(page.locator("table.tabla-movs tbody tr")).to_have_count(1)
         page.screenshot(path=str(SHOTS / "conciliacion.png"), full_page=True)
 
+        print("7l. factcheck")
+        page.get_by_role("tab", name="FactCheck").click()
+        fc = page.locator("table.tabla-factcheck")
+        expect(fc).to_be_visible()
+        oct_ = [t.replace("\u00a0", " ") for t in fc.locator("tbody tr", has_text="Octubre").locator("td").all_inner_texts()]
+        check(oct_[0] == "32.529,20 €" and oct_[1] == "33.305,83 €", f"FactCheck octubre: alumnos y facturación automáticos ({oct_[:2]})")
+        bt = page.get_by_label("banco_total 2025-10")
+        bt.fill("33.305,83"); bt.press("Enter")
+        page.wait_for_timeout(200)
+        fila = fc.locator("tbody tr", has_text="Octubre").locator("td")
+        check(fila.nth(4).inner_text() == "✓", "banco manual = facturación -> sin diferencia")
+        check(page.evaluate("window.__mock.db.factcheck_manual.some(x => x.periodo === '2025-10' && x.campo === 'banco_total' && x.valor === 33305.83)"), "valor manual se guarda")
+        page.get_by_role("tab", name="Por trimestre").click()
+        expect(fc.locator("tbody tr").first).to_contain_text("3T 2025")
+        page.screenshot(path=str(SHOTS / "factcheck.png"))
+
         print("8. usuarios (admin)")
         page.get_by_role("link", name="Usuarios").click()
         expect(page.get_by_text("1 pendientes de activar")).to_be_visible()

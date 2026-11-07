@@ -4,12 +4,11 @@ import * as db from '../db.js';
 import { filasCRMaRegistros, separarNuevas, huecosRecibos, resumenTrimestral, METODOS_FACT, esVerdadero } from '../facturacion.js';
 
 const POR_PAGINA = 100;
-let cache = null; // la facturación no depende del curso: se carga una vez
 
 export async function renderFacturacion(view, ctx) {
   clear(view, cargando());
-  if (!cache) cache = await db.getFacturacion();
-  let lineas = cache;
+  if (!ctx.state.facturacion) ctx.state.facturacion = await db.getFacturacion(); // no depende del curso: se carga una vez
+  let lineas = ctx.state.facturacion;
   const curso = ctx.cursoActual();
   const f = { q: '', desde: curso.fecha_inicio || '', hasta: curso.fecha_fin || '', metodo: '', tipo: '', comp: '' };
   let limite = POR_PAGINA;
@@ -137,7 +136,7 @@ export async function renderFacturacion(view, ctx) {
     if (!ok) return;
     try {
       const insertadas = await db.insertarFacturacion(nuevas);
-      cache = lineas = [...insertadas, ...lineas];
+      ctx.state.facturacion = lineas = [...insertadas, ...lineas];
       huecos = huecosRecibos(lineas); recibosTrasHueco = new Set(huecos.huecos.map((x) => x.prefijo + x.antes));
       pintarHuecos(); pintar();
       toast(`Importadas ${insertadas.length} líneas nuevas. Saltos en la numeración: ${huecos.huecos.length}.`);

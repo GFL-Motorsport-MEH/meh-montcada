@@ -255,6 +255,14 @@ export async function marcarGastosBanca(ids, valor = true) {
   return out;
 }
 
+// ---------- FactCheck (valores manuales) ----------
+export async function getFactcheckManual() {
+  return check(await supabase.from('factcheck_manual').select('id,periodo,campo,valor,texto'));
+}
+export async function guardarFactcheckManual(periodo, campo, valor, texto = null) {
+  return check(await supabase.from('factcheck_manual').upsert({ periodo, campo, valor, texto }, { onConflict: 'periodo,campo' }).select('id,periodo,campo,valor,texto').single());
+}
+
 // ---------- usuarios ----------
 export async function getPerfiles() {
   return check(await supabase.from('profiles').select('*').order('created_at', { ascending: true }));

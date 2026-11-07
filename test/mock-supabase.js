@@ -48,12 +48,15 @@ class Q {
       const existentes = new Set(db[this.t].map(clave));
       const nuevos = [];
       for (const p of [].concat(this.payload)) {
-        if (existentes.has(clave(p))) continue;
+        if (existentes.has(clave(p))) {
+          if (!this.upOpts.ignoreDuplicates) { const r = db[this.t].find((x) => clave(x) === clave(p)); Object.assign(r, p); nuevos.push(r); }
+          continue;
+        }
         const row = { id: 'nuevo-' + (nextId++), ...p };
         if (this.t === 'facturacion') row.clave_linea = window.__claveFact(row);
         existentes.add(clave(row)); db[this.t].push(row); nuevos.push(row);
       }
-      return { data: nuevos, error: null };
+      return { data: this.single_ ? nuevos[0] || null : nuevos, error: null };
     }
     if (this.op === 'update') {
       const t = rows.filter(match);

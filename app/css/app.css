@@ -385,3 +385,10 @@ tr.mov-ignorado > td { opacity: .55; }
 .candidatos { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow: auto; }
 .candidatos .cand { align-items: flex-start; }
 @media (max-width: 760px) { .filters.filters-conc { grid-template-columns: 1fr 1fr; } }
+/* ---------- factcheck ---------- */
+table.tabla-factcheck { min-width: 1500px; }
+table.tabla-factcheck th.grupo { text-align: center; font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-secondary); }
+table.tabla-factcheck .grupo-ini { border-left: 1px solid var(--border-strong); }
+table.tabla-factcheck td.dif.okdif { color: var(--positive, #15803d); text-align: center; }
+table.tabla-factcheck td.manual input.cell { background: color-mix(in oklab, #d97706 7%, var(--surface)); }
+table.tabla-factcheck td.manual input.cell::placeholder { color: var(--text-muted); }
