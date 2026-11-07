@@ -114,3 +114,47 @@ export function barrasClasificadas(datos, { ariaLabel, ancho = 420 } = {}) {
   });
   return svg;
 }
+
+/**
+ * Barras con signo (positivo / negativo) y, opcionalmente, una línea con el acumulado.
+ * valores: number[]; acumulado: true para dibujar la línea de la suma acumulada.
+ */
+export function barrasConSigno(etiquetas, valores, { etiquetasLargas = etiquetas, ariaLabel, ancho = 640, nombre = 'Resultado', acumulado = false } = {}) {
+  const W = ancho, H = ancho < 500 ? 240 : 290, padL = 50, padR = 8, padT = 12, padB = 26;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const acum = [];
+  valores.reduce((s0, v, i) => { acum[i] = s0 + (v || 0); return acum[i]; }, 0);
+  const serie = acumulado ? [...valores, ...acum] : valores;
+  const max = Math.max(0, ...serie), min = Math.min(0, ...serie);
+  const step = niceStep(Math.max(max, -min, 1) * (max > 0 && min < 0 ? 1.6 : 1));
+  const top = Math.max(max > 0 ? step : 0, Math.ceil(max / step) * step);
+  const bot = Math.min(0, Math.floor(min / step) * step);
+  const rango = top - bot || step;
+  const y = (v) => padT + ((top - v) / rango) * plotH;
+  const svg = s('svg', { class: 'chart', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': ariaLabel || 'Gráfico de resultado' });
+  for (let v = bot; v <= top + 1e-6; v += step) {
+    svg.append(s('line', { x1: padL, x2: W - padR, y1: y(v), y2: y(v), class: Math.abs(v) < 1e-6 ? 'axis-line' : 'grid-line' }));
+    svg.append(s('text', { x: padL - 8, y: y(v) + 4, 'text-anchor': 'end', 'font-size': '10.5' }, (v < 0 ? '−' : '') + kLabel(Math.abs(v))));
+  }
+  const groupW = plotW / etiquetas.length;
+  const barW = Math.min(26, groupW * 0.56);
+  etiquetas.forEach((et, i) => {
+    const v = valores[i] || 0;
+    const gx = padL + i * groupW, x = gx + (groupW - barW) / 2;
+    const y0 = y(0), y1 = y(v);
+    const hit = s('rect', { x: gx, y: padT, width: groupW, height: plotH, class: 'hit' });
+    const bar = s('rect', { x, y: Math.min(y0, y1), width: barW, height: Math.max(v ? 1.5 : 0, Math.abs(y1 - y0)), rx: 3, class: 'bar ' + (v < 0 ? 'bar-neg' : 'bar-pos') });
+    const titulo = `${etiquetasLargas[i]} · ${nombre}`;
+    const valorTxt = acumulado ? `${fmtEUR2(v)} (acumulado ${fmtEUR2(acum[i])})` : fmtEUR2(v);
+    bar.append(s('title', {}, `${titulo}: ${valorTxt}`));
+    interactivo(hit, bar, titulo, valorTxt);
+    svg.append(hit, bar);
+    svg.append(s('text', { x: gx + groupW / 2, y: H - 8, 'text-anchor': 'middle', 'font-size': '10.5' }, et));
+  });
+  if (acumulado) {
+    const pts = acum.map((v, i) => `${padL + i * groupW + groupW / 2},${y(v)}`).join(' ');
+    svg.append(s('polyline', { points: pts, class: 'line-acum', fill: 'none' }));
+    acum.forEach((v, i) => svg.append(s('circle', { cx: padL + i * groupW + groupW / 2, cy: y(v), r: 3, class: 'dot-acum' })));
+  }
+  return svg;
+}

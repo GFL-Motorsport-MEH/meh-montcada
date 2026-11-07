@@ -1,8 +1,9 @@
 // Pestaña Balance: balance del curso, por subcategorías, comparar cursos e informes.
 import { h, clear, fmtEUR, fmtEUR2, fmtPct, num, MESES, MESES_CORTO, capitalizar, tituloCategoria, cargando, descargarCSV } from '../ui.js';
 import { calcularBalance, calcularSubcategorias, calcularInforme, calcularAnual, DIMENSIONES, GRUPOS_ING } from '../balance.js';
+import { barrasAgrupadas, barrasClasificadas, barrasConSigno, esEstrecho } from '../charts.js';
 
-const MODOS = [['curso', 'Balance del curso'], ['subcat', 'Por subcategorías'], ['anual', 'Comparar cursos'], ['informe', 'Informes']];
+const MODOS = [['curso', 'Balance del curso'], ['graficos', 'Gráficos'], ['subcat', 'Por subcategorías'], ['anual', 'Comparar cursos'], ['informe', 'Informes']];
 const LS = 'meh.balance';
 const pref = (k, def) => { try { return JSON.parse(localStorage.getItem(LS) || '{}')[k] ?? def; } catch { return def; } };
 const guardarPref = (k, v) => { try { const o = JSON.parse(localStorage.getItem(LS) || '{}'); o[k] = v; localStorage.setItem(LS, JSON.stringify(o)); } catch { /* sin almacenamiento */ } };
@@ -57,6 +58,46 @@ function vistaCurso(curso, gastos, ingresos, taxonomia, isPct) {
     el: tabla({ cab, filas, claseTabla: 'balance-curso' }),
     csv: () => csvDe(`balance_${curso.nombre}.csv`, ['Concepto', ...MESES.map(capitalizar), 'Anual'], filas),
   };
+}
+
+// Gráficos del balance (misma estructura que la hoja: operativo sin Inversión/WP/IS, luego IS e Inversión)
+async function vistaGraficos(ctx, curso, gastos, ingresos, isPct) {
+  const b = calcularBalance(gastos, ingresos, ctx.state.taxonomia, isPct);
+  const w = esEstrecho() ? 360 : 560, w2 = esEstrecho() ? 340 : 520;
+  const tarjeta = (titulo, sub, grafico, leyenda) => h('div', { class: 'card chart-card' }, h('h3', {}, titulo), sub ? h('div', { class: 'chart-sub' }, sub) : null, leyenda || null, grafico);
+  const leyenda = (items) => h('div', { class: 'legend' }, items.map(([t, color]) => h('span', { class: 'legend-item' }, h('span', { class: 'legend-swatch', style: `background:${color}` }), t)));
+  const largas = MESES.map(capitalizar);
+  const ingGrupo = [...b.ingGrupo.entries()].map(([g, a]) => ({ nombre: g, valor: suma(a) })).filter((x) => x.valor > 0);
+  if (b.wpIngTotal) ingGrupo.push({ nombre: 'Welcome Pack', valor: b.wpIngTotal });
+  ingGrupo.sort((x, y) => y.valor - x.valor);
+  const gasCat = [...b.gasCat.entries()].map(([c, a]) => ({ nombre: tituloCategoria(c), valor: suma(a) }));
+  if (b.anual.wpGastos) gasCat.push({ nombre: 'Welcome Pack', valor: b.anual.wpGastos });
+  if (b.anual.inversion) gasCat.push({ nombre: 'Inversión', valor: b.anual.inversion });
+  if (b.anual.is) gasCat.push({ nombre: 'Imp. Sociedades', valor: b.anual.is });
+  gasCat.sort((x, y) => y.valor - x.valor);
+  // comparación entre cursos
+  const datos = [];
+  for (const c of ctx.state.cursosVisibles) {
+    const [g0, i0] = await Promise.all([ctx.gastos(c.id), ctx.ingresos(c.id)]);
+    const g = ctx.filtrarCentro(g0), i = ctx.ingresosDelCentro(i0);
+    if (g.length || i.length) datos.push({ curso: c, a: calcularAnual(g, i, ctx.state.taxonomia) });
+  }
+  const el = h('div', { class: 'graficos-balance' },
+    h('div', { class: 'chart-row' },
+      tarjeta('Ingresos y gastos por mes', 'Sin Welcome Pack, Inversión ni Impuesto de Sociedades (como el balance operativo)',
+        barrasAgrupadas(MESES_CORTO, [{ nombre: 'Ingresos', clase: 'bar-ing', valores: b.totIng }, { nombre: 'Gastos', clase: 'bar-gas', valores: b.totGas }], { etiquetasLargas: largas, ariaLabel: `Ingresos y gastos por mes ${curso.nombre}`, ancho: w }),
+        leyenda([['Ingresos', 'var(--accent-ing)'], ['Gastos', 'var(--accent-gas)']])),
+      tarjeta('Balance final por mes', `Después de Impuesto de Sociedades e Inversión · la línea es el acumulado (${fmtEUR2(b.anual.final)} en el curso)`,
+        barrasConSigno(MESES_CORTO, b.final, { etiquetasLargas: largas, nombre: 'Balance final', acumulado: true, ariaLabel: `Balance final por mes ${curso.nombre}`, ancho: w }))),
+    h('div', { class: 'chart-row' },
+      tarjeta('Ingresos por grupo', `Total del curso · ${fmtEUR2(b.anual.ingresos + b.wpIngTotal)}`, barrasClasificadas(ingGrupo, { ariaLabel: `Ingresos por grupo ${curso.nombre}`, ancho: w2 })),
+      tarjeta('Gastos por categoría', `Total del curso · ${fmtEUR2(gasCat.reduce((s0, x) => s0 + x.valor, 0))}`, barrasClasificadas(gasCat, { ariaLabel: `Gastos por categoría ${curso.nombre}`, ancho: w2 }))),
+    datos.length > 1 ? h('div', { class: 'chart-row' },
+      tarjeta('Ingresos y gastos por curso', 'Totales anuales (gastos sin Inversión ni Impuesto de Sociedades)',
+        barrasAgrupadas(datos.map((d) => d.curso.nombre), [{ nombre: 'Ingresos', clase: 'bar-ing', valores: datos.map((d) => d.a.totIng) }, { nombre: 'Gastos', clase: 'bar-gas', valores: datos.map((d) => d.a.totGas) }], { ariaLabel: 'Ingresos y gastos por curso', ancho: w }),
+        leyenda([['Ingresos', 'var(--accent-ing)'], ['Gastos', 'var(--accent-gas)']])),
+      tarjeta('Balance final por curso', null, barrasConSigno(datos.map((d) => d.curso.nombre), datos.map((d) => d.a.final), { nombre: 'Balance final', ariaLabel: 'Balance final por curso', ancho: w }))) : null);
+  return { kpis: null, nota: 'Mismos cálculos que el balance del curso. Pasa el ratón (o toca) una barra para ver el importe.', el, csv: null, sinTarjeta: true };
 }
 
 function vistaSubcat(curso, gastos, taxonomia) {
@@ -154,6 +195,8 @@ export async function renderBalance(view, ctx) {
       inp.addEventListener('change', () => { const v = Number(inp.value); if (v >= 0 && v <= 100) { isPct = v / 100; guardarPref('is', isPct); pintar(); } });
       ctrls.push(h('label', { class: 'check small' }, 'IS estimado', inp, '%'));
       actual = vistaCurso(curso, gastos, ingresos, ctx.state.taxonomia, isPct);
+    } else if (modo === 'graficos') {
+      actual = await vistaGraficos(ctx, curso, gastos, ingresos, isPct);
     } else if (modo === 'subcat') {
       actual = vistaSubcat(curso, gastos, ctx.state.taxonomia);
     } else if (modo === 'anual') {
@@ -166,14 +209,14 @@ export async function renderBalance(view, ctx) {
       actual = vistaInforme(curso, gastos, ctx.state.taxonomia, dim, excluir);
     }
     clear(controles, ctrls,
-      h('button', { class: 'btn', onclick: () => actual.csv() }, 'Exportar CSV'),
+      actual.csv ? h('button', { class: 'btn', onclick: () => actual.csv() }, 'Exportar CSV') : null,
       h('button', { class: 'btn', onclick: () => window.print() }, 'Imprimir / PDF'));
     const centro = ctx.centroActual();
     const titulo = (modo === 'anual' ? 'Balance anual · todos los cursos' : `${MODOS.find((m) => m[0] === modo)[1]} · ${curso.nombre}`) + (centro ? ` · ${ctx.tituloCentro(centro.nombre)}` : '');
     clear(cuerpo,
       actual.kpis ? h('div', { class: 'kpi-row kpi-4' }, actual.kpis.map(([l, v]) => h('div', { class: 'card kpi' }, h('div', { class: 'label' }, l), h('div', { class: 'value ' + (v < 0 ? 'critical' : '') }, fmtEUR(v))))) : null,
       h('div', { class: 'section-head' }, h('div', {}, h('h2', {}, titulo), h('div', { class: 'count' }, actual.nota))),
-      h('div', { class: 'card card-tabla' }, actual.el));
+      actual.sinTarjeta ? actual.el : h('div', { class: 'card card-tabla' }, actual.el));
   }
 
   clear(view, h('div', { class: 'section-head no-print' }, seg, controles), cuerpo);

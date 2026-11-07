@@ -392,3 +392,11 @@ table.tabla-factcheck .grupo-ini { border-left: 1px solid var(--border-strong); 
 table.tabla-factcheck td.dif.okdif { color: var(--positive, #15803d); text-align: center; }
 table.tabla-factcheck td.manual input.cell { background: color-mix(in oklab, #d97706 7%, var(--surface)); }
 table.tabla-factcheck td.manual input.cell::placeholder { color: var(--text-muted); }
+svg.chart .bar-pos { fill: var(--accent-ing); }
+svg.chart .bar-neg { fill: var(--critical, #c2410c); }
+svg.chart .line-acum { stroke: var(--text-primary); stroke-width: 2; stroke-linejoin: round; opacity: .75; }
+svg.chart .dot-acum { fill: var(--surface); stroke: var(--text-primary); stroke-width: 1.5; }
+.graficos-balance { display: flex; flex-direction: column; gap: 18px; }
+@media print { .graficos-balance .chart-row { break-inside: avoid; } }
+.graficos-balance .chart-row { grid-template-columns: 1fr 1fr; }
+@media (max-width: 900px) { .graficos-balance .chart-row { grid-template-columns: 1fr; } }
