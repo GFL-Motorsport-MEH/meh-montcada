@@ -10,3 +10,4 @@ test/fixtures.json
 test/shots/
 .netlify/
 __pycache__/
+test/*.pdf

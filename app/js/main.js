@@ -10,6 +10,7 @@ import { renderBalance } from './views/balance.js';
 import { renderFacturacion } from './views/facturacion.js';
 import { renderControl } from './views/control.js';
 import { renderConfig } from './views/config.js';
+import { renderAcademia } from './views/academia.js';
 import './views/config-listas.js';
 import './views/config-centros.js';
 import './views/plantillas.js';
@@ -70,35 +71,50 @@ const ctx = {
   },
 };
 
-// ---------- rutas ----------
+// ---------- módulos y rutas ----------
+// Dos módulos principales: Facturación (contabilidad, en uso) y Academia (gestión diaria, en desarrollo).
+const MODULOS = [
+  { id: 'facturacion', titulo: 'Facturación', sub: 'Contabilidad y control', inicio: 'panel' },
+  { id: 'academia', titulo: 'Academia', sub: 'Alumnos, horarios y pagos', inicio: 'academia' },
+];
 const RUTAS = {
-  panel: { titulo: 'Panel', render: renderPanel },
-  gastos: { titulo: 'Gastos', render: renderGastos },
-  ingresos: { titulo: 'Ingresos', render: renderIngresos },
-  balance: { titulo: 'Balance', render: renderBalance },
-  facturacion: { titulo: 'Facturación', render: renderFacturacion },
-  control: { titulo: 'Control', render: renderControl },
-  config: { titulo: 'Configuración', render: renderConfig },
-  usuarios: { titulo: 'Usuarios', render: renderUsuarios, admin: true },
+  panel: { titulo: 'Panel', render: renderPanel, modulo: 'facturacion' },
+  gastos: { titulo: 'Gastos', render: renderGastos, modulo: 'facturacion' },
+  ingresos: { titulo: 'Ingresos', render: renderIngresos, modulo: 'facturacion' },
+  balance: { titulo: 'Balance', render: renderBalance, modulo: 'facturacion' },
+  facturacion: { titulo: 'Facturación', render: renderFacturacion, modulo: 'facturacion' },
+  control: { titulo: 'Control', render: renderControl, modulo: 'facturacion' },
+  config: { titulo: 'Configuración', render: renderConfig, modulo: 'facturacion' },
+  usuarios: { titulo: 'Usuarios', render: renderUsuarios, admin: true, modulo: 'facturacion' },
+  academia: { titulo: 'Academia', render: renderAcademia, modulo: 'academia' },
 };
+const LS_RUTA = 'meh.ruta.';
 function rutaActual() {
   const r = (window.location.hash.match(/^#\/(\w+)/) || [])[1];
   if (!RUTAS[r] || (RUTAS[r].admin && !ctx.esAdmin())) return 'panel';
   return r;
 }
+function irAModulo(id) {
+  const m = MODULOS.find((x) => x.id === id);
+  let destino = m.inicio;
+  try { const g = localStorage.getItem(LS_RUTA + id); if (RUTAS[g]?.modulo === id) destino = g; } catch { /* */ }
+  window.location.hash = `#/${destino}`;
+}
 
-let viewEl, tabsEl, cursoSel;
+let viewEl, tabsEl, cursoSel, modulosEl;
 function pintarShell() {
   const p = state.perfil;
   cursoSel = h('select', { class: 'select-inline', 'aria-label': 'Curso', onchange: () => { state.cursoId = cursoSel.value; guardarCurso(); pintarVista(); } },
     [...state.cursosVisibles].reverse().map((c) => h('option', { value: c.id, selected: c.id === state.cursoId }, `Curso ${c.nombre}`)));
   tabsEl = h('nav', { class: 'tabs', 'aria-label': 'Secciones' });
-  viewEl = h('main', { id: 'view', style: 'display:flex; flex-direction:column; gap:18px' });
+  modulosEl = h('nav', { class: 'modulos', 'aria-label': 'Módulos' });
+  viewEl = h('main', { id: 'view', style: 'display:flex; flex-direction:column; gap:12px' });
   const inicial = (p.nombre || p.email || '?').trim().charAt(0).toUpperCase();
   clear(root, h('div', { class: 'page' },
     h('header', { class: 'topbar' },
       h('div', { class: 'brand' }, h('div', { class: 'brand-mark', 'aria-hidden': 'true' }, 'M'),
         h('div', {}, h('div', { class: 'brand-name' }, 'My English House — Montcada'), h('div', { class: 'brand-sub' }, 'Gestión y contabilidad'))),
+      modulosEl,
       h('div', { class: 'header-controls' }, centroSelect(), cursoSel,
         h('div', { class: 'user-chip' }, h('span', { class: 'dot', 'aria-hidden': 'true' }, inicial),
           h('span', {}, `${p.nombre || p.email}${p.rol === 'admin' ? ' · admin' : ''}`),
@@ -119,8 +135,16 @@ ctx.tituloCentro = tituloCentro;
 ctx.repintarCabecera = () => { pintarShell(); pintarVista(); };
 
 function pintarTabs(actual) {
+  const modulo = RUTAS[actual].modulo;
+  try { localStorage.setItem(LS_RUTA + modulo, actual); } catch { /* */ }
+  clear(modulosEl, MODULOS.map((m) => h('button', { type: 'button', class: 'modulo', 'aria-pressed': String(m.id === modulo), title: m.sub, onclick: () => irAModulo(m.id) },
+    h('span', { class: 'modulo-titulo' }, m.titulo), m.id === 'academia' ? h('span', { class: 'soon' }, 'en desarrollo') : null)));
   const tab = (id, label) => h('a', { class: 'tab', href: `#/${id}`, 'aria-current': id === actual ? 'page' : false }, label);
   const proximamente = (label) => h('span', { class: 'tab disabled', title: 'Próximamente' }, label, h('span', { class: 'soon' }, 'pronto'));
+  if (modulo === 'academia') {
+    clear(tabsEl, tab('academia', 'Resumen'), proximamente('Alumnos'), proximamente('Grupos y horarios'), proximamente('Pagos'), proximamente('Asistencia'), proximamente('Profesores'));
+    return;
+  }
   clear(tabsEl, tab('panel', 'Panel'), tab('gastos', 'Gastos'), tab('ingresos', 'Ingresos'), tab('balance', 'Balance'), tab('facturacion', 'Facturación'), tab('control', 'Control'), tab('config', 'Configuración'),
     ctx.esAdmin() ? tab('usuarios', 'Usuarios') : null);
 }
@@ -130,8 +154,9 @@ async function pintarVista() {
   const r = rutaActual();
   pintarTabs(r);
   document.title = `${RUTAS[r].titulo} · MEH Montcada`;
+  document.body.dataset.modulo = RUTAS[r].modulo;
   const id = ++renderId;
-  const tmp = h('div', { style: 'display:flex; flex-direction:column; gap:18px' });
+  const tmp = h('div', { style: 'display:flex; flex-direction:column; gap:12px' });
   clear(viewEl, cargando());
   try {
     await RUTAS[r].render(tmp, ctx);

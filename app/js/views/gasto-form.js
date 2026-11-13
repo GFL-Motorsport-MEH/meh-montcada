@@ -1,5 +1,5 @@
 // Formulario lateral para crear / editar un gasto.
-import { h, toast, confirmar, MESES, capitalizar, mesDeFecha, hoyISO, tituloCategoria, fmtEUR2 } from '../ui.js';
+import { h, toast, confirmar, MESES, capitalizar, mesDeFecha, hoyISO, tituloCategoria, fmtEUR2, fmtFecha } from '../ui.js';
 import { crearGasto, crearGastos, actualizarGasto, borrarGasto } from '../db.js';
 import { dividirEnMeses, dividirEnCentros } from '../gastos-ops.js';
 import { botonSubirFactura, abrirFactura, esArchivoSubido } from '../factura-archivo.js';
@@ -23,7 +23,7 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado, onDividido, 
   const deLista = (lista, def) => { const v = (state.listas || []).filter((x) => x.lista === lista).map((x) => x.valor); return v.length ? v : def; };
   let mesTocado = !nuevo && !!g.mes;
   let cursoTocado = !nuevo;
-  let sucio = false;
+  let sucio = nuevo && !!inicial && Object.keys(inicial).length > 0; // datos del escáner: avisar antes de descartarlos
 
   const campo = (label, input, { req = false, full = false, ayuda } = {}) => {
     const err = h('span', { class: 'field-error', hidden: true });
@@ -129,7 +129,7 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado, onDividido, 
           h('label', { class: 'check' }, cPago, 'Pagado'),
           h('label', { class: 'check' }, cBanca, 'Comprobado en el banco'),
           h('label', { class: 'check' }, cSinFactura, 'Sin factura'),
-          h('label', { class: 'check' }, cFiscontal, 'Enviado a FISCONTAL')),
+          h('label', { class: 'check' }, cFiscontal, 'Enviada a la gestoría (FISCONTAL)', g.fiscontal_fecha ? h('span', { class: 'muted small' }, ` · ${fmtFecha(g.fiscontal_fecha)}`) : null)),
         campo('Factura (enlace o archivo)', h('div', { class: 'link-factura' }, fLink,
           botonSubirFactura({ carpeta: () => state.cursos.find((c) => c.id === fCurso.value)?.nombre || 'general',
             onSubido: (link, file) => { fLink.value = link; sucio = true; cSinFactura.checked = false; toast(`"${file.name}" subido. Guarda el gasto para conservarlo.`); } }),
@@ -190,6 +190,7 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado, onDividido, 
       link_factura: limpio(fLink.value), nif: limpio(fNif.value), iban: limpio(fIban.value), swift: limpio(fSwift.value),
       comentarios: limpio(fComentarios.value),
       pago: cPago.checked ? 'True' : 'False', fiscontal: cFiscontal.checked ? 'True' : 'False',
+      fiscontal_fecha: cFiscontal.checked ? (esVerdad(g.fiscontal) && g.fiscontal_fecha ? g.fiscontal_fecha : hoyISO()) : null,
       check_banca: cBanca.checked, sin_factura: cSinFactura.checked,
     };
     btnGuardar.disabled = true; btnGuardar.textContent = 'Guardando…';

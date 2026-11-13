@@ -9,7 +9,11 @@ const LS = 'meh.balance';
 const pref = (k, def) => { try { return JSON.parse(localStorage.getItem(LS) || '{}')[k] ?? def; } catch { return def; } };
 const guardarPref = (k, v) => { try { const o = JSON.parse(localStorage.getItem(LS) || '{}'); o[k] = v; localStorage.setItem(LS, JSON.stringify(o)); } catch { /* sin almacenamiento */ } };
 const suma = (a) => a.reduce((s, v) => s + v, 0);
-const eur = (v) => (Math.abs(v) < 0.005 ? '—' : fmtEUR2(v));
+// en las tablas los importes van sin el símbolo € (se indica en la cabecera) para que quepan los 12 meses en pantalla
+const n2 = new Intl.NumberFormat('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: 'always' });
+const n0 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0, useGrouping: 'always' });
+let sinCentimos = pref('sinCent', false);
+const eur = (v) => (Math.abs(v) < 0.005 ? '—' : (sinCentimos ? n0 : n2).format(v));
 const signo = (v) => (v < -0.005 ? 'neg' : '');
 
 // Tabla de números: filas = { label, valores[], total?, clase?, pct? }
@@ -17,8 +21,8 @@ function tabla({ cab, filas, claseTabla = '' }) {
   return h('div', { class: 'table-wrap' }, h('table', { class: `data balance ${claseTabla}` },
     h('thead', {}, h('tr', {}, cab.map((c, i) => h('th', { scope: 'col', class: i ? 'num' : 'sticky-col' }, c)))),
     h('tbody', {}, filas.map((f) => f.titulo
-      ? h('tr', { class: 'titulo' }, h('th', { scope: 'rowgroup', colspan: cab.length, class: 'sticky-col' }, f.titulo))
-      : h('tr', { class: f.clase || '' },
+      ? h('tr', { class: ['titulo', f.grupo].filter(Boolean).join(' ') }, h('th', { scope: 'rowgroup', colspan: cab.length, class: 'sticky-col' }, f.titulo))
+      : h('tr', { class: [f.clase, f.grupo].filter(Boolean).join(' ') },
         h('th', { scope: 'row', class: 'sticky-col' }, f.label),
         f.valores.map((v) => h('td', { class: `num ${typeof v === 'number' ? signo(v) : ''}` }, typeof v === 'number' ? eur(v) : v)))))));
 }
@@ -31,23 +35,24 @@ function csvDe(nombre, cab, filas) {
 function vistaCurso(curso, gastos, ingresos, taxonomia, isPct) {
   const b = calcularBalance(gastos, ingresos, taxonomia, isPct);
   const fila = (label, meses, anual, clase) => ({ label, valores: [...meses, anual ?? suma(meses)], clase });
+  const ing = (o) => ({ ...o, grupo: 'ing' }), gas = (o) => ({ ...o, grupo: 'gas' });
   const filas = [
-    { titulo: 'Ingresos (sin Welcome Pack)' },
-    ...[...b.ingGrupo.entries()].filter(([g, a]) => GRUPOS_ING.includes(g) || suma(a)).map(([g, a]) => fila(g, a)),
-    fila('Total ingresos', b.totIng, null, 'total'),
-    { titulo: 'Gastos (sin Inversión, Welcome Pack ni Impuesto de Sociedades)' },
-    ...[...b.gasCat.entries()].map(([c, a]) => fila(tituloCategoria(c), a)),
-    fila('Total gastos', b.totGas, null, 'total'),
+    ing({ titulo: 'Ingresos (sin Welcome Pack)' }),
+    ...[...b.ingGrupo.entries()].filter(([g, a]) => GRUPOS_ING.includes(g) || suma(a)).map(([g, a]) => ing(fila(g, a))),
+    ing(fila('Total ingresos', b.totIng, null, 'total')),
+    gas({ titulo: 'Gastos (sin Inversión, Welcome Pack ni Impuesto de Sociedades)' }),
+    ...[...b.gasCat.entries()].map(([c, a]) => gas(fila(tituloCategoria(c), a))),
+    gas(fila('Total gastos', b.totGas, null, 'total')),
     { titulo: 'Welcome Pack' },
-    { label: 'Ingresos WP (por grupo)', valores: [...MESES.map(() => ''), b.wpIngTotal] },
-    fila('Gastos WP', b.wpGas),
+    ing({ label: 'Ingresos WP (por grupo)', valores: [...MESES.map(() => ''), b.wpIngTotal] }),
+    gas(fila('Gastos WP', b.wpGas)),
     { label: 'Margen WP', valores: [...MESES.map(() => ''), b.margenWP], clase: 'sub' },
     { titulo: 'Resultado' },
     fila('Balance operativo', b.operativo, b.anual.operativo, 'total'),
     fila(`After tax estimado (IS ${fmtPct(isPct)})`, b.estimado, b.anual.estimado, 'sub'),
-    fila('Impuesto de Sociedades pagado', b.is),
+    gas(fila('Impuesto de Sociedades pagado', b.is)),
     fila('After tax real', b.real, b.anual.real, 'total'),
-    fila('Inversión', b.inv),
+    gas(fila('Inversión', b.inv)),
     fila('Balance final', b.final, b.anual.final, 'final'),
   ];
   const cab = ['', ...MESES_CORTO, 'Anual'];
@@ -107,7 +112,7 @@ function vistaSubcat(curso, gastos, taxonomia) {
   const filas = [];
   for (const c of cats) {
     const tc = suma(c.meses);
-    filas.push({ label: tituloCategoria(c.nombre), valores: [...c.meses, tc, total ? fmtPct(tc / total) : '—'], clase: 'total' });
+    filas.push({ label: tituloCategoria(c.nombre), valores: [...c.meses, tc, total ? fmtPct(tc / total) : '—'], clase: 'total', grupo: 'gas' });
     for (const s of c.subs) {
       const ts = suma(s.meses);
       filas.push({ label: s.nombre, valores: [...s.meses, ts, tc ? fmtPct(ts / tc) : '—'], clase: 'sub-indent' + (ts ? '' : ' vacia') });
@@ -135,17 +140,17 @@ async function vistaAnual(ctx) {
   const catsGas = [...new Set(datos.flatMap((d) => [...d.a.gas.keys()]))];
   const col = (fn) => datos.map((d) => fn(d.a));
   const filas = [
-    { titulo: 'Ingresos' },
-    ...gruposIng.map((g) => ({ label: g, valores: col((a) => a.ing.get(g) || 0) })),
-    { label: 'Total ingresos', valores: col((a) => a.totIng), clase: 'total' },
-    { titulo: 'Gastos (sin Inversión ni Impuesto de Sociedades)' },
-    ...catsGas.map((c) => ({ label: tituloCategoria(c), valores: col((a) => a.gas.get(c) || 0) })),
-    { label: 'Total gastos', valores: col((a) => a.totGas), clase: 'total' },
+    { titulo: 'Ingresos', grupo: 'ing' },
+    ...gruposIng.map((g) => ({ label: g, valores: col((a) => a.ing.get(g) || 0), grupo: 'ing' })),
+    { label: 'Total ingresos', valores: col((a) => a.totIng), clase: 'total', grupo: 'ing' },
+    { titulo: 'Gastos (sin Inversión ni Impuesto de Sociedades)', grupo: 'gas' },
+    ...catsGas.map((c) => ({ label: tituloCategoria(c), valores: col((a) => a.gas.get(c) || 0), grupo: 'gas' })),
+    { label: 'Total gastos', valores: col((a) => a.totGas), clase: 'total', grupo: 'gas' },
     { titulo: 'Resultado' },
     { label: 'Balance operativo', valores: col((a) => a.operativo), clase: 'total' },
-    { label: 'Impuesto de Sociedades', valores: col((a) => a.is) },
+    { label: 'Impuesto de Sociedades', valores: col((a) => a.is), grupo: 'gas' },
     { label: 'After tax real', valores: col((a) => a.real), clase: 'total' },
-    { label: 'Inversión', valores: col((a) => a.inversion) },
+    { label: 'Inversión', valores: col((a) => a.inversion), grupo: 'gas' },
     { label: 'Balance final', valores: col((a) => a.final), clase: 'final' },
   ];
   const cab = ['', ...datos.map((d) => d.curso.nombre)];
@@ -211,6 +216,10 @@ export async function renderBalance(view, ctx) {
       ctrls.push(h('label', { class: 'check small' }, 'Agrupar por', sel), h('label', { class: 'check small' }, chk, 'Sin Inversión ni WP'));
       actual = vistaInforme(curso, gastos, ctx.state.taxonomia, dim, excluir);
     }
+    if (!['graficos', 'datos'].includes(modo)) {
+      const chkC = h('input', { type: 'checkbox', checked: sinCentimos, onchange: () => { sinCentimos = chkC.checked; guardarPref('sinCent', sinCentimos); pintar(); } });
+      ctrls.push(h('label', { class: 'check small' }, chkC, 'Sin céntimos'));
+    }
     clear(controles, ctrls,
       actual.csv ? h('button', { class: 'btn', onclick: () => actual.csv() }, 'Exportar CSV') : null,
       h('button', { class: 'btn', onclick: () => window.print() }, 'Imprimir / PDF'));
@@ -218,7 +227,7 @@ export async function renderBalance(view, ctx) {
     const titulo = (modo === 'anual' ? 'Balance anual · todos los cursos' : `${MODOS.find((m) => m[0] === modo)[1]} · ${curso.nombre}`) + (centro ? ` · ${ctx.tituloCentro(centro.nombre)}` : '');
     clear(cuerpo,
       actual.kpis ? h('div', { class: 'kpi-row kpi-4' }, actual.kpis.map(([l, v]) => h('div', { class: 'card kpi' }, h('div', { class: 'label' }, l), h('div', { class: 'value ' + (v < 0 ? 'critical' : '') }, fmtEUR(v))))) : null,
-      h('div', { class: 'section-head' }, h('div', {}, h('h2', {}, titulo), h('div', { class: 'count' }, actual.nota))),
+      h('div', { class: 'section-head' }, h('div', {}, h('h2', {}, titulo), h('div', { class: 'count' }, actual.nota, actual.csv ? ' Importes en €.' : ''))),
       actual.sinTarjeta ? actual.el : h('div', { class: 'card card-tabla' }, actual.el));
   }
 

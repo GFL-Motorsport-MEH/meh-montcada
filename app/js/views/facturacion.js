@@ -1,5 +1,5 @@
 // Pestaña Facturación: hoja "Fact Meharic" + macro de importación del CRM.
-import { h, clear, fmtEUR2, fmtFecha, num, normalizar, cargando, descargarCSV, toast, confirmar, leerHojaArchivo } from '../ui.js';
+import { h, clear, fmtEUR2, fmtFecha, fmtFechaCorta, num, normalizar, cargando, descargarCSV, toast, confirmar, leerHojaArchivo } from '../ui.js';
 import * as db from '../db.js';
 import { filasCRMaRegistros, separarNuevas, huecosRecibos, resumenTrimestral, METODOS_FACT, esVerdadero } from '../facturacion.js';
 
@@ -12,6 +12,7 @@ export async function renderFacturacion(view, ctx) {
   const curso = ctx.cursoActual();
   const f = { q: '', desde: curso.fecha_inicio || '', hasta: curso.fecha_fin || '', metodo: '', tipo: '', comp: '' };
   let limite = POR_PAGINA;
+  let porRecibo = true;
 
   const re = () => { limite = POR_PAGINA; pintar(); };
   const fQ = h('input', { type: 'search', placeholder: 'Buscar alumno, recibo, factura, descripción…', 'aria-label': 'Buscar', oninput: () => { f.q = fQ.value; re(); } });
@@ -35,8 +36,8 @@ export async function renderFacturacion(view, ctx) {
   let huecos = huecosRecibos(lineas);
   let recibosTrasHueco = new Set(huecos.huecos.map((x) => x.prefijo + x.antes));
 
-  function filtradas() {
-    const q = normalizar(f.q.trim());
+  function filtradas(conTexto = true) {
+    const q = conTexto ? normalizar(f.q.trim()) : '';
     return lineas.filter((l) => {
       if (f.desde && (!l.fecha_pago || l.fecha_pago < f.desde)) return false;
       if (f.hasta && (!l.fecha_pago || l.fecha_pago > f.hasta)) return false;
@@ -50,25 +51,48 @@ export async function renderFacturacion(view, ctx) {
     });
   }
 
-  async function marcar(l, campo, input) {
+  // Marca (o desmarca) una o varias líneas: en la vista por recibo, todas las líneas del recibo
+  async function marcar(ls, campo, input) {
     const valor = input.checked ? 'True' : 'False';
     input.disabled = true;
-    try { Object.assign(l, await db.actualizarFacturacion(l.id, { [campo]: valor })); pintarResumen(filtradas()); }
-    catch (ex) { input.checked = !input.checked; toast('No se ha guardado: ' + ex.message, 'error'); }
+    try {
+      for (const l of ls) if (esVerdadero(l[campo]) !== input.checked) Object.assign(l, await db.actualizarFacturacion(l.id, { [campo]: valor }));
+      pintarResumen(filtradas());
+    } catch (ex) { input.checked = !input.checked; toast('No se ha guardado: ' + ex.message, 'error'); }
     finally { input.disabled = false; }
   }
-  const casilla = (l, campo, label) => h('input', { type: 'checkbox', checked: esVerdadero(l[campo]), 'aria-label': `${label} · ${l.num_recibo || ''} ${l.alumno || ''}`, onchange: (e) => marcar(l, campo, e.target) });
+  const casilla = (ls, campo, label) => h('input', { type: 'checkbox', checked: ls.every((l) => esVerdadero(l[campo])), 'aria-label': `${label} · ${ls[0].num_recibo || ''} ${ls[0].alumno || ''}`, onchange: (e) => marcar(ls, campo, e.target) });
+  const celda = (texto, cls = '') => h('td', { class: cls, title: texto && texto.length > 18 ? texto : null }, texto || '—');
 
-  function fila(l) {
-    return h('tr', {},
-      h('td', { class: 'mono' }, fmtFecha(l.fecha_pago)),
-      h('td', {}, l.alumno || '—', h('span', { class: 'line2' }, [l.id_crm ? `ID ${l.id_crm}` : null, l.tipo_operacion !== 'CREACION' ? l.tipo_operacion : null].filter(Boolean).join(' · '))),
-      h('td', { class: 'mono' }, l.num_recibo || '—', h('span', { class: 'line2' }, l.num_factura && l.num_factura !== 'n/a' ? `Fact. ${l.num_factura}` : '')),
-      h('td', {}, l.descripcion || '—', h('span', { class: 'line2' }, [l.modalidad_pago, num(l.qty) !== 1 ? `${num(l.qty)} uds` : null].filter(Boolean).join(' · '))),
-      h('td', {}, l.metodo_pago || '—'),
-      h('td', { class: 'num' }, fmtEUR2(num(l.cantidad))),
-      h('td', { class: 'center' }, casilla(l, 'mimag_comprobacion', 'MIMAG')),
-      h('td', { class: 'center' }, casilla(l, 'fiscontal_comprobacion', 'FISCONTAL')));
+  // Agrupa las líneas por recibo (p.ej. mensualidad + descuento) para mostrar una sola fila por recibo
+  function agrupar(lista) {
+    const grupos = new Map();
+    for (const l of lista) {
+      const k = l.num_recibo ? l.num_recibo : `id:${l.id}`;
+      if (!grupos.has(k)) grupos.set(k, []);
+      grupos.get(k).push(l);
+    }
+    return [...grupos.values()];
+  }
+
+  function fila(ls) {
+    const principal = [...ls].sort((a, b) => num(b.cantidad) - num(a.cantidad))[0];
+    const otras = ls.filter((l) => l !== principal);
+    const total = ls.reduce((s0, l) => s0 + num(l.cantidad), 0);
+    const desc = [principal.descripcion, ...otras.map((l) => `${l.descripcion || ''} (${fmtEUR2(num(l.cantidad))})`)].filter(Boolean).join(' · ');
+    const op = principal.tipo_operacion && principal.tipo_operacion !== 'CREACION' ? principal.tipo_operacion : '';
+    return h('tr', { class: ls.length > 1 ? 'multi' : '' },
+      h('td', { title: fmtFecha(principal.fecha_pago) }, fmtFechaCorta(principal.fecha_pago)),
+      celda(principal.alumno + (op ? ` · ${op}` : '')),
+      celda(principal.id_crm ? String(principal.id_crm) : ''),
+      celda(principal.num_recibo),
+      celda(principal.num_factura && principal.num_factura !== 'n/a' ? principal.num_factura : ''),
+      h('td', { title: desc }, ls.length > 1 ? h('span', { class: 'n-lineas', title: `${ls.length} líneas en este recibo` }, String(ls.length)) : null, desc || '—'),
+      celda(principal.modalidad_pago),
+      celda(principal.metodo_pago),
+      h('td', { class: 'num' }, fmtEUR2(total)),
+      h('td', { class: 'center' }, casilla(ls, 'mimag_comprobacion', 'MIMAG')),
+      h('td', { class: 'center' }, casilla(ls, 'fiscontal_comprobacion', 'FISCONTAL')));
   }
 
   function pintarResumen(lista) {
@@ -97,11 +121,18 @@ export async function renderFacturacion(view, ctx) {
   function pintar() {
     const lista = filtradas();
     const orden = [...lista].sort((a, b) => (b.fecha_pago || '').localeCompare(a.fecha_pago || '') || String(b.num_recibo).localeCompare(String(a.num_recibo), 'es', { numeric: true }));
-    contador.textContent = `${lista.length} de ${lineas.length} líneas`;
+    let filasVista;
+    if (porRecibo) {
+      // la búsqueda encuentra el recibo entero aunque solo coincida una de sus líneas (p.ej. el descuento)
+      const coinciden = new Set(lista.map((l) => l.num_recibo || `id:${l.id}`));
+      const base = f.q.trim() ? filtradas(false).sort((a, b) => (b.fecha_pago || '').localeCompare(a.fecha_pago || '') || String(b.num_recibo).localeCompare(String(a.num_recibo), 'es', { numeric: true })) : orden;
+      filasVista = agrupar(base).filter((ls) => coinciden.has(ls[0].num_recibo || `id:${ls[0].id}`));
+    } else filasVista = orden.map((l) => [l]);
+    contador.textContent = `${lista.length} de ${lineas.length} líneas` + (porRecibo ? ` · ${filasVista.length} recibos` : '');
     pintarResumen(lista);
-    clear(tbody, orden.length ? orden.slice(0, limite).map(fila) : h('tr', {}, h('td', { colspan: 8, class: 'empty' }, 'Ninguna línea coincide con los filtros.')));
-    clear(pie, h('span', {}, lista.length > limite ? `Mostrando ${limite} de ${lista.length}` : `${lista.length} líneas`),
-      lista.length > limite ? h('button', { class: 'btn', onclick: () => { limite += POR_PAGINA * 3; pintar(); } }, 'Mostrar más') : null);
+    clear(tbody, filasVista.length ? filasVista.slice(0, limite).map(fila) : h('tr', {}, h('td', { colspan: 11, class: 'empty' }, 'Ninguna línea coincide con los filtros.')));
+    clear(pie, h('span', {}, filasVista.length > limite ? `Mostrando ${limite} de ${filasVista.length}` : `${filasVista.length} ${porRecibo ? 'recibos' : 'líneas'}`),
+      filasVista.length > limite ? h('button', { class: 'btn', onclick: () => { limite += POR_PAGINA * 3; pintar(); } }, 'Mostrar más') : null);
   }
 
   function exportar() {
@@ -153,9 +184,13 @@ export async function renderFacturacion(view, ctx) {
     h('div', { class: 'filters filters-fact' }, h('div', { class: 'search' }, fQ), fDesde, fHasta, fMet, fTipo, fComp),
     h('h3', { class: 'sub-titulo' }, 'Resumen por trimestre (fecha de pago)'), resumenEl,
     huecosEl,
+    h('div', { class: 'tabla-cab' }, h('div', { class: 'segmented', role: 'tablist', 'aria-label': 'Agrupación' },
+      ['Por recibo', 'Por línea'].map((t, i) => { const b = h('button', { class: 'seg-btn', role: 'tab', 'aria-selected': String(i === 0), onclick: () => {
+        porRecibo = i === 0; b.parentNode.querySelectorAll('.seg-btn').forEach((x) => x.setAttribute('aria-selected', String(x === b))); limite = POR_PAGINA; pintar(); } }, t); return b; }))),
     h('div', { class: 'table-wrap' }, h('table', { class: 'data tabla-fact' },
-      h('thead', {}, h('tr', {}, ['Fecha pago', 'Alumno', 'Recibo', 'Descripción', 'Método'].map((t) => h('th', { scope: 'col' }, t)),
-        h('th', { scope: 'col', class: 'num' }, 'Cantidad'), h('th', { scope: 'col', class: 'center', title: 'Comprobada' }, 'MIMAG'), h('th', { scope: 'col', class: 'center', title: 'Contabilizada' }, 'FISCONTAL'))),
+      h('colgroup', {}, ['c-fecha', 'c-alumno', 'c-id', 'c-recibo', 'c-factura', 'c-desc', 'c-modalidad', 'c-metodo', 'c-importe', 'c-chk', 'c-chk'].map((c) => h('col', { class: c }))),
+      h('thead', {}, h('tr', {}, ['F. pago', 'Alumno', 'ID CRM', 'Recibo', 'Factura', 'Descripción', 'Modalidad', 'Método'].map((t) => h('th', { scope: 'col' }, t)),
+        h('th', { scope: 'col', class: 'num' }, 'Importe'), h('th', { scope: 'col', class: 'center', title: 'Comprobada en MIMAG' }, 'MIMAG'), h('th', { scope: 'col', class: 'center', title: 'Contabilizada en FISCONTAL' }, 'Fiscontal'))),
       tbody)),
     pie);
   pintarHuecos();

@@ -40,6 +40,11 @@ export function fmtFecha(iso) {
   const [y, m, d] = iso.slice(0, 10).split('-');
   return `${d}/${m}/${y}`;
 }
+export function fmtFechaCorta(iso) {
+  if (!iso) return '—';
+  const [y, m, d] = iso.slice(0, 10).split('-');
+  return `${d}/${m}/${y.slice(2)}`;
+}
 export const num = (v) => (v === null || v === undefined || v === '' ? 0 : Number(v));
 
 // Curso escolar: septiembre -> agosto

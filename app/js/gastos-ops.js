@@ -14,7 +14,7 @@ export function repartir(total, pesos) {
 
 const CAMPOS_COPIA = ['curso_id', 'tipo', 'empresa', 'factura_nr', 'fecha_factura', 'pago', 'concepto', 'fecha_pago', 'link_factura',
   'categoria_id', 'subcategoria_id', 'categoria_texto', 'subcategoria_texto', 'periodicidad', 'metodo_pago', 'comentarios',
-  'nif', 'iban', 'swift', 'check_banca', 'fiscontal', 'sin_factura', 'centro_id', 'mes'];
+  'nif', 'iban', 'swift', 'check_banca', 'fiscontal', 'fiscontal_fecha', 'sin_factura', 'centro_id', 'mes'];
 const copia = (g) => Object.fromEntries(CAMPOS_COPIA.filter((c) => c in g).map((c) => [c, g[c]]));
 export const nuevoId = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3) | 8).toString(16); }));
 

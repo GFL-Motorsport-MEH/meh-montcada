@@ -22,10 +22,10 @@ export function botonSubirFactura({ carpeta, onSubido, etiqueta = 'Subir PDF', c
     const file = input.files[0]; input.value = '';
     if (!file) return;
     if (file.size > 20 * 1024 * 1024) { toast('El archivo pasa de 20 MB.', 'error'); return; }
-    btn.disabled = true; btn.textContent = 'Subiendo…';
+    btn.disabled = true; if (etiqueta) btn.textContent = 'Subiendo…';
     try { const link = await subirFactura(file, carpeta()); await onSubido(link, file); }
     catch (ex) { toast('No se ha subido: ' + ex.message, 'error'); }
-    finally { btn.disabled = false; btn.textContent = etiqueta; }
+    finally { btn.disabled = false; if (etiqueta) btn.textContent = etiqueta; }
   });
   return h('span', { class: 'subir-factura' }, input, btn);
 }
