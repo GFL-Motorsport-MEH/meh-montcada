@@ -1,5 +1,5 @@
 // Pestaña Balance: balance del curso, por subcategorías, comparar cursos e informes.
-import { h, clear, fmtEUR, fmtEUR2, fmtPct, num, MESES, MESES_CORTO, capitalizar, tituloCategoria, cargando, descargarCSV } from '../ui.js';
+import { h, clear, ajustarAncho, fmtEUR, fmtEUR2, fmtPct, num, MESES, MESES_CORTO, capitalizar, tituloCategoria, cargando, descargarCSV } from '../ui.js';
 import { calcularBalance, calcularSubcategorias, calcularInforme, calcularAnual, DIMENSIONES, GRUPOS_ING } from '../balance.js';
 import { vistaDatosInteres } from './notas-datos.js';
 import { barrasAgrupadas, barrasClasificadas, barrasConSigno, esEstrecho } from '../charts.js';
@@ -18,13 +18,13 @@ const signo = (v) => (v < -0.005 ? 'neg' : '');
 
 // Tabla de números: filas = { label, valores[], total?, clase?, pct? }
 function tabla({ cab, filas, claseTabla = '' }) {
-  return h('div', { class: 'table-wrap' }, h('table', { class: `data balance ${claseTabla}` },
+  return h('div', { class: 'table-wrap' }, ajustarAncho(h('table', { class: `data balance ${claseTabla}` },
     h('thead', {}, h('tr', {}, cab.map((c, i) => h('th', { scope: 'col', class: i ? 'num' : 'sticky-col' }, c)))),
     h('tbody', {}, filas.map((f) => f.titulo
       ? h('tr', { class: ['titulo', f.grupo].filter(Boolean).join(' ') }, h('th', { scope: 'rowgroup', colspan: cab.length, class: 'sticky-col' }, f.titulo))
       : h('tr', { class: [f.clase, f.grupo].filter(Boolean).join(' ') },
         h('th', { scope: 'row', class: 'sticky-col' }, f.label),
-        f.valores.map((v) => h('td', { class: `num ${typeof v === 'number' ? signo(v) : ''}` }, typeof v === 'number' ? eur(v) : v)))))));
+        f.valores.map((v) => h('td', { class: `num ${typeof v === 'number' ? signo(v) : ''}` }, typeof v === 'number' ? eur(v) : v))))))));
 }
 
 function csvDe(nombre, cab, filas) {

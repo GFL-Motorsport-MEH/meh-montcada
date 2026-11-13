@@ -1,12 +1,13 @@
 // Control > FactCheck: cruza ingresos según control de alumnos (Ingresos), según facturas (Facturación del CRM)
 // y según el banco (cobros de la conciliación o valores puestos a mano), por mes o por trimestre.
-import { h, clear, cargando, toast, fmtEUR2, num, MESES, capitalizar, descargarCSV } from '../ui.js';
+import { h, clear, ajustarAncho, cargando, toast, fmtEUR2, num, MESES, capitalizar, descargarCSV } from '../ui.js';
 import * as db from '../db.js';
 import { registrarSeccion } from './control.js';
 import { fechaEnMes } from '../gastos-ops.js';
 import { aNumero } from '../facturacion.js';
 
 // método -> [valor en ingresos_metodo, valor en facturación, campo manual del banco]
+const n2 = (v) => fmtEUR2(v).replace(/\s?€/, '');
 const METODOS = [
   ['Domiciliaciones', 'DOMICILIACION', 'Domiciliacion bancaria', 'banco_domiciliacion'],
   ['TPV / tarjeta', 'TPV / TARJETA', 'Tarjeta', 'banco_tpv'],
@@ -92,8 +93,9 @@ async function renderFactcheck(cont, ctx) {
     const sumar = (pers, fn) => pers.reduce((s, per) => s + num(fn(per, d.get(per))), 0);
     // diferencia a − b; si falta uno de los dos datos (0) no se compara
     const dif = (a, b) => (Math.abs(a) < 0.005 || Math.abs(b) < 0.005 ? h('td', { class: 'num muted' }, '—')
-      : h('td', { class: `num dif ${Math.abs(a - b) >= 0.01 ? 'neg' : 'okdif'}` }, Math.abs(a - b) < 0.005 ? '✓' : fmtEUR2(a - b)));
-    const eurTd = (v, cls = '') => h('td', { class: `num ${cls}` }, Math.abs(v) < 0.005 ? '—' : fmtEUR2(v));
+      : h('td', { class: `num dif ${Math.abs(a - b) >= 0.01 ? 'neg' : 'okdif'}` }, Math.abs(a - b) < 0.005 ? '✓' : n2(a - b)));
+    // sin el símbolo € (va en la nota) para que las 18 columnas quepan en pantalla
+    const eurTd = (v, cls = '') => h('td', { class: `num ${cls}` }, Math.abs(v) < 0.005 ? '—' : n2(v));
     const cuerpo = filas.map((f) => {
       const ing = sumar(f.pers, (p, x) => x.ing), fact = sumar(f.pers, (p, x) => x.fact), banco = sumar(f.pers, (p, x) => bancoTotal(p, x));
       const editable = modo === 'mes';
@@ -107,15 +109,15 @@ async function renderFactcheck(cont, ctx) {
     });
     const tot = (fn) => periodos.reduce((s, p) => s + num(fn(p.periodo, d.get(p.periodo))), 0);
     const tIng = tot((p, x) => x.ing), tFact = tot((p, x) => x.fact), tBanco = tot((p, x) => bancoTotal(p, x));
-    clear(tabla, h('div', { class: 'table-wrap' }, h('table', { class: 'data balance tabla-factcheck' },
+    clear(tabla, h('div', { class: 'table-wrap' }, ajustarAncho(h('table', { class: 'data balance tabla-factcheck' },
       h('thead', {},
-        h('tr', {}, h('th', { class: 'sticky-col', rowspan: 2 }, modo === 'mes' ? 'Mes' : 'Trimestre'), h('th', { colspan: 5, class: 'grupo' }, 'Ingresos totales'),
+        h('tr', {}, h('th', { class: 'sticky-col', rowspan: 2 }, modo === 'mes' ? 'Mes' : 'Trimestre'), h('th', { colspan: 5, class: 'grupo' }, 'Ingresos totales (€)'),
           METODOS.map(([k]) => h('th', { colspan: 3, class: 'grupo grupo-ini' }, k))),
         h('tr', {}, ['Control alumnos', 'Facturación', 'Banco', 'Fact. − alumnos', 'Banco − fact.'].map((t) => h('th', { class: 'num' }, t)),
           METODOS.flatMap(() => [h('th', { class: 'num grupo-ini' }, 'Alumnos'), h('th', { class: 'num' }, 'Facturación'), h('th', { class: 'num' }, 'Banco')]))),
       h('tbody', {}, cuerpo),
       h('tfoot', {}, h('tr', { class: 'total' }, h('th', { scope: 'row', class: 'sticky-col' }, 'Total curso'), eurTd(tIng), eurTd(tFact), eurTd(tBanco), dif(tFact, tIng), dif(tBanco, tFact),
-        METODOS.flatMap(([k, , , campo]) => [eurTd(tot((p, x) => x.m[k].ing), 'grupo-ini'), eurTd(tot((p, x) => x.m[k].fact)), eurTd(tot((p) => valManual(p, campo)))]))))));
+        METODOS.flatMap(([k, , , campo]) => [eurTd(tot((p, x) => x.m[k].ing), 'grupo-ini'), eurTd(tot((p, x) => x.m[k].fact)), eurTd(tot((p) => valManual(p, campo)))])))))));
     nota.textContent = 'Control alumnos = cuadrícula de Ingresos (sin Welcome pack) y cobros por modalidad. Facturación = líneas del CRM por fecha de pago (columna Cantidad). '
       + 'Banco = cobros importados en Conciliación bancaria; en vista mensual puedes escribir el importe a mano (sustituye al automático, que se ve en gris) y el desglose por método.';
     return { tIng, tFact, tBanco };

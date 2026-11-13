@@ -444,7 +444,7 @@ body { font-variant-numeric: tabular-nums; }
 .user-chip .dot { width: 20px; height: 20px; background: #1a2b45; }
 .user-chip .btn { padding: 3px 8px; font-size: 12px; }
 @media (max-width: 720px) { .modulos { margin-left: 0; order: 3; width: 100%; } .modulo { flex: 1; justify-content: center; } }
-@media (max-width: 1100px) { table.balance { table-layout: auto; min-width: 1000px; } }
+@media (max-width: 860px) { table.balance { table-layout: auto; min-width: 1000px; } }
 /* ---------- facturación v2: una línea por recibo ---------- */
 table.tabla-fact { table-layout: fixed; min-width: 0; }
 table.tabla-fact td, table.tabla-fact th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -468,10 +468,10 @@ table.tabla-gastos td.col-check, table.tabla-gastos th.col-check { padding: 0; }
 table.tabla-gastos tbody tr.clickable { cursor: default; }
 table.tabla-gastos tbody tr:hover td { background: color-mix(in oklab, var(--accent) 4%, var(--surface)); }
 table.tabla-gastos col.c-sel { width: 26px; } table.tabla-gastos col.c-fecha { width: 74px; } table.tabla-gastos col.c-cont { width: 70px; }
-table.tabla-gastos col.c-centro { width: 96px; } table.tabla-gastos col.c-tipo { width: 84px; } table.tabla-gastos col.c-emp { width: 13%; }
-table.tabla-gastos col.c-nfac { width: 92px; } table.tabla-gastos col.c-conc { width: auto; } table.tabla-gastos col.c-cat { width: 104px; }
-table.tabla-gastos col.c-sub { width: 122px; } table.tabla-gastos col.c-per { width: 84px; } table.tabla-gastos col.c-met { width: 112px; }
-table.tabla-gastos col.c-imp { width: 82px; } table.tabla-gastos col.c-tick { width: 46px; } table.tabla-gastos col.c-ico { width: 28px; }
+table.tabla-gastos col.c-centro { width: 86px; } table.tabla-gastos col.c-tipo { width: 84px; } table.tabla-gastos col.c-emp { width: 13%; }
+table.tabla-gastos col.c-nfac { width: 92px; } table.tabla-gastos col.c-conc { width: auto; } table.tabla-gastos col.c-cat { width: 98px; }
+table.tabla-gastos col.c-sub { width: 112px; } table.tabla-gastos col.c-per { width: 84px; } table.tabla-gastos col.c-met { width: 100px; }
+table.tabla-gastos col.c-imp { width: 78px; } table.tabla-gastos col.c-tick { width: 42px; } table.tabla-gastos col.c-ico { width: 28px; }
 .gc { width: 100%; min-width: 0; border: 1px solid transparent; background: transparent; border-radius: 3px; padding: 3px 4px; font: inherit; color: inherit; text-overflow: ellipsis; }
 select.gc { appearance: none; -webkit-appearance: none; padding-right: 12px; cursor: pointer;
   background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%), linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
@@ -490,7 +490,8 @@ tr:hover .ib.tenue { color: var(--text-muted); }
 .subir-factura { display: inline-flex; }
 /* menos columnas en pantallas más estrechas */
 @media (max-width: 1500px) { .tabla-gastos :is(.c-tipo, .c-per) { display: none; } }
-@media (max-width: 1250px) { .tabla-gastos :is(.c-nfac, .c-met, .c-fpago) { display: none; } }
+@media (max-width: 1350px) { .tabla-gastos :is(.c-nfac, .c-fpago) { display: none; } }
+@media (max-width: 1150px) { .tabla-gastos :is(.c-met) { display: none; } }
 @media (max-width: 1000px) { .tabla-gastos :is(.c-sub, .c-centro) { display: none; } }
 /* móvil: fecha, empresa, concepto, importe, controles */
 @media (max-width: 760px) {
@@ -520,3 +521,60 @@ table.escaner-tabla th { text-align: left; font-weight: 600; color: var(--text-s
 .escaner-texto pre { max-height: 200px; overflow: auto; font-size: 11px; background: var(--surface-2); padding: 8px; border-radius: 4px; white-space: pre-wrap; }
 .solo-movil { display: none; }
 @media (max-width: 760px) { .escaner-res { grid-template-columns: 1fr; } .escaner-vista { max-height: 260px; } .solo-movil { display: inline-flex; } }
+/* ---------- sin scroll lateral: cuadrículas de ingresos y FactCheck (v2) ---------- */
+table.grid-ing, table.grid-mini { min-width: 0; width: 100%; table-layout: fixed; font-size: 12px; }
+table.grid-ing thead th:first-child, table.grid-ing tbody th, table.grid-ing tfoot th { width: 150px; }
+table.grid-ing thead th { padding: 6px 4px; white-space: normal; line-height: 1.15; }
+table.grid-ing tbody th { padding: 3px 6px; overflow: hidden; text-overflow: ellipsis; }
+table.grid-ing tfoot > tr > *, table.grid-ing td.total-col { padding: 5px 4px; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+table.grid-ing input.cell { min-width: 0; padding: 4px 3px; font-size: 12px; }
+table.tabla-factcheck { min-width: 0; width: 100%; table-layout: fixed; font-size: 11.5px; }
+table.tabla-factcheck thead th { white-space: normal; line-height: 1.15; padding: 4px 3px; font-size: 9.5px; letter-spacing: 0; vertical-align: bottom; }
+table.tabla-factcheck thead th.sticky-col, table.tabla-factcheck tbody th, table.tabla-factcheck tfoot th { width: 104px; }
+table.tabla-factcheck td, table.tabla-factcheck tbody th, table.tabla-factcheck tfoot th { padding: 3px 3px; overflow: hidden; text-overflow: clip; }
+table.tabla-factcheck input.cell { min-width: 0; padding: 3px 2px; font-size: 11.5px; }
+/* portátiles pequeños (1024-1150 px): letra algo menor y primera columna más estrecha, sigue sin scroll */
+@media (max-width: 1150px) {
+  table.balance, table.grid-ing, table.grid-mini, table.grid-ing input.cell { font-size: 11px; }
+  table.balance thead th:first-child, table.balance tbody th { width: 150px; }
+  table.balance-informe thead th:first-child, table.balance-informe tbody th { width: 150px; }
+  table.grid-ing thead th:first-child, table.grid-ing tbody th, table.grid-ing tfoot th { width: 120px; }
+  table.tabla-factcheck, table.tabla-factcheck input.cell { font-size: 10.5px; }
+  table.tabla-factcheck thead th.sticky-col, table.tabla-factcheck tbody th, table.tabla-factcheck tfoot th { width: 84px; }
+  table.balance th, table.balance td { padding: 3px 3px; }
+}
+/* tablet vertical y móvil: aquí sí se desplazan las tablas anchas dentro de su recuadro */
+@media (max-width: 860px) { table.grid-ing, table.grid-mini { table-layout: auto; min-width: 1000px; } table.tabla-factcheck { table-layout: auto; min-width: 1200px; } }
+.chart-row > * { min-width: 0; }
+table.tabla-tarifas, table.tabla-costes { min-width: 0; }
+table.tabla-plantillas { min-width: 0; }
+table.tabla-gastos col.c-dia { width: 44px; }
+table.tabla-plantillas tr.inactiva > td:not(:first-child) { opacity: .5; }
+/* la letra la ajusta ajustarAncho(); los campos heredan el tamaño de la tabla */
+table.grid-ing input.cell, table.tabla-factcheck input.cell { font-size: inherit; }
+/* relleno compacto en tablas de cifras (más específico que table.data tbody td) */
+table.data.balance tbody td, table.data.balance tbody th, table.data.balance tfoot td, table.data.balance tfoot th { padding: 3px 5px; }
+table.data.tabla-factcheck tbody td, table.data.tabla-factcheck tbody th, table.data.tabla-factcheck tfoot td, table.data.tabla-factcheck tfoot th { padding: 3px 3px; }
+table.data.grid-ing tbody td { padding: 0; }
+@media (max-width: 1150px) { table.data.balance tbody td, table.data.balance tbody th, table.data.balance tfoot td, table.data.balance tfoot th { padding: 3px 3px; } }
+/* ---------- cabecera fija, cabeceras de tabla fijas y filtros por columna ---------- */
+.cabecera-fija { display: flex; flex-direction: column; gap: 6px; background: var(--bg); }
+@media (min-width: 761px) {
+  .cabecera-fija { position: sticky; top: 0; z-index: 40; padding-top: 6px; box-shadow: 0 1px 0 var(--border); }
+  /* sin scroll lateral en escritorio: "clip" no crea contenedor de scroll, así las cabeceras de tabla se quedan fijas */
+  .table-wrap { overflow-x: clip; }
+  main table.data > thead { position: sticky; top: var(--cab, 0px); z-index: 5; }
+  .card-tabla, .card { overflow: clip; }
+  main table.data > thead th { background: var(--surface-2); box-shadow: inset 0 -1px 0 var(--border); }
+}
+.page { padding-top: 0; }
+.btn-tema { padding: 3px 8px; font-size: 12px; }
+.filters.filters-gastos { grid-template-columns: 3fr 1fr; }
+table.tabla-gastos tr.fila-filtros th { padding: 2px 2px 4px; background: var(--surface-2); text-transform: none; letter-spacing: 0; }
+.ff { width: 100%; min-width: 0; font: 11px var(--font-body); padding: 2px 3px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface); color: var(--text-primary); height: 22px; }
+select.ff { padding-right: 2px; }
+.ff:focus { border-color: var(--accent); outline: none; }
+table.tabla-gastos th .flecha { font-size: 9px; }
+/* ventanas: título fijo al desplazarse dentro */
+.dialog { max-height: 92vh; overflow-y: auto; }
+.dialog > h3:first-child, .dialog > .escaner-cab { position: sticky; top: -20px; margin: -20px -20px 0; padding: 16px 20px 10px; background: var(--surface); z-index: 3; border-bottom: 1px solid var(--border); }

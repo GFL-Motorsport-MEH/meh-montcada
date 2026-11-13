@@ -34,37 +34,67 @@ async function renderPlantillas(cont, ctx) {
     finally { el?.classList.remove('saving'); }
   }
 
+  // Misma presentación que la hoja de Gastos: una línea por plantilla, celdas editables y desplegables
+  const tipos = [...new Set([...(ctx.state.listas || []).filter((x) => x.lista === 'tipo').map((x) => x.valor), ...plantillas.map((p) => p.tipo)].filter(Boolean))];
+  const periodicidades = [...new Set([...(ctx.state.listas || []).filter((x) => x.lista === 'periodicidad').map((x) => x.valor), ...plantillas.map((p) => p.periodicidad)].filter(Boolean))];
+  const varios = ctx.state.centros.length > 1;
+  const COLS = [['c-sel', 'Activa', 'Plantilla activa'], ['c-dia', 'Día', 'Día del mes del pago'], varios ? ['c-centro', 'Centro'] : null, ['c-tipo', 'Tipo'],
+    ['c-emp', 'Empresa / persona'], ['c-conc', 'Concepto', 'En el concepto, {mes} se cambia por el mes'], ['c-cat', 'Categoría'], ['c-sub', 'Subcategoría'],
+    ['c-per', 'Periodicidad'], ['c-met', 'Método'], ['c-imp', 'Importe'], ['c-ico', '']].filter(Boolean);
+
   function fila(p) {
     const txt = (campo, label, attrs = {}) => {
-      const i = h('input', { type: 'text', class: 'cell cell-text', value: p[campo] ?? '', 'aria-label': `${label} · ${p.empresa}`, ...attrs });
+      const i = h('input', { type: 'text', class: 'gc', value: campo === 'cantidad' ? (p[campo] == null ? '' : fmtEUR2(p[campo]).replace(/\s?€/, '')) : (p[campo] ?? ''), 'aria-label': `${label} · ${p.empresa}`, spellcheck: 'false', ...attrs });
       i.addEventListener('keydown', (e) => { if (e.key === 'Enter') i.blur(); });
       i.addEventListener('blur', () => {
         let v = i.value.trim();
-        if (campo === 'cantidad') { v = leerImporte(v); if (Number.isNaN(v)) { i.classList.add('invalid'); toast('Importe no válido', 'error'); return; } i.classList.remove('invalid'); i.value = v == null ? '' : String(v).replace('.', ','); }
+        if (campo === 'cantidad') { v = leerImporte(v); if (Number.isNaN(v)) { i.classList.add('invalid'); toast('Importe no válido', 'error'); return; } i.classList.remove('invalid'); i.value = v == null ? '' : fmtEUR2(v).replace(/\s?€/, ''); }
         if (campo === 'dia_pago') { v = v === '' ? null : Math.min(31, Math.max(1, parseInt(v, 10) || 1)); i.value = v ?? ''; }
         if (campo === 'empresa' && !v) { i.value = p.empresa; return; }
         if ((v ?? null) === (p[campo] ?? null) || (campo === 'cantidad' && num(v) === num(p[campo]) && p[campo] != null)) return;
         guardar(p, { [campo]: v === '' ? null : v }, i).then(() => { if (campo === 'empresa') pintar(); });
       });
-      return h('td', { class: 'cell-td' }, i);
+      return h('td', {}, i);
     };
-    const sub = selectSubcat(ctx, p.subcategoria_id, `Categoría · ${p.empresa}`);
-    sub.addEventListener('change', () => guardar(p, { subcategoria_id: sub.value || null, categoria_id: catDeSub(ctx, sub.value) }, sub));
-    const met = h('select', { 'aria-label': `Método · ${p.empresa}`, class: 'select-celda' }, h('option', { value: '' }, '—'),
-      [...new Set([...metodos, p.metodo_pago].filter(Boolean))].map((m) => h('option', { value: m, selected: m === p.metodo_pago }, m)));
-    met.addEventListener('change', () => guardar(p, { metodo_pago: met.value || null }, met));
-    const cen = ctx.state.centros.length > 1 ? h('select', { 'aria-label': `Centro · ${p.empresa}`, class: 'select-celda' }, h('option', { value: '' }, 'Principal'),
+    const sel = (campo, label, valores, vacio = '—') => {
+      const s0 = h('select', { class: 'gc', 'aria-label': `${label} · ${p.empresa}` }, h('option', { value: '' }, vacio),
+        [...new Set([...valores, p[campo]].filter(Boolean))].map((v) => h('option', { value: v, selected: v === p[campo] }, v)));
+      s0.addEventListener('change', () => guardar(p, { [campo]: s0.value || null }, s0));
+      return h('td', {}, s0);
+    };
+    const catId = p.categoria_id || catDeSub(ctx, p.subcategoria_id);
+    const selCat = h('select', { class: 'gc', 'aria-label': `Categoría · ${p.empresa}` }, h('option', { value: '' }, '—'),
+      ctx.state.taxonomia.map((c) => h('option', { value: c.id, selected: c.id === catId }, tituloCategoria(c.nombre))));
+    const selSub = h('select', { class: 'gc', 'aria-label': `Subcategoría · ${p.empresa}` });
+    const pintarSub = () => {
+      const cat = ctx.state.taxonomia.find((c) => c.id === selCat.value);
+      selSub.replaceChildren(h('option', { value: '' }, cat ? 'Elige…' : '—'), ...(cat ? cat.subcategorias.map((x) => h('option', { value: x.id, selected: x.id === p.subcategoria_id }, x.nombre)) : []));
+      selSub.classList.toggle('falta', !!cat && !selSub.value);
+    };
+    pintarSub();
+    selCat.addEventListener('change', () => { const cat = ctx.state.taxonomia.find((c) => c.id === selCat.value); const unica = cat?.subcategorias.length === 1 ? cat.subcategorias[0].id : null;
+      guardar(p, { categoria_id: selCat.value || null, subcategoria_id: unica }, selCat).then(pintarSub); });
+    selSub.addEventListener('change', () => guardar(p, { subcategoria_id: selSub.value || null, categoria_id: selCat.value || null }, selSub).then(pintarSub));
+    const cen = varios ? h('select', { 'aria-label': `Centro · ${p.empresa}`, class: 'gc' }, h('option', { value: '' }, 'Principal'),
       ctx.state.centros.map((c) => h('option', { value: c.id, selected: c.id === p.centro_id }, ctx.tituloCentro(c.nombre)))) : null;
     cen?.addEventListener('change', () => guardar(p, { centro_id: cen.value || null }, cen));
-    const act = h('input', { type: 'checkbox', checked: p.activo !== false, 'aria-label': `Activa · ${p.empresa}`, onchange: () => guardar(p, { activo: act.checked }) });
-    return h('tr', { class: p.activo === false ? 'inactiva' : '' },
-      h('td', { class: 'center' }, act), txt('empresa', 'Empresa', { list: 'dl-pl-empresa' }), txt('concepto', 'Concepto', { placeholder: 'p.ej. Nómina {mes}' }),
-      txt('cantidad', 'Importe', { class: 'cell', inputmode: 'decimal' }), h('td', { class: 'cell-td' }, sub), h('td', { class: 'cell-td' }, met),
-      txt('dia_pago', 'Día', { class: 'cell cell-dia', inputmode: 'numeric' }), cen ? h('td', { class: 'cell-td' }, cen) : null,
-      h('td', {}, h('button', { class: 'btn ghost small', 'aria-label': `Borrar plantilla ${p.empresa}`, onclick: async () => {
+    const act = h('input', { type: 'checkbox', checked: p.activo !== false, 'aria-label': `Activa · ${p.empresa}`, onchange: () => guardar(p, { activo: act.checked }).then(() => tr.classList.toggle('inactiva', !act.checked)) });
+    const tr = h('tr', { class: p.activo === false ? 'inactiva' : '' },
+      h('td', { class: 'col-check' }, act),
+      txt('dia_pago', 'Día', { inputmode: 'numeric', class: 'gc gc-num' }),
+      cen ? h('td', {}, cen) : null,
+      sel('tipo', 'Tipo', tipos),
+      txt('empresa', 'Empresa', { list: 'dl-pl-empresa' }), txt('concepto', 'Concepto', { placeholder: 'p.ej. Nómina {mes}' }),
+      h('td', {}, selCat), h('td', {}, selSub),
+      sel('periodicidad', 'Periodicidad', periodicidades),
+      sel('metodo_pago', 'Método', metodos),
+      txt('cantidad', 'Importe', { class: 'gc gc-num', inputmode: 'decimal' }),
+      h('td', { class: 'center' }, h('button', { class: 'ib', type: 'button', title: 'Borrar plantilla', 'aria-label': `Borrar plantilla ${p.empresa}`, onclick: async () => {
         if (!(await confirmar({ titulo: 'Borrar plantilla', texto: `Se borrará la plantilla "${p.empresa} · ${p.concepto || ''}". Los gastos ya creados no se tocan.`, ok: 'Borrar', peligro: true }))) return;
         try { await db.borrarPlantilla(p.id); plantillas.splice(plantillas.indexOf(p), 1); pintar(); } catch (ex) { toast(ex.message, 'error'); }
       } }, '✕')));
+    [...tr.children].forEach((td, i) => td.classList.add(COLS[i][0]));
+    return tr;
   }
 
   const totales = {};
@@ -78,7 +108,7 @@ async function renderPlantillas(cont, ctx) {
     for (const [g] of GRUPOS) {
       clear(secciones[g], plantillas.filter((p) => p.grupo === g).length
         ? plantillas.filter((p) => p.grupo === g).map(fila)
-        : h('tr', {}, h('td', { colspan: 9, class: 'empty' }, 'Sin plantillas. Añade una o pulsa "Sugerir desde los gastos".')));
+        : h('tr', {}, h('td', { colspan: 12, class: 'empty' }, 'Sin plantillas. Añade una o pulsa "Sugerir desde los gastos".')));
     }
     pintarTotales();
   }
@@ -114,9 +144,9 @@ async function renderPlantillas(cont, ctx) {
       totales[g] = h('span', { class: 'muted small' });
       return h('section', { class: 'card lista-card' },
         h('div', { class: 'section-head' }, h('div', {}, h('h3', {}, titulo), totales[g]), h('button', { class: 'btn small primary', onclick: () => anadir(g) }, g === 'nomina' ? '+ Añadir nómina' : '+ Añadir gasto mensual')),
-        h('div', { class: 'table-wrap' }, h('table', { class: `data tabla-plantillas pl-${g}` },
-          h('thead', {}, h('tr', {}, ['Activa', 'Empresa / persona', 'Concepto', 'Importe', 'Categoría', 'Método', 'Día'].map((t) => h('th', { scope: 'col' }, t)),
-            ctx.state.centros.length > 1 ? h('th', { scope: 'col' }, 'Centro') : null, h('th', {}))),
+        h('div', { class: 'table-wrap' }, h('table', { class: `data tabla-gastos tabla-plantillas pl-${g}` },
+          h('colgroup', {}, COLS.map(([c]) => h('col', { class: c }))),
+          h('thead', {}, h('tr', {}, COLS.map(([c, t, title]) => h('th', { scope: 'col', class: c + (c === 'c-imp' ? ' num' : ''), title }, t)))),
           secciones[g])));
     }));
   pintar();

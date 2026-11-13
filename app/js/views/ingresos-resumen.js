@@ -2,7 +2,7 @@
 //  - cobros por modalidad de pago y mes (domiciliacion, transferencia, TPV, efectivo, varios)
 //  - numero de alumnos por grupo y mes
 // Las dos tablas son editables (se guarda al salir de la celda), igual que la cuadricula.
-import { h, clear, fmtEUR, fmtPct, num, MESES, MESES_CORTO, capitalizar, toast, descargarCSV } from '../ui.js';
+import { h, clear, ajustarAncho, fmtEUR, fmtPct, num, MESES, MESES_CORTO, capitalizar, toast, descargarCSV } from '../ui.js';
 import * as db from '../db.js';
 
 export const METODOS = ['DOMICILIACION', 'TRANSFERENCIA', 'TPV / TARJETA', 'EFECTIVO', 'VARIOS'];
@@ -39,8 +39,9 @@ function tablaEditable({ titulo, sub, clase, filas, campoFila, campoValor, enter
     for (const f of filas) {
       const t = MESES.reduce((s, m) => s + num(buscar(f, m)?.[campoValor]), 0);
       const td = tbody.querySelector(`td[data-total="${CSS.escape(f)}"]`);
-      if (td) td.textContent = entero ? (t ? `media ${Math.round(t / Math.max(1, MESES.filter((m) => num(buscar(f, m)?.[campoValor])).length))}` : '—')
-        : `${fmtEUR(t)}${anual ? ' · ' + fmtPct(t / anual) : ''}`;
+      if (!td) continue;
+      if (entero) td.textContent = t ? `media ${Math.round(t / Math.max(1, MESES.filter((m) => num(buscar(f, m)?.[campoValor])).length))}` : '—';
+      else clear(td, fmtEUR(t), anual ? h('span', { class: 'line2' }, fmtPct(t / anual)) : null); // el % debajo, para que quepa
     }
   }
 
@@ -99,10 +100,10 @@ function tablaEditable({ titulo, sub, clase, filas, campoFila, campoValor, enter
       h('div', {}, h('h3', {}, titulo), h('div', { class: 'count' }, sub)),
       h('div', { class: 'section-actions' }, h('button', { class: 'btn', onclick: exportar }, 'Exportar CSV'))),
     h('div', { class: 'table-wrap' },
-      h('table', { class: `data grid-ing grid-mini ${clase}` },
+      ajustarAncho(h('table', { class: `data grid-ing grid-mini ${clase}` },
         h('thead', {}, h('tr', {}, h('th', { scope: 'col', class: 'sticky-col' }, entero ? 'Grupo' : 'Modalidad'),
           MESES_CORTO.map((m) => h('th', { scope: 'col', class: 'num' }, m)), h('th', { scope: 'col', class: 'num' }, entero ? 'Media' : 'Total'))),
-        tbody, tfoot)));
+        tbody, tfoot))));
   return { el, pie };
 }
 

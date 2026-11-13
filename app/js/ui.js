@@ -138,3 +138,23 @@ export async function leerHojaArchivo(file) {
   const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
   return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: null });
 }
+
+// ---------- tablas que deben caber sin scroll lateral ----------
+// Si alguna celda (o el texto de un campo) no cabe, baja la letra de la tabla medio punto cada vez (hasta 9 px).
+// Se recalcula cuando cambia el ancho de la tabla (ventana más estrecha o más ancha).
+export function ajustarAncho(tabla, minimo = 8) {
+  if (typeof ResizeObserver === 'undefined') return tabla;
+  let ancho = 0;
+  const desborda = () => [...tabla.querySelectorAll('tbody td, tbody th, tfoot td, tfoot th, input')].some((c) => c.offsetParent && c.scrollWidth > c.clientWidth + 1);
+  const ajustar = () => {
+    tabla.style.fontSize = '';
+    const base = parseFloat(getComputedStyle(tabla).fontSize) || 12;
+    let f = base;
+    while (desborda() && f > minimo) { f -= 0.5; tabla.style.fontSize = `${f}px`; }
+  };
+  new ResizeObserver((entradas) => {
+    const w = Math.round(entradas[0].contentRect.width);
+    if (w && w !== ancho) { ancho = w; requestAnimationFrame(ajustar); }
+  }).observe(tabla);
+  return tabla;
+}

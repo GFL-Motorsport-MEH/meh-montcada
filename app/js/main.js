@@ -110,7 +110,9 @@ function pintarShell() {
   modulosEl = h('nav', { class: 'modulos', 'aria-label': 'Módulos' });
   viewEl = h('main', { id: 'view', style: 'display:flex; flex-direction:column; gap:12px' });
   const inicial = (p.nombre || p.email || '?').trim().charAt(0).toUpperCase();
-  clear(root, h('div', { class: 'page' },
+  const cabecera = h('div', { class: 'cabecera-fija' });
+  clear(root, h('div', { class: 'page' }, cabecera, viewEl));
+  clear(cabecera,
     h('header', { class: 'topbar' },
       h('div', { class: 'brand' }, h('div', { class: 'brand-mark', 'aria-hidden': 'true' }, 'M'),
         h('div', {}, h('div', { class: 'brand-name' }, 'My English House — Montcada'), h('div', { class: 'brand-sub' }, 'Gestión y contabilidad'))),
@@ -119,8 +121,11 @@ function pintarShell() {
         h('div', { class: 'user-chip' }, h('span', { class: 'dot', 'aria-hidden': 'true' }, inicial),
           h('span', {}, `${p.nombre || p.email}${p.rol === 'admin' ? ' · admin' : ''}`),
           h('button', { class: 'btn ghost', onclick: () => renderNuevaPassword(root, { titulo: 'Cambiar contraseña', onDone: async () => { toast('Contraseña cambiada'); await arrancar(); }, onCancel: () => { pintarShell(); pintarVista(); } }) }, 'Contraseña'),
+          botonTema(),
           h('button', { class: 'btn ghost', onclick: salir }, 'Salir')))),
-    tabsEl, viewEl));
+    tabsEl);
+  // altura de la cabecera fija, para que las cabeceras de las tablas se queden justo debajo
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => document.documentElement.style.setProperty('--cab', `${cabecera.offsetHeight}px`)).observe(cabecera);
 }
 
 function centroSelect() {
@@ -129,6 +134,26 @@ function centroSelect() {
     h('option', { value: '' }, 'Todos los centros'),
     state.centros.filter((c) => c.activo !== false || c.id === state.centroId).map((c) => h('option', { value: c.id, selected: c.id === state.centroId }, tituloCentro(c.nombre))));
   return sel;
+}
+// ---------- tema claro / oscuro (Auto = el del sistema) ----------
+const LS_TEMA = 'meh.tema';
+const TEMAS = [['auto', 'Tema automático (el del sistema)', 'Tema: auto'], ['light', 'Tema claro', 'Tema: claro'], ['dark', 'Tema oscuro', 'Tema: oscuro']];
+function aplicarTema(t) {
+  if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+}
+function temaGuardado() { try { return localStorage.getItem(LS_TEMA) || 'auto'; } catch { return 'auto'; } }
+aplicarTema(temaGuardado());
+function botonTema() {
+  const b = h('button', { class: 'btn ghost btn-tema', type: 'button' });
+  const pintar = () => { const t = TEMAS.find((x) => x[0] === temaGuardado()) || TEMAS[0]; b.textContent = t[2]; b.title = `${t[1]} · clic para cambiar`; b.setAttribute('aria-label', t[1]); };
+  b.addEventListener('click', () => {
+    const i = TEMAS.findIndex((x) => x[0] === temaGuardado());
+    const nuevo = TEMAS[(i + 1) % TEMAS.length][0];
+    try { localStorage.setItem(LS_TEMA, nuevo); } catch { /* */ }
+    aplicarTema(nuevo); pintar();
+  });
+  pintar();
+  return b;
 }
 export const tituloCentro = (s) => (s || '').toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
 ctx.tituloCentro = tituloCentro;

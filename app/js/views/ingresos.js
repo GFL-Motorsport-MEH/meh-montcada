@@ -1,6 +1,6 @@
 // Ingresos del curso: una cuadricula grupo/level/tipo x mes, como el resumen de las
 // hojas "20xx.xx Ing" del Excel. Cada celda se edita y se guarda al salir de ella.
-import { h, clear, fmtEUR, fmtEUR2, num, MESES, MESES_CORTO, capitalizar, cargando, toast, descargarCSV } from '../ui.js';
+import { h, clear, ajustarAncho, fmtEUR, fmtEUR2, num, MESES, MESES_CORTO, capitalizar, cargando, toast, descargarCSV } from '../ui.js';
 import { crearIngreso, actualizarIngreso } from '../db.js';
 import { renderResumenIngresos } from './ingresos-resumen.js';
 
@@ -205,14 +205,14 @@ export async function renderIngresos(view, ctx) {
         h('button', { class: 'btn', onclick: exportar }, 'Exportar CSV'),
         h('button', { class: 'btn primary', onclick: anadirFila }, '+ Añadir fila'))),
     h('div', { class: 'table-wrap' },
-      h('table', { class: 'data grid-ing' },
+      ajustarAncho(h('table', { class: 'data grid-ing' },
         h('thead', {}, h('tr', {},
           h('th', { scope: 'col', class: 'sticky-col' }, 'Grupo'),
           h('th', { scope: 'col', class: 'num' }, 'Welcome pack'),
           MESES_CORTO.map((m) => h('th', { scope: 'col', class: 'num' }, m)),
           h('th', { scope: 'col', class: 'num' }, 'Total'))),
         tbody,
-        h('tfoot', {}, h('tr', {}, h('th', { scope: 'row', class: 'sticky-col' }, 'Total'), totalWP, MESES.map((m) => totalesMes[m]), totalGeneral)))),
+        h('tfoot', {}, h('tr', {}, h('th', { scope: 'row', class: 'sticky-col' }, 'Total'), totalWP, MESES.map((m) => totalesMes[m]), totalGeneral))))),
     resumenCont);
   pintarFilas();
   resumen = await renderResumenIngresos(resumenCont, ctx, curso, totalesPorMes);

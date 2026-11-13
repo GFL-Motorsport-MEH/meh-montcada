@@ -112,20 +112,8 @@ export async function renderGastos(view, ctx) {
       h('button', { class: 'btn small ghost', onclick: () => { seleccion.clear(); pintar(); } }, 'Quitar selección'));
   }
 
-  // ---------- filtros ----------
+  // ---------- búsqueda y filtro rápido ----------
   const fQ = h('input', { type: 'search', placeholder: 'Buscar empresa, concepto, nº factura, comentario…', 'aria-label': 'Buscar', oninput: () => { f.q = fQ.value; limite = POR_PAGINA; pintar(); } });
-  const fCat = h('select', { 'aria-label': 'Categoría', onchange: () => { f.cat = fCat.value; f.sub = ''; pintarSubs(); limite = POR_PAGINA; pintar(); } },
-    h('option', { value: '' }, 'Todas las categorías'),
-    taxonomia.map((c) => h('option', { value: c.id }, tituloCategoria(c.nombre))));
-  const fSub = h('select', { 'aria-label': 'Subcategoría', onchange: () => { f.sub = fSub.value; limite = POR_PAGINA; pintar(); } });
-  function pintarSubs() {
-    const cat = catPorId.get(f.cat);
-    fSub.replaceChildren(h('option', { value: '' }, 'Todas las subcategorías'), ...(cat ? cat.subcategorias.map((s) => h('option', { value: s.id }, s.nombre)) : []));
-    fSub.disabled = !cat;
-  }
-  pintarSubs();
-  const fMes = h('select', { 'aria-label': 'Mes', onchange: () => { f.mes = fMes.value; limite = POR_PAGINA; pintar(); } },
-    h('option', { value: '' }, 'Todos los meses'), MESES.map((m) => h('option', { value: m }, `${capitalizar(m)} (${etiquetaContable(m)})`)));
   const fEstado = h('select', { 'aria-label': 'Estado', onchange: () => { f.estado = fEstado.value; limite = POR_PAGINA; pintar(); } },
     h('option', { value: '' }, 'Cualquier estado'),
     h('option', { value: 'sin_pago' }, 'Pendientes de pago'),
@@ -138,48 +126,102 @@ export async function renderGastos(view, ctx) {
   const titulo = h('div', { class: 'count' });
   const tbody = h('tbody');
   const pie = h('div', { class: 'table-foot' });
-  const thOrden = (label, campo, cls = '', title) => {
-    const flecha = h('span', { 'aria-hidden': 'true' });
-    const th = h('th', { class: 'sortable ' + cls, scope: 'col', tabindex: '0', 'aria-sort': 'none', title }, label, flecha);
-    th.addEventListener('click', () => { orden = { campo, asc: orden.campo === campo ? !orden.asc : ['empresa', 'concepto'].includes(campo) }; pintar(); });
-    th.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); th.click(); } });
-    th._campo = campo; th._flecha = flecha;
-    return th;
-  };
-  const th = (label, cls = '', title) => h('th', { scope: 'col', class: cls, title }, label);
-  // columnas: [clase de <col>, cabecera]
-  const COLS = [
-    ['c-sel', h('th', { scope: 'col', class: 'col-check' }, chkTodos)],
-    ['c-fecha', thOrden('F. fact.', 'fecha_factura', '', 'Fecha de la factura')],
-    ['c-cont', thOrden('Contab.', 'mes', '', 'Fecha contable: mes y año en que se contabiliza')],
-    conCentro ? ['c-centro', th('Centro')] : null,
-    ['c-tipo', th('Tipo')],
-    ['c-emp', thOrden('Empresa', 'empresa')],
-    ['c-nfac', th('Nº factura')],
-    ['c-conc', thOrden('Concepto', 'concepto')],
-    ['c-cat', th('Categoría')],
-    ['c-sub', th('Subcategoría')],
-    ['c-per', th('Periodicidad')],
-    ['c-met', th('Método')],
-    ['c-imp', thOrden('Importe', 'cantidad', 'num')],
-    ['c-fecha c-fpago', thOrden('F. pago', 'fecha_pago', '', 'Fecha de pago')],
-    ['c-tick', th('Pago', 'center', 'Pagado')],
-    ['c-tick', th('Banco', 'center', 'Comprobado en el extracto del banco')],
-    ['c-tick', th('Gest.', 'center', 'Factura enviada a la gestoría (FISCONTAL)')],
-    ['c-ico', h('th', { scope: 'col', class: 'center', title: 'Factura adjunta' }, svg(ICO.doc))],
-    ['c-ico', h('th', { scope: 'col', class: 'center', title: 'Comentarios' }, svg(ICO.coment))],
-    ['c-ico', th('', 'center')],
+
+  // ---------- columnas: cabecera, orden y filtro de cada una ----------
+  const nomCat = (g) => tituloCategoria(catPorId.get(g.categoria_id)?.nombre || g.categoria_texto || '');
+  const nomSub = (g) => subPorId.get(g.subcategoria_id)?.nombre || g.subcategoria_texto || '';
+  const estadoFactura = (g) => (g.sin_factura ? 'sf' : g.link_factura ? 'con' : 'sin');
+  const siNo = [['', 'Todos'], ['si', '✓'], ['no', '✗']];
+  const texto = (fn) => ({ tipo: 'texto', valor: fn });
+  const lista = (opciones, fn, aria) => ({ tipo: 'select', opciones, valor: fn, aria });
+  const COLDEF = [
+    { cls: 'c-sel', th: () => h('th', { scope: 'col', class: 'col-check' }, chkTodos) },
+    { cls: 'c-fecha', label: 'F. fact.', title: 'Fecha de la factura', orden: (g) => g.fecha_factura || '', filtro: texto((g) => `${fmtFechaCorta(g.fecha_factura)} ${fmtFecha(g.fecha_factura)}`) },
+    { cls: 'c-cont', label: 'Contab.', title: 'Fecha contable: mes y año en que se contabiliza', orden: (g) => MESES.indexOf(g.mes), filtro: lista(MESES.map((m) => [m, etiquetaContable(m)]), (g) => g.mes || mesDeFecha(g.fecha_pago || g.fecha_factura), 'Mes') },
+    conCentro ? { cls: 'c-centro', label: 'Centro', orden: (g) => nombreCentro.get(g.centro_id) || '', filtro: lista(state.centros.map((c) => [c.id, ctx.tituloCentro(c.nombre)]), (g) => g.centro_id || ctx.centroPrincipal()?.id, 'Filtro centro') } : null,
+    { cls: 'c-tipo', label: 'Tipo', orden: (g) => g.tipo || '', filtro: lista(LISTAS.tipo.map((v) => [v, v]), (g) => g.tipo, 'Filtro tipo') },
+    { cls: 'c-emp', label: 'Empresa', orden: (g) => g.empresa || '', filtro: texto((g) => g.empresa) },
+    { cls: 'c-nfac', label: 'Nº factura', orden: (g) => g.factura_nr || '', filtro: texto((g) => g.factura_nr) },
+    { cls: 'c-conc', label: 'Concepto', orden: (g) => g.concepto || '', filtro: texto((g) => g.concepto) },
+    { cls: 'c-cat', label: 'Categoría', orden: nomCat, filtro: lista(taxonomia.map((c) => [c.id, tituloCategoria(c.nombre)]), (g) => g.categoria_id, 'Categoría') },
+    { cls: 'c-sub', label: 'Subcategoría', orden: nomSub, filtro: lista([], (g) => g.subcategoria_id, 'Subcategoría') },
+    { cls: 'c-per', label: 'Periodicidad', orden: (g) => g.periodicidad || '', filtro: lista(LISTAS.periodicidad.map((v) => [v, v]), (g) => g.periodicidad, 'Filtro periodicidad') },
+    { cls: 'c-met', label: 'Método', orden: (g) => g.metodo_pago || '', filtro: lista(LISTAS.metodo_pago.map((v) => [v, v]), (g) => g.metodo_pago, 'Filtro método') },
+    { cls: 'c-imp', label: 'Importe', clsTh: 'num', orden: (g) => num(g.cantidad), filtro: { tipo: 'importe', valor: (g) => num(g.cantidad) } },
+    { cls: 'c-fecha c-fpago', label: 'F. pago', title: 'Fecha de pago', orden: (g) => g.fecha_pago || '', filtro: texto((g) => `${fmtFechaCorta(g.fecha_pago)} ${fmtFecha(g.fecha_pago)}`) },
+    { cls: 'c-tick', label: 'Pago', clsTh: 'center', title: 'Pagado', orden: (g) => (esVerdad(g.pago) ? 1 : 0), filtro: lista(siNo.slice(1), (g) => (esVerdad(g.pago) ? 'si' : 'no'), 'Filtro pagado') },
+    { cls: 'c-tick', label: 'Banco', clsTh: 'center', title: 'Comprobado en el extracto del banco', orden: (g) => (g.check_banca ? 1 : 0), filtro: lista(siNo.slice(1), (g) => (g.check_banca ? 'si' : 'no'), 'Filtro banco') },
+    { cls: 'c-tick', label: 'Gest.', clsTh: 'center', title: 'Factura enviada a la gestoría (FISCONTAL)', orden: (g) => (esVerdad(g.fiscontal) ? 1 : 0), filtro: lista(siNo.slice(1), (g) => (esVerdad(g.fiscontal) ? 'si' : 'no'), 'Filtro gestoría') },
+    { cls: 'c-ico', icono: ICO.doc, title: 'Factura adjunta', orden: (g) => ({ con: 2, sf: 1, sin: 0 })[estadoFactura(g)], filtro: lista([['con', 'Adjunta'], ['sin', 'Sin adjuntar'], ['sf', 'Sin factura']], estadoFactura, 'Filtro factura') },
+    { cls: 'c-ico', icono: ICO.coment, title: 'Comentarios', orden: (g) => ((g.comentarios || '').trim() ? 1 : 0), filtro: lista([['si', 'Con comentario'], ['no', 'Sin comentario']], (g) => ((g.comentarios || '').trim() ? 'si' : 'no'), 'Filtro comentarios') },
+    { cls: 'c-ico', limpiar: true },
   ].filter(Boolean);
-  const ths = COLS.map((c) => { c[1].classList.add(...c[0].split(' ')); return c[1]; });
+  const COLS = COLDEF.map((c) => [c.cls]);
+  const cf = new Map(); // filtros por columna: índice -> valor
+  const controlesFiltro = [];
+
+  const ths = COLDEF.map((c, i) => {
+    if (c.th) { const t = c.th(); t.classList.add(...c.cls.split(' ')); return t; }
+    const flecha = h('span', { 'aria-hidden': 'true', class: 'flecha' });
+    const contenido = c.icono ? svg(c.icono) : c.label || '';
+    const t = h('th', { scope: 'col', class: `${c.cls} ${c.clsTh || ''} ${c.orden ? 'sortable' : ''}`, title: c.title ? `${c.title}${c.orden ? ' · clic para ordenar' : ''}` : (c.orden ? 'Clic para ordenar' : null), tabindex: c.orden ? '0' : null, 'aria-sort': c.orden ? 'none' : null }, contenido, flecha);
+    if (c.orden) {
+      t.addEventListener('click', () => { orden = { campo: i, asc: orden.campo === i ? !orden.asc : !['c-fecha', 'c-imp', 'c-cont'].some((k) => c.cls.includes(k)) }; pintar(); });
+      t.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); t.click(); } });
+      t._col = i; t._flecha = flecha;
+    }
+    return t;
+  });
+  orden = { campo: 1, asc: false }; // por defecto: fecha de factura, más reciente primero
+
+  const alFiltrar = () => { limite = POR_PAGINA; pintar(); };
+  const filaFiltros = COLDEF.map((c, i) => {
+    const t = h('th', { class: `${c.cls} th-filtro` });
+    if (c.limpiar) {
+      t.append(h('button', { type: 'button', class: 'ib', title: 'Quitar todos los filtros', 'aria-label': 'Quitar todos los filtros', onclick: () => {
+        cf.clear(); f.q = ''; fQ.value = ''; f.estado = ''; fEstado.value = ''; controlesFiltro.forEach((x) => { x.value = ''; }); pintarSubsFiltro(); alFiltrar();
+      } }, '✕'));
+      return t;
+    }
+    if (!c.filtro) return t;
+    let ctl;
+    if (c.filtro.tipo === 'select') {
+      ctl = h('select', { class: 'ff', 'aria-label': c.filtro.aria }, h('option', { value: '' }, /c-tick|c-ico/.test(c.cls) ? '–' : c.cls === 'c-cat' ? 'Todas' : 'Todos'), c.filtro.opciones.map(([v, l]) => h('option', { value: v }, l)));
+      ctl.addEventListener('change', () => { if (ctl.value) cf.set(i, ctl.value); else cf.delete(i); if (c.cls === 'c-cat') { cf.delete(iSub); pintarSubsFiltro(); } alFiltrar(); });
+    } else {
+      ctl = h('input', { type: 'search', class: 'ff', placeholder: c.filtro.tipo === 'importe' ? '>100' : 'Filtrar', title: c.filtro.tipo === 'importe' ? 'Ejemplos: 100 · >100 · <50 · 100-200' : 'Contiene…', 'aria-label': `Filtro ${c.label}` });
+      ctl.addEventListener('input', () => { const v = ctl.value.trim(); if (v) cf.set(i, v); else cf.delete(i); alFiltrar(); });
+    }
+    controlesFiltro.push(ctl);
+    t.append(ctl);
+    return t;
+  });
+  const iCat = COLDEF.findIndex((c) => c.cls === 'c-cat'), iSub = COLDEF.findIndex((c) => c.cls === 'c-sub');
+  const selSubFiltro = filaFiltros[iSub].querySelector('select');
+  function pintarSubsFiltro() {
+    const cat = catPorId.get(cf.get(iCat));
+    const subs = cat ? cat.subcategorias : [];
+    selSubFiltro.replaceChildren(h('option', { value: '' }, 'Todas'), ...subs.map((x) => h('option', { value: x.id }, x.nombre)));
+    selSubFiltro.disabled = !cat;
+  }
+  pintarSubsFiltro();
+
+  function pasaImporte(v, expr) {
+    const n = (t) => Number(String(t).replace(/\s|€/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'));
+    let m;
+    if ((m = expr.match(/^([<>]=?)\s*(.+)$/))) { const x = n(m[2]); return m[1] === '>' ? v > x : m[1] === '>=' ? v >= x : m[1] === '<' ? v < x : v <= x; }
+    if ((m = expr.match(/^(.+?)\s*-\s*(.+)$/)) && Number.isFinite(n(m[1])) && Number.isFinite(n(m[2]))) return v >= n(m[1]) && v <= n(m[2]);
+    return fmtEUR2(v).includes(expr) || (Number.isFinite(n(expr)) && Math.abs(v - n(expr)) < 0.005);
+  }
 
   function filtrados() {
     const q = normalizar(f.q.trim());
     const enCentro = new Set(ctx.filtrarCentro(gastos));
+    const activos = [...cf.entries()].map(([i, v]) => [COLDEF[i].filtro, v, normalizar(v)]);
+    const c = COLDEF[orden.campo];
+    const dir = orden.asc ? 1 : -1;
     return gastos.filter((g) => {
       if (!enCentro.has(g)) return false;
-      if (f.cat && g.categoria_id !== f.cat) return false;
-      if (f.sub && g.subcategoria_id !== f.sub) return false;
-      if (f.mes && (g.mes || mesDeFecha(g.fecha_pago || g.fecha_factura)) !== f.mes) return false;
       if (f.estado === 'sin_pago' && esVerdad(g.pago)) return false;
       if (f.estado === 'sin_banca' && g.check_banca) return false;
       if (f.estado === 'sin_gestoria' && esVerdad(g.fiscontal)) return false;
@@ -187,13 +229,16 @@ export async function renderGastos(view, ctx) {
       if (f.estado === 'sin_link' && (g.link_factura || g.sin_factura)) return false;
       if (f.estado === 'comentarios' && !(g.comentarios || '').trim()) return false;
       if (q && !normalizar(`${g.empresa} ${g.concepto} ${g.factura_nr} ${g.comentarios} ${g.cantidad}`).includes(q)) return false;
+      for (const [fl, v, vn] of activos) {
+        if (fl.tipo === 'select' && fl.valor(g) !== v) return false;
+        if (fl.tipo === 'texto' && !normalizar(fl.valor(g) || '').includes(vn)) return false;
+        if (fl.tipo === 'importe' && !pasaImporte(fl.valor(g), v)) return false;
+      }
       return true;
     }).sort((a, b) => {
-      const { campo, asc } = orden;
-      let va = a[campo], vb = b[campo];
-      if (campo === 'cantidad') { va = num(va); vb = num(vb); } else if (campo === 'mes') { va = MESES.indexOf(va); vb = MESES.indexOf(vb); } else { va = (va || '').toString().toLowerCase(); vb = (vb || '').toString().toLowerCase(); }
-      const c = va < vb ? -1 : va > vb ? 1 : 0;
-      return asc ? c : -c;
+      let va = c.orden(a), vb = c.orden(b);
+      if (typeof va === 'string') return dir * va.localeCompare(vb, 'es', { sensitivity: 'base', numeric: true }) || (b.fecha_factura || '').localeCompare(a.fecha_factura || '');
+      return dir * (va - vb) || (b.fecha_factura || '').localeCompare(a.fecha_factura || '');
     });
   }
 
@@ -358,8 +403,8 @@ export async function renderGastos(view, ctx) {
     const lista = filtrados();
     listaActual = lista;
     actualizarTotales();
-    for (const t of ths) if (t._campo) {
-      const activo = t._campo === orden.campo;
+    for (const t of ths) if (t._col !== undefined) {
+      const activo = t._col === orden.campo;
       t.setAttribute('aria-sort', activo ? (orden.asc ? 'ascending' : 'descending') : 'none');
       t._flecha.textContent = activo ? (orden.asc ? ' ▲' : ' ▼') : '';
     }
@@ -417,11 +462,11 @@ export async function renderGastos(view, ctx) {
         h('button', { class: 'btn', onclick: () => generarGastosDelMes(ctx, { curso, gastos, onCreados: (creados) => { gastos.unshift(...creados); ctx.setGastos(curso.id, gastos); pintar(); } }) }, 'Generar gastos del mes'),
         h('button', { class: 'btn', onclick: () => abrirEscaner(ctx, { gastos, onDatos: (inicial) => nuevoGasto(inicial) }) }, 'Escanear factura'),
         h('button', { class: 'btn primary', onclick: () => nuevoGasto() }, '+ Nuevo gasto'))),
-    h('div', { class: 'filters' }, h('div', { class: 'search' }, fQ), fCat, fSub, fMes, fEstado),
+    h('div', { class: 'filters filters-gastos' }, h('div', { class: 'search' }, fQ), fEstado),
     barra, empresasDL,
     h('div', { class: 'table-wrap' }, h('table', { class: 'data tabla-gastos' + (conCentro ? ' con-centro' : '') },
       h('colgroup', {}, COLS.map(([c]) => h('col', { class: c }))),
-      h('thead', {}, h('tr', {}, ths)), tbody)),
+      h('thead', {}, h('tr', {}, ths), h('tr', { class: 'fila-filtros' }, filaFiltros)), tbody)),
     pie);
   pintar();
 }
