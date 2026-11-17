@@ -17,6 +17,9 @@ class Q {
   select(cols, opts) { if (this.op === 'select') this.op = 'select'; this.ret = true; this.countOpt = opts && opts.count; this.head = opts && opts.head; return this; }
   eq(c, v) { this.filters.push([c, v]); return this; }
   in(c, vs) { this.filters.push([c, { in: vs }]); return this; }
+  gte(c, v) { this.filters.push([c, { gte: v }]); return this; }
+  lte(c, v) { this.filters.push([c, { lte: v }]); return this; }
+  limit(n) { this.lim = n; return this; }
   order(c, o = {}) { this.orders.push([c, o.ascending !== false]); return this; }
   range(a, b) { this.rng = [a, b]; return this; }
   maybeSingle() { this.single_ = 'maybe'; return this; }
@@ -35,12 +38,13 @@ class Q {
     const activo = habil && !escaner; // ve todo
     const editor = activo && ['admin', 'empleado'].includes(yo.rol);
     const admin = activo && yo.rol === 'admin';
-    let rows = db[this.t];
-    const match = (r) => this.filters.every(([c, v]) => (v && v.in ? v.in.includes(r[c]) : r[c] === v));
+    let rows = db[this.t] ||= [];
+    const match = (r) => this.filters.every(([c, v]) => (v && v.in ? v.in.includes(r[c]) : v && v.gte !== undefined ? (r[c] ?? '') >= v.gte : v && v.lte !== undefined ? (r[c] ?? '') <= v.lte : r[c] === v));
     const MAESTRAS = ['cursos', 'categorias', 'subcategorias', 'centros', 'listas'];
     if (escaner && MAESTRAS.includes(this.t)) { /* las ve */ }
     else if (escaner && this.t === 'gastos') rows = rows.filter((r) => r.created_by === yo.id && r.revisado === false);
     else if (this.t !== 'profiles' && !activo) rows = [];
+    if (this.t === 'auditoria' && !admin) rows = [];
     if (this.t === 'profiles' && !admin) rows = rows.filter((r) => r.id === session.user.id);
     if (this.op === 'insert') {
       const okEscaner = escaner && this.t === 'gastos';
@@ -89,6 +93,7 @@ class Q {
     }
     const [a, b] = this.rng || [0, PAGE_MAX - 1];
     out = out.slice(a, Math.min(b, a + PAGE_MAX - 1) + 1);
+    if (this.lim) out = out.slice(0, this.lim);
     out = out.map((r) => ({ ...r })); // copias, como el servidor real
     if (this.single_) return { data: out[0] || null, error: null };
     if (this.head) return { data: null, count: out.length, error: null };
@@ -101,7 +106,8 @@ export function createClient() {
     from: (t) => new Q(t),
     storage: {
       from: (bucket) => ({
-        async upload(path, file) { (window.__mock.subidas ||= []).push({ bucket, path, name: file.name, size: file.size }); return { data: { path }, error: null }; },
+        async upload(path, file) { (window.__mock.subidas ||= []).push({ bucket, path, name: file.name, size: file.size }); (window.__mock.archivos ||= {})[`${bucket}/${path}`] = file; return { data: { path }, error: null }; },
+        async download(path) { const f = (window.__mock.archivos || {})[`${bucket}/${path}`]; return f ? { data: f, error: null } : { data: new Blob([`%PDF-1.4 prueba ${path}`], { type: 'application/pdf' }), error: null }; },
         async createSignedUrl(path) { return { data: { signedUrl: `about:blank#${bucket}/${path}` }, error: null }; },
       }),
     },
@@ -139,6 +145,13 @@ export function createClient() {
         return { data: l.slice(0, 1), error: null };
       }
       if (!(yo && yo.activo && yo.rol === 'admin')) return { data: null, error: { message: 'Solo un administrador puede cambiar las listas' } };
+      if (fn === 'auditoria_restaurar') {
+        const r = (db.auditoria || []).find((x) => x.id === args.p_id);
+        const fila = db[r.tabla].find((x) => String(x.id) === r.registro_id);
+        if (r.accion === 'UPDATE' && fila) { Object.assign(fila, r.antes); return { data: 'Valores anteriores repuestos', error: null }; }
+        if (r.accion === 'DELETE') { db[r.tabla].push({ ...r.antes }); return { data: 'Registro recuperado', error: null }; }
+        return { data: 'Nada que restaurar', error: null };
+      }
       if (fn === 'renombrar_valor_lista') {
         const { p_lista: l, p_anterior: a, p_nuevo: n } = args;
         let c = 0;

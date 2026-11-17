@@ -3,7 +3,7 @@ import { h, clear, fmtEUR2, fmtFecha, num, normalizar, cargando, descargarCSV, t
 import * as db from '../db.js';
 import { botonSubirFactura } from '../factura-archivo.js';
 
-const SECCIONES = [['faltafact', 'Facturas pendientes'], ['conciliacion', 'Conciliación bancaria'], ['factcheck', 'FactCheck'], ['notas', 'Notas']];
+const SECCIONES = [['faltafact', 'Facturas pendientes'], ['gestoria', 'Gestoría'], ['conciliacion', 'Conciliación bancaria'], ['factcheck', 'FactCheck'], ['notas', 'Notas']];
 const LS = 'meh.control';
 const leerPref = () => { try { return localStorage.getItem(LS) || 'faltafact'; } catch { return 'faltafact'; } };
 const guardarPref = (v) => { try { localStorage.setItem(LS, v); } catch { /* sin almacenamiento */ } };

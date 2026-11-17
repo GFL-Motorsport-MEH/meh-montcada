@@ -635,3 +635,38 @@ td.celda-fecha { position: relative; }
 .mini-resumen .mr-sin_link:not(.cero) { background: var(--falta-fra-bg); }
 @media (max-width: 1500px) { .mini-resumen .mr-sin_pago { display: none; } }
 @media (max-width: 760px) { .mini-resumen { display: none; } }
+
+/* ---------- Control > Gestoría ---------- */
+.gestoria { display: grid; gap: 12px; }
+.gestoria-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 12px; align-items: start; }
+@media (max-width: 900px) { .gestoria-grid { grid-template-columns: minmax(0, 1fr); } }
+.gestoria h3 { margin: 0 0 6px; font-size: 15px; }
+.checklist { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 3px; font-size: 13px; }
+.checklist li { display: flex; gap: 8px; align-items: baseline; }
+.checklist .chk-ico { width: 16px; flex: none; font-weight: 700; text-align: center; }
+.checklist li.ok .chk-ico { color: var(--good); }
+.checklist li.falta { color: var(--critical); }
+.checklist li.aviso .chk-ico { color: var(--warning); }
+.gestoria .acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.gestoria .campo-bloque { display: grid; gap: 4px; margin-top: 8px; }
+.gestoria textarea { width: 100%; box-sizing: border-box; font: inherit; }
+.notas-gestoria { list-style: none; padding: 0; margin: 6px 0; display: grid; gap: 4px; }
+.notas-gestoria li.hecha { color: var(--text-muted); text-decoration: line-through; }
+.fila-nota { display: flex; gap: 6px; margin-top: 6px; }
+.fila-nota input { flex: 1; min-width: 0; }
+.cuentas-estado { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 8px; }
+.tabla-extractos tr.en-periodo td { background: color-mix(in oklab, var(--good) 7%, transparent); }
+.envios { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; font-size: 13px; }
+.form-extracto { display: grid; gap: 8px; }
+.form-extracto label { display: grid; gap: 3px; font-size: 13px; }
+.form-extracto label.check { display: flex; }
+.form-extracto .fila-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.error-texto { color: var(--critical); }
+.btn-link { background: none; border: 0; padding: 0; color: var(--accent, #2563eb); cursor: pointer; text-decoration: underline; font: inherit; }
+/* ---------- Historial ---------- */
+.tabla-historial td { vertical-align: top; font-size: 12px; }
+.tabla-historial .cambio { display: grid; gap: 1px; }
+.tabla-historial .antes { color: var(--critical); text-decoration: line-through; }
+.tabla-historial .despues { color: var(--good); }
+.gestoria-filtros { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.gestoria-filtros input[type=month] { width: auto; }

@@ -395,3 +395,71 @@ export async function adminUsuarios(cuerpo) {
 export async function actualizarPerfil(id, cambios) {
   return check(await supabase.from('profiles').update(cambios).eq('id', id).select('*').single());
 }
+
+// ---------- gestoría: extractos, envíos y notas ----------
+const EXT_COLS = 'id,cuenta_id,fecha_desde,fecha_hasta,archivo_pdf,nombre_pdf,archivo_n43,nombre_n43,saldo_inicial,saldo_final,movimientos,notas,created_at';
+export async function getExtractos() {
+  return check(await supabase.from('extractos').select(EXT_COLS).order('fecha_hasta', { ascending: false }));
+}
+export async function crearExtracto(datos) {
+  return check(await supabase.from('extractos').insert(datos).select(EXT_COLS).single());
+}
+export async function actualizarExtracto(id, cambios) {
+  return check(await supabase.from('extractos').update(cambios).eq('id', id).select(EXT_COLS).single());
+}
+export async function subirArchivoGestoria(file, carpeta) {
+  const nombre = file.name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w.\-]+/g, '_').slice(-90);
+  const ruta = `${carpeta.replace(/[^\w.\-/]+/g, '_')}/${Date.now()}-${nombre}`;
+  const { error } = await supabase.storage.from('gestoria').upload(ruta, file, { contentType: file.type || 'application/octet-stream', upsert: false });
+  if (error) throw new Error(traducirError(error));
+  return ruta;
+}
+// Descarga un archivo de Storage como Blob (bucket "facturas" o "gestoria")
+export async function descargarArchivo(bucket, ruta) {
+  const { data, error } = await supabase.storage.from(bucket).download(ruta);
+  if (error) throw new Error(traducirError(error));
+  return data;
+}
+export async function urlArchivo(bucket, ruta) {
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(ruta, 600);
+  if (error) throw new Error(traducirError(error));
+  return data.signedUrl;
+}
+const ENV_COLS = 'id,periodo,estado,fecha_envio,incompleto,faltaba,notas,updated_at';
+export async function getEnvios() {
+  return check(await supabase.from('gestoria_envios').select(ENV_COLS).order('periodo', { ascending: false }));
+}
+export async function guardarEnvio(periodo, cambios) {
+  return check(await supabase.from('gestoria_envios').upsert({ periodo, ...cambios }, { onConflict: 'periodo' }).select(ENV_COLS).single());
+}
+const GN_COLS = 'id,periodo,texto,hecho,created_at';
+export async function getGestoriaNotas() {
+  return check(await supabase.from('gestoria_notas').select(GN_COLS).order('created_at', { ascending: true }));
+}
+export async function crearGestoriaNota(datos) {
+  return check(await supabase.from('gestoria_notas').insert(datos).select(GN_COLS).single());
+}
+export async function actualizarGestoriaNota(id, cambios) {
+  return check(await supabase.from('gestoria_notas').update(cambios).eq('id', id).select(GN_COLS).single());
+}
+// Marca gastos como enviados a la gestoría (FISCONTAL) con la fecha de envío
+export async function marcarGastosGestoria(ids, fecha) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += 100) out.push(...check(await supabase.from('gastos').update({ fiscontal: 'True', fiscontal_fecha: fecha }).in('id', ids.slice(i, i + 100)).select(GASTO_COLS)));
+  return out;
+}
+
+// ---------- historial de cambios y copia de seguridad ----------
+export async function getAuditoria({ tabla = '', desde = '', hasta = '', limite = 500 } = {}) {
+  let q = supabase.from('auditoria').select('id,at,usuario,tabla,registro_id,accion,antes,despues,restaurado_de').order('id', { ascending: false }).limit(limite);
+  if (tabla) q = q.eq('tabla', tabla);
+  if (desde) q = q.gte('at', desde);
+  if (hasta) q = q.lte('at', hasta);
+  return check(await q);
+}
+export async function restaurarAuditoria(id) {
+  return check(await supabase.rpc('auditoria_restaurar', { p_id: id }));
+}
+export async function exportarTabla(tabla) {
+  return selectAll(tabla, '*', (q) => q);
+}

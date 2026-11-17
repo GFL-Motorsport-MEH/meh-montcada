@@ -2,7 +2,7 @@
 import { h, clear, fmtEUR2, fmtFecha, num, normalizar, cargando, descargarCSV, toast, confirmar, hoyISO } from '../ui.js';
 import * as db from '../db.js';
 
-const SECCIONES = [['empresas', 'Empresas'], ['listas', 'Listas'], ['centros', 'Centros'], ['plantillas', 'Plantillas de gastos']];
+const SECCIONES_BASE = [['empresas', 'Empresas'], ['listas', 'Listas'], ['centros', 'Centros'], ['plantillas', 'Plantillas de gastos']];
 const LS = 'meh.config';
 const leerPref = () => { try { return localStorage.getItem(LS) || 'empresas'; } catch { return 'empresas'; } };
 const guardarPref = (v) => { try { localStorage.setItem(LS, v); } catch { /* sin almacenamiento */ } };
@@ -121,6 +121,7 @@ async function renderEmpresas(cont, ctx) {
 }
 
 export async function renderConfig(view, ctx) {
+  const SECCIONES = [...SECCIONES_BASE, ctx.esAdmin() ? ['historial', 'Historial y copias'] : null].filter(Boolean);
   let sec = leerPref();
   if (!SECCIONES.some(([id]) => id === sec)) sec = 'empresas';
   const seg = h('div', { class: 'segmented', role: 'tablist', 'aria-label': 'Sección de configuración' });

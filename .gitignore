@@ -11,3 +11,5 @@ test/shots/
 .netlify/
 __pycache__/
 test/*.pdf
+test/*.zip
+test/extracto_junio.*

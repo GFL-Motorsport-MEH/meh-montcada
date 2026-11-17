@@ -19,6 +19,8 @@ import './views/plantillas.js';
 import './views/conciliacion.js';
 import './views/factcheck.js';
 import './views/notas-datos.js';
+import './views/gestoria.js';
+import './views/historial.js';
 
 const root = document.getElementById('app');
 const LS_CURSO = 'meh.curso';
@@ -44,6 +46,11 @@ const ctx = {
   async ingresos(cursoId) {
     if (!state.ingresos.has(cursoId)) state.ingresos.set(cursoId, await db.getIngresos(cursoId));
     return state.ingresos.get(cursoId);
+  },
+  // Olvida los datos cargados (p.ej. tras restaurar un cambio del historial) para que se vuelvan a leer
+  limpiarCache() {
+    state.gastos.clear(); state.ingresos.clear();
+    Object.assign(state, { facturacion: null, movimientos: null, empresas: null, plantillas: null, sugerencias: null });
   },
   async empresas() {
     if (!state.empresas) state.empresas = await db.getEmpresas();
