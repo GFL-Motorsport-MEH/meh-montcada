@@ -1,7 +1,7 @@
 // Escáner de facturas: lee un PDF o una foto, saca proveedor, NIF, fecha, nº e importe, y propone el gasto
 // completando la clasificación con la del último gasto de ese proveedor. Todo se hace en el navegador.
 import { h, clear, toast, fmtEUR2, fmtFecha, mesDeFecha, normalizar, num } from '../ui.js';
-import { subirFactura } from '../db.js';
+import { subirFactura, escanerProveedores, escanerSugerencia, escanerDuplicado } from '../db.js';
 import { analizarFactura, rutaSugerida } from '../escaner-parse.js';
 
 const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs';
@@ -83,49 +83,29 @@ async function ocr(canvas, progreso) {
   } finally { await worker.terminate(); }
 }
 
-// Proveedores conocidos (de los gastos de todos los cursos y de Configuración > Empresas) con su NIF si se sabe
-function conocidasDe(gastos, empresas) {
-  const m = new Map();
-  for (const e of empresas || []) m.set(normalizar(e.nombre_comercial), { nombre: e.nombre_comercial, nif: e.cif || null });
-  for (const g of gastos) {
-    if (!g.empresa) continue;
-    const k = normalizar(g.empresa.trim());
-    const x = m.get(k) || { nombre: g.empresa.trim(), nif: null };
-    if (!x.nif && g.nif && String(g.nif).length > 6) x.nif = g.nif;
-    m.set(k, x);
-  }
-  return [...m.values()];
-}
-
 const CONF = { alta: ['ok', 'Seguro'], media: ['warn', 'Revisar'], baja: ['bad', 'Dudoso'] };
 
-export async function abrirEscaner(ctx, { gastos: gastosCurso, onDatos }) {
+// Monta el escáner dentro de un contenedor. Al terminar llama a onDatos(datos, info) con el gasto propuesto
+// (los datos leídos + la clasificación del último gasto del proveedor) y el archivo ya subido.
+export function montarEscaner(cuerpo, ctx, { onDatos, onCerrar = () => {}, textoBoton = 'Revisar y crear el gasto' }) {
   const { state } = ctx;
   let cerrado = false;
-  const cuerpo = h('div', { class: 'escaner-cuerpo' });
-  const overlay = h('div', { class: 'overlay modal-center', onmousedown: (e) => { if (e.target === overlay) cerrar(); } },
-    h('div', { class: 'dialog escaner', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'esc-t' },
-      h('div', { class: 'escaner-cab' }, h('h3', { id: 'esc-t' }, 'Escanear factura'), h('button', { class: 'btn ghost', type: 'button', 'aria-label': 'Cerrar', onclick: () => cerrar() }, '✕')),
-      cuerpo));
-  const onKey = (e) => { if (e.key === 'Escape') cerrar(); };
-  function cerrar() { cerrado = true; document.removeEventListener('keydown', onKey); overlay.remove(); }
-  document.addEventListener('keydown', onKey);
-  document.body.append(overlay);
+  // proveedores conocidos (de la BD, sin necesidad de ver los gastos)
+  let conocidas = [];
+  const cargaConocidas = escanerProveedores().then((l) => { conocidas = l.map((x) => ({ nombre: x.nombre, nif: x.nif })); }).catch(() => {});
 
-  // historial de todos los cursos (para reconocer al proveedor y copiar su clasificación)
-  let historial = gastosCurso;
-  Promise.all(state.cursosVisibles.map((c) => ctx.gastos(c.id).catch(() => []))).then((ls) => { historial = ls.flat(); }).catch(() => {});
-
-  const inputArchivo = h('input', { type: 'file', accept: 'application/pdf,image/*', hidden: true, 'aria-label': 'Archivo de la factura', onchange: () => procesar(inputArchivo.files[0]) });
-  const inputFoto = h('input', { type: 'file', accept: 'image/*', capture: 'environment', hidden: true, 'aria-label': 'Foto de la factura', onchange: () => procesar(inputFoto.files[0]) });
-  const zona = h('div', { class: 'zona-escaner', tabindex: '0', role: 'button', 'aria-label': 'Elegir o arrastrar la factura', onclick: () => inputArchivo.click(),
-    onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputArchivo.click(); } },
-    ondragover: (e) => { e.preventDefault(); zona.classList.add('encima'); }, ondragleave: () => zona.classList.remove('encima'),
-    ondrop: (e) => { e.preventDefault(); zona.classList.remove('encima'); procesar(e.dataTransfer.files[0]); } },
-  h('strong', {}, 'Arrastra aquí la factura (PDF o foto)'), h('span', { class: 'muted small' }, 'o haz clic para elegirla. Se leen el proveedor, el NIF, la fecha, el número y el importe.'));
-  clear(cuerpo, zona, h('div', { class: 'escaner-acciones' }, inputArchivo, inputFoto,
-    h('button', { class: 'btn', type: 'button', onclick: () => inputArchivo.click() }, 'Elegir archivo'),
-    h('button', { class: 'btn solo-movil', type: 'button', onclick: () => inputFoto.click() }, 'Hacer foto')));
+  function inicio() {
+    const inputArchivo = h('input', { type: 'file', accept: 'application/pdf,image/*', hidden: true, 'aria-label': 'Archivo de la factura', onchange: () => procesar(inputArchivo.files[0]) });
+    const inputFoto = h('input', { type: 'file', accept: 'image/*', capture: 'environment', hidden: true, 'aria-label': 'Foto de la factura', onchange: () => procesar(inputFoto.files[0]) });
+    const zona = h('div', { class: 'zona-escaner', tabindex: '0', role: 'button', 'aria-label': 'Elegir o arrastrar la factura', onclick: () => inputArchivo.click(),
+      onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputArchivo.click(); } },
+      ondragover: (e) => { e.preventDefault(); zona.classList.add('encima'); }, ondragleave: () => zona.classList.remove('encima'),
+      ondrop: (e) => { e.preventDefault(); zona.classList.remove('encima'); procesar(e.dataTransfer.files[0]); } },
+    h('strong', {}, 'Arrastra aquí la factura o el ticket (PDF o foto)'), h('span', { class: 'muted small' }, 'o haz clic para elegirla. Se leen el proveedor, el NIF, la fecha, el número y el importe.'));
+    clear(cuerpo, zona, h('div', { class: 'escaner-acciones' }, inputArchivo, inputFoto,
+      h('button', { class: 'btn', type: 'button', onclick: () => inputArchivo.click() }, 'Elegir archivo'),
+      h('button', { class: 'btn solo-movil primary', type: 'button', onclick: () => inputFoto.click() }, 'Hacer foto')));
+  }
 
   async function procesar(file) {
     if (!file) return;
@@ -152,30 +132,29 @@ export async function abrirEscaner(ctx, { gastos: gastosCurso, onDatos }) {
         const r = await ocr(canvas, (p) => ponEstado(`Reconociendo el texto de la foto (OCR) ${p}%…`));
         texto = r.text; confOcr = r.confidence;
       } else throw new Error('Formato no admitido: usa un PDF o una imagen.');
+      await cargaConocidas;
     } catch (ex) {
       if (cerrado) return;
       clear(cuerpo, h('div', { class: 'banner error' }, 'No se ha podido leer la factura: ', ex.message),
-        h('div', { class: 'escaner-acciones' }, h('button', { class: 'btn', onclick: () => abrirDeNuevo() }, 'Probar con otro archivo'),
-          h('button', { class: 'btn', onclick: () => { cerrar(); onDatos({ }); } }, 'Crear el gasto a mano')));
+        h('div', { class: 'escaner-acciones' }, h('button', { class: 'btn', onclick: inicio }, 'Probar con otro archivo'),
+          h('button', { class: 'btn', onclick: () => onDatos({}, { file, link: null }) }, 'Rellenar a mano')));
       return;
     }
     if (cerrado) return;
-    mostrar(file, texto, canvas, origen, confOcr);
+    await mostrar(file, texto, canvas, origen, confOcr);
   }
-  function abrirDeNuevo() { cerrar(); abrirEscaner(ctx, { gastos: gastosCurso, onDatos }); }
 
-  function mostrar(file, texto, canvas, origen, confOcr) {
-    const conocidas = conocidasDe(historial, state.empresas);
+  async function mostrar(file, texto, canvas, origen, confOcr) {
     const r = analizarFactura(texto, { conocidas, propios: PROPIOS, nombreArchivo: file.name });
     const hoy = new Date().toISOString().slice(0, 10);
     if (r.fecha && r.fecha > hoy && r.confianza.fecha === 'alta') r.confianza.fecha = 'media';
-
-    // último gasto de ese proveedor: de ahí salen categoría, método, periodicidad, tipo, centro…
-    const prov = normalizar(r.empresa || '');
-    const previos = prov ? historial.filter((g) => normalizar(g.empresa || '') === prov || (r.nif && g.nif === r.nif)) : [];
-    const ultimo = [...previos].sort((a, b) => (b.fecha_factura || '').localeCompare(a.fecha_factura || ''))[0];
+    // último gasto de ese proveedor (categoría, método, periodicidad, tipo, centro…) y posible duplicado
+    let ultimo = null, duplicado = null;
+    try { if (r.empresa || r.nif) ultimo = await escanerSugerencia(r.empresa || '', r.nif); } catch { /* opcional */ }
+    try { if (r.empresa) duplicado = await escanerDuplicado(r.empresa, r.numero, r.fecha, r.total); } catch { /* opcional */ }
+    if (ultimo?.empresa && r.confianza.empresa !== 'alta') r.empresa = ultimo.empresa;
     const mes = mesDeFecha(r.fecha) || null;
-    const cursoFecha = r.fecha ? state.cursosVisibles.find((c) => c.fecha_inicio <= r.fecha && r.fecha <= c.fecha_fin) : null;
+    const cursoFecha = r.fecha ? state.cursos.find((c) => c.fecha_inicio <= r.fecha && r.fecha <= c.fecha_fin) : null;
     const centroId = ultimo?.centro_id || ctx.centroActual()?.id || ctx.centroPrincipal()?.id || null;
     const centro = state.centros.find((c) => c.id === centroId);
     const tn = normalizar(texto);
@@ -185,7 +164,6 @@ export async function abrirEscaner(ctx, { gastos: gastosCurso, onDatos }) {
     const cat = state.taxonomia.find((c) => c.id === ultimo?.categoria_id);
     const sub = cat?.subcategorias.find((s) => s.id === ultimo?.subcategoria_id);
     const concepto = ultimo?.concepto ? ultimo.concepto.replace(/\b(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\b/i, (m) => (mes ? mes.charAt(0).toUpperCase() + mes.slice(1) : m)) : '';
-    const duplicado = r.empresa && historial.find((g) => normalizar(g.empresa || '') === prov && ((r.numero && g.factura_nr && normalizar(g.factura_nr) === normalizar(r.numero)) || (r.total && r.fecha && Math.abs(num(g.cantidad) - r.total) < 0.01 && g.fecha_factura === r.fecha)));
 
     const fila = (label, valor, conf, extra) => {
       const [cls, txt] = CONF[conf] || ['bad', 'No encontrado'];
@@ -197,7 +175,7 @@ export async function abrirEscaner(ctx, { gastos: gastosCurso, onDatos }) {
     const vista = canvas ? (() => { canvas.classList.add('escaner-preview'); return canvas; })() : null;
     const verTexto = h('details', { class: 'escaner-texto' }, h('summary', {}, `Texto leído (${origen === 'ocr' ? `OCR, confianza ${Math.round(confOcr || 0)}%` : 'PDF'})`), h('pre', {}, texto.slice(0, 6000)));
 
-    const btnCrear = h('button', { class: 'btn primary', type: 'button', onclick: crear }, 'Revisar y crear el gasto');
+    const btnCrear = h('button', { class: 'btn primary', type: 'button', onclick: crear }, textoBoton);
     async function crear() {
       btnCrear.disabled = true; btnCrear.textContent = 'Subiendo la factura…';
       let link = null;
@@ -205,7 +183,6 @@ export async function abrirEscaner(ctx, { gastos: gastosCurso, onDatos }) {
         const renombrado = new File([file], nombreFinal(), { type: file.type || 'application/pdf' });
         link = await subirFactura(renombrado, ruta.carpeta);
       } catch (ex) { toast('No se ha podido subir la factura (se crea el gasto sin adjunto): ' + ex.message, 'error'); }
-      cerrar();
       onDatos({
         fecha_factura: r.fecha || hoy, empresa: r.empresa || '', factura_nr: r.numero || '', cantidad: r.total ?? '', nif: r.nif || ultimo?.nif || '',
         iban: ultimo?.iban || '', swift: ultimo?.swift || '', concepto,
@@ -214,7 +191,7 @@ export async function abrirEscaner(ctx, { gastos: gastosCurso, onDatos }) {
         centro_id: centroId, mes: mes || undefined, curso_id: (cursoFecha || ctx.cursoActual()).id,
         link_factura: link, sin_factura: false,
         comentarios: `Escaneada${duplicado ? ' · OJO: posible duplicado' : ''}. OneDrive: Facturas & Nominas/${inpRuta.value}`,
-      });
+      }, { file, link, duplicado, confianza: r.confianza });
     }
     function descargar() {
       const url = URL.createObjectURL(file);
@@ -224,25 +201,43 @@ export async function abrirEscaner(ctx, { gastos: gastosCurso, onDatos }) {
     }
 
     clear(cuerpo,
-      duplicado ? h('div', { class: 'banner warn' }, h('span', {}, h('strong', {}, 'Posible duplicado: '), `ya hay un gasto de ${duplicado.empresa} del ${fmtFecha(duplicado.fecha_factura)} por ${fmtEUR2(num(duplicado.cantidad))}${duplicado.factura_nr ? ` (nº ${duplicado.factura_nr})` : ''}.`)) : null,
+      duplicado ? h('div', { class: 'banner warn' }, h('span', {}, h('strong', {}, 'Posible duplicado: '), `ya hay un gasto de ${r.empresa} del ${fmtFecha(duplicado.fecha_factura)} por ${fmtEUR2(num(duplicado.cantidad))}${duplicado.factura_nr ? ` (nº ${duplicado.factura_nr})` : ''}.`)) : null,
       h('div', { class: 'escaner-res' },
         vista ? h('div', { class: 'escaner-vista' }, vista) : null,
         h('div', { class: 'escaner-datos' },
           h('table', { class: 'data escaner-tabla' }, h('tbody', {},
-            fila('Proveedor', r.empresa, r.confianza.empresa, r.empresaNueva ? '(nuevo)' : null),
+            fila('Proveedor', r.empresa, r.confianza.empresa, r.empresaNueva && !ultimo ? '(nuevo)' : null),
             fila('NIF', r.nif, r.confianza.nif),
             fila('Fecha factura', r.fecha ? fmtFecha(r.fecha) : null, r.confianza.fecha),
             fila('Nº factura', r.numero, r.confianza.numero),
             fila('Importe total', r.total != null ? fmtEUR2(r.total) : null, r.confianza.total, r.base != null && r.base !== r.total ? `(base ${fmtEUR2(r.base)})` : null),
             h('tr', {}, h('th', { scope: 'row' }, 'Clasificación'), h('td', { colspan: 2 }, ultimo
               ? [cat ? `${cat.nombre.charAt(0) + cat.nombre.slice(1).toLowerCase()} › ${sub?.nombre || '—'}` : '—', h('span', { class: 'muted small' }, ` · ${[ultimo.metodo_pago, ultimo.periodicidad].filter(Boolean).join(' · ')} · como el gasto del ${fmtFecha(ultimo.fecha_factura)}`)]
-              : h('span', { class: 'muted' }, 'Proveedor sin gastos anteriores: elige la categoría en la ficha.'))))),
+              : h('span', { class: 'muted' }, 'Proveedor sin gastos anteriores: elige la categoría.'))))),
           h('label', { class: 'field' }, h('span', {}, 'Guardar en OneDrive como'), h('div', { class: 'ruta-onedrive' }, h('span', { class: 'muted small' }, 'Facturas & Nominas/'), inpRuta),
             h('span', { class: 'small muted', style: 'font-weight:400' }, 'Misma estructura que tu carpeta de la gestoría (trimestre y titular). La factura se adjunta al gasto con este nombre.')),
           h('div', { class: 'escaner-acciones' },
-            h('button', { class: 'btn', type: 'button', onclick: abrirDeNuevo }, 'Otra factura'),
+            h('button', { class: 'btn', type: 'button', onclick: inicio }, 'Otra factura'),
             h('button', { class: 'btn', type: 'button', onclick: descargar, title: 'Descarga el archivo con el nombre sugerido para guardarlo en la carpeta de OneDrive' }, 'Descargar renombrada'),
             btnCrear),
           verTexto)));
   }
+
+  inicio();
+  return { reiniciar: inicio, cerrar: () => { cerrado = true; onCerrar(); } };
+}
+
+// Versión en ventana (se usa desde la ficha de gasto u otras pantallas)
+export function abrirEscaner(ctx, { onDatos }) {
+  const cuerpo = h('div', { class: 'escaner-cuerpo' });
+  const overlay = h('div', { class: 'overlay modal-center', onmousedown: (e) => { if (e.target === overlay) cerrar(); } },
+    h('div', { class: 'dialog escaner', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'esc-t' },
+      h('div', { class: 'escaner-cab' }, h('h3', { id: 'esc-t' }, 'Escanear factura'), h('button', { class: 'btn ghost', type: 'button', 'aria-label': 'Cerrar', onclick: () => cerrar() }, '✕')),
+      cuerpo));
+  const onKey = (e) => { if (e.key === 'Escape') cerrar(); };
+  let esc;
+  function cerrar() { esc?.cerrar(); document.removeEventListener('keydown', onKey); overlay.remove(); }
+  document.addEventListener('keydown', onKey);
+  document.body.append(overlay);
+  esc = montarEscaner(cuerpo, ctx, { onDatos: (d, info) => { cerrar(); onDatos(d, info); } });
 }

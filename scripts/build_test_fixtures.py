@@ -109,7 +109,11 @@ for g in gastos:
 profiles = [
     {"id": "00000000-0000-0000-0000-00000000aaaa", "nombre": "Admin", "email": "admin@example.com", "rol": "admin", "activo": True, "created_at": "2026-11-05T10:00:00Z"},
     {"id": "00000000-0000-0000-0000-00000000bbbb", "nombre": "Empleado", "email": "empleado@example.com", "rol": "empleado", "activo": False, "created_at": "2026-11-05T11:00:00Z"},
+    {"id": "00000000-0000-0000-0000-00000000cccc", "nombre": "Escaner", "email": "escaner@example.com", "rol": "escaner", "activo": True, "created_at": "2026-11-17T11:00:00Z"},
+    {"id": "00000000-0000-0000-0000-00000000dddd", "nombre": "Consulta", "email": "consulta@example.com", "rol": "consulta", "activo": True, "created_at": "2026-11-17T11:00:00Z"},
 ]
+for g in gastos:
+    g.setdefault("revisado", True)
 json.dump({"cursos": cursos, "categorias": categorias, "subcategorias": subcategorias, "gastos": gastos, "ingresos": ingresos, "profiles": profiles,
            "ingresos_metodo": ingresos_metodo, "alumnos_mes": alumnos_mes, "facturacion": facturacion, "empresas": empresas, "listas": listas, "centros": centros, "plantillas_gasto": [], "cuentas_bancarias": [], "movimientos_banco": [], "factcheck_manual": [],
            "notas": [{"id": "nota-1", "fecha": "2026-05-06", "ultimo_cargo": "Transferencia 135€ a La Unio", "comentario": "Todo OK hasta hoy", "hecho": True, "created_at": "2026-05-06T10:00:00Z"},

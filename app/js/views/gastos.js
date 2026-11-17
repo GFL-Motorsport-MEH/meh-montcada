@@ -2,10 +2,9 @@
 // (desplegables para las listas, casillas para Pago / Banco / Gestoría). La ficha completa sigue en el botón ⋯.
 import { h, clear, fmtEUR2, fmtFecha, fmtFechaCorta, num, MESES, MESES_CORTO, capitalizar, tituloCategoria, normalizar, cargando, descargarCSV, mesDeFecha, hoyISO, toast, confirmar } from '../ui.js';
 import { abrirGastoForm } from './gasto-form.js';
-import { moverGastosACentro, actualizarGasto, getListas } from '../db.js';
+import { moverGastosACentro, actualizarGasto, getListas, agrupar, getGastosPendientes } from '../db.js';
 import { generarGastosDelMes } from './plantillas.js';
 import { abrirFactura, esArchivoSubido, botonSubirFactura } from '../factura-archivo.js';
-import { abrirEscaner } from './escaner.js';
 
 const POR_PAGINA = 100;
 const esVerdad = (v) => /^(true|1|x|verdadero|s[ií])$/i.test(String(v ?? '').trim());
@@ -82,13 +81,14 @@ export async function renderGastos(view, ctx) {
     const ids = [...seleccion];
     let n = 0;
     try {
-      for (const id of ids) {
+      await agrupar(`${ids.length} gastos ${texto}`, async () => { for (const id of ids) {
         const g = gastos.find((x) => x.id === id);
         const cambios = cambiosDe(g);
         if (!cambios) continue;
         Object.assign(g, await actualizarGasto(id, cambios)); n++;
-      }
+      } });
       toast(`${n} gastos ${texto}`);
+      ctx.actualizarPendientes?.();
       seleccion.clear(); pintar();
     } catch (ex) { toast(`No se han guardado todos (${n} de ${ids.length}): ${ex.message}`, 'error'); pintar(); }
   }
@@ -100,6 +100,7 @@ export async function renderGastos(view, ctx) {
     clear(barra, h('strong', {}, `${seleccion.size} seleccionados`), h('span', { class: 'muted' }, ` · ${fmtEUR2(total)}`),
       h('button', { class: 'btn small', onclick: () => enBloque((g) => (esVerdad(g.fiscontal) ? null : { fiscontal: 'True', fiscontal_fecha: hoyISO() }), 'marcados como enviados a la gestoría') }, 'Enviados a gestoría'),
       h('button', { class: 'btn small', onclick: () => enBloque((g) => (esVerdad(g.pago) ? null : { pago: 'True' }), 'marcados como pagados') }, 'Marcar pagados'),
+      gastos.some((g) => seleccion.has(g.id) && g.revisado === false) ? h('button', { class: 'btn small', onclick: () => enBloque((g) => (g.revisado === false ? { revisado: true } : null), 'marcados como revisados') }, 'Marcar revisados') : null,
       varios ? h('span', { class: 'barra-accion' }, 'Mover a', destino, h('button', { class: 'btn small primary', onclick: async () => {
         try {
           const nuevos = await moverGastosACentro([...seleccion], destino.value);
@@ -116,6 +117,7 @@ export async function renderGastos(view, ctx) {
   const fQ = h('input', { type: 'search', placeholder: 'Buscar empresa, concepto, nº factura, comentario…', 'aria-label': 'Buscar', oninput: () => { f.q = fQ.value; limite = POR_PAGINA; pintar(); } });
   const fEstado = h('select', { 'aria-label': 'Estado', onchange: () => { f.estado = fEstado.value; limite = POR_PAGINA; pintar(); } },
     h('option', { value: '' }, 'Cualquier estado'),
+    h('option', { value: 'revisar' }, 'Pendientes de revisar (escáner)'),
     h('option', { value: 'sin_pago' }, 'Pendientes de pago'),
     h('option', { value: 'sin_banca' }, 'Sin comprobar en banco'),
     h('option', { value: 'sin_gestoria' }, 'Sin enviar a gestoría'),
@@ -222,6 +224,7 @@ export async function renderGastos(view, ctx) {
     const dir = orden.asc ? 1 : -1;
     return gastos.filter((g) => {
       if (!enCentro.has(g)) return false;
+      if (f.estado === 'revisar' && g.revisado !== false) return false;
       if (f.estado === 'sin_pago' && esVerdad(g.pago)) return false;
       if (f.estado === 'sin_banca' && g.check_banca) return false;
       if (f.estado === 'sin_gestoria' && esVerdad(g.fiscontal)) return false;
@@ -359,7 +362,7 @@ export async function renderGastos(view, ctx) {
     const importe = celdaTexto(g, 'cantidad', { cls: 'gc-num', label: 'Importe', formato: (v) => fmtEUR2(num(v)).replace(/\s?€/, ''),
       leer: (t) => { const n = Number(t.replace(/\s|€/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')); if (!t.trim() || !Number.isFinite(n)) { toast('Importe no válido.', 'error'); return undefined; } return Math.round(n * 100) / 100; } });
 
-    const tr = h('tr', { class: 'clickable', dataset: { id: g.id } },
+    const tr = h('tr', { class: 'clickable' + (g.revisado === false ? ' pendiente-rev' : ''), dataset: { id: g.id }, title: g.revisado === false ? 'Añadido con el escáner: pendiente de revisar' : null },
       h('td', { class: 'col-check' }, chk),
       celdaFecha(g, 'fecha_factura', 'Fecha factura'),
       h('td', {}, selMes),
@@ -412,6 +415,7 @@ export async function renderGastos(view, ctx) {
       clear(tbody, h('tr', {}, h('td', { colspan: String(COLS.length), class: 'empty' }, gastos.length ? 'Ningún gasto coincide con los filtros.' : `Todavía no hay gastos en ${curso.nombre}.`)));
     } else clear(tbody, lista.slice(0, limite).map(fila));
     chkTodos.checked = lista.length > 0 && lista.every((g) => seleccion.has(g.id));
+    pintarAviso();
     pintarBarra();
     clear(pie,
       h('span', {}, lista.length > limite ? `Mostrando ${limite} de ${lista.length}` : `${lista.length} gastos`),
@@ -453,14 +457,37 @@ export async function renderGastos(view, ctx) {
 
   const empresasDL = h('datalist', { id: 'dl-g-empresa' }, [...new Set([...gastos.map((g) => g.empresa).filter(Boolean), ...(state.empresas || []).map((e) => e.nombre_comercial)])].sort((a, b) => a.localeCompare(b, 'es')).map((v) => h('option', { value: v })));
 
+  // aviso de gastos añadidos con el escáner y pendientes de revisar
+  const avisoRevision = h('div', { class: 'banner banner-revision', hidden: true });
+  // pendientes de otros cursos (p.ej. un ticket de hoy mientras se mira el curso anterior)
+  let otrosPend = [];
+  getGastosPendientes().then((l) => { otrosPend = l.filter((g) => g.curso_id !== curso.id); pintarAviso(); }).catch(() => {});
+  function pintarAviso() {
+    const pend = ctx.filtrarCentro(gastos).filter((g) => g.revisado === false);
+    const porCurso = new Map();
+    for (const g of otrosPend) porCurso.set(g.curso_id, (porCurso.get(g.curso_id) || 0) + 1);
+    avisoRevision.hidden = !pend.length && !porCurso.size;
+    if (avisoRevision.hidden) return;
+    const irA = [...porCurso.entries()].map(([id, n]) => h('button', { class: 'btn small', type: 'button', onclick: () => ctx.irACurso(id, 'revisar') }, `${n} en el curso ${ctx.state.cursos.find((c) => c.id === id)?.nombre || '?'}`));
+    clear(avisoRevision,
+      pend.length ? h('span', {}, h('strong', {}, pend.length === 1 ? '1 gasto pendiente de revisar' : `${pend.length} gastos pendientes de revisar`), ` (añadidos con el escáner, en amarillo) · ${fmtEUR2(pend.reduce((s0, g) => s0 + num(g.cantidad), 0))} `)
+        : h('span', {}, h('strong', {}, 'Gastos del escáner pendientes de revisar en otro curso: ')),
+      pend.length ? h('button', { class: 'btn small', type: 'button', onclick: () => { fEstado.value = 'revisar'; f.estado = 'revisar'; limite = POR_PAGINA; pintar(); } }, 'Ver solo esos') : null,
+      pend.length && ctx.puedeEditar() ? h('button', { class: 'btn small', type: 'button', onclick: () => { pend.forEach((g) => seleccion.add(g.id)); pintar(); } }, 'Seleccionarlos') : null,
+      ...irA);
+  }
+  if (ctx.state.filtroInicial === 'revisar') { ctx.state.filtroInicial = null; f.estado = 'revisar'; }
+  if (/pendientes/.test(window.location.hash)) f.estado = 'revisar';
+  fEstado.value = f.estado;
+
   clear(view,
-    h('div', { class: 'banner' }, h('span', {}, h('strong', {}, 'Fase de pruebas: '), 'el Excel sigue siendo la referencia. Los cambios de la tabla se guardan al salir de cada celda.')),
+    avisoRevision,
+    h('div', { class: 'banner' }, h('span', {}, 'Los cambios de la tabla se guardan al salir de cada celda. ', h('strong', {}, 'Deshacer'), ' (arriba, o Ctrl+Z fuera de un campo) vuelve atrás el último cambio.')),
     h('div', { class: 'section-head' },
       h('div', {}, h('h2', {}, `Gastos · ${curso.nombre}`), titulo),
       h('div', { class: 'section-actions' },
         h('button', { class: 'btn', onclick: exportar }, 'Exportar CSV'),
         h('button', { class: 'btn', onclick: () => generarGastosDelMes(ctx, { curso, gastos, onCreados: (creados) => { gastos.unshift(...creados); ctx.setGastos(curso.id, gastos); pintar(); } }) }, 'Generar gastos del mes'),
-        h('button', { class: 'btn', onclick: () => abrirEscaner(ctx, { gastos, onDatos: (inicial) => nuevoGasto(inicial) }) }, 'Escanear factura'),
         h('button', { class: 'btn primary', onclick: () => nuevoGasto() }, '+ Nuevo gasto'))),
     h('div', { class: 'filters filters-gastos' }, h('div', { class: 'search' }, fQ), fEstado),
     barra, empresasDL,

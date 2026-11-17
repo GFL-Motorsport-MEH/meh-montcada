@@ -14,7 +14,7 @@ window.__claveFact = (r) => [r.id_crm ?? '', r.num_recibo ?? '', r.num_factura ?
 
 class Q {
   constructor(table) { this.t = table; this.filters = []; this.orders = []; this.op = 'select'; }
-  select(cols, opts) { if (this.op === 'select') this.op = 'select'; this.ret = true; this.countOpt = opts && opts.count; return this; }
+  select(cols, opts) { if (this.op === 'select') this.op = 'select'; this.ret = true; this.countOpt = opts && opts.count; this.head = opts && opts.head; return this; }
   eq(c, v) { this.filters.push([c, v]); return this; }
   in(c, vs) { this.filters.push([c, { in: vs }]); return this; }
   order(c, o = {}) { this.orders.push([c, o.ascending !== false]); return this; }
@@ -30,19 +30,31 @@ class Q {
     window.__mock.calls.push({ t: this.t, op: this.op, filters: this.filters });
     if (!session) return { data: null, error: { message: 'permission denied' } };
     const yo = db.profiles.find((p) => p.id === session.user.id);
-    const activo = yo && yo.activo; const admin = activo && yo.rol === 'admin';
+    const habil = yo && yo.activo;
+    const escaner = habil && yo.rol === 'escaner';
+    const activo = habil && !escaner; // ve todo
+    const editor = activo && ['admin', 'empleado'].includes(yo.rol);
+    const admin = activo && yo.rol === 'admin';
     let rows = db[this.t];
     const match = (r) => this.filters.every(([c, v]) => (v && v.in ? v.in.includes(r[c]) : r[c] === v));
-    if (this.t !== 'profiles' && !activo) rows = [];
+    const MAESTRAS = ['cursos', 'categorias', 'subcategorias', 'centros', 'listas'];
+    if (escaner && MAESTRAS.includes(this.t)) { /* las ve */ }
+    else if (escaner && this.t === 'gastos') rows = rows.filter((r) => r.created_by === yo.id && r.revisado === false);
+    else if (this.t !== 'profiles' && !activo) rows = [];
     if (this.t === 'profiles' && !admin) rows = rows.filter((r) => r.id === session.user.id);
     if (this.op === 'insert') {
-      if (!activo) return { data: null, error: { message: 'new row violates row-level security policy' } };
-      const rows = [].concat(this.payload).map((p) => ({ id: 'nuevo-' + (nextId++), updated_at: new Date().toISOString(), ...p }));
+      const okEscaner = escaner && this.t === 'gastos';
+      if (!editor && !okEscaner) return { data: null, error: { message: 'new row violates row-level security policy' } };
+      const rows = [].concat(this.payload).map((p) => {
+        const r = { id: 'nuevo-' + (nextId++), updated_at: new Date().toISOString(), ...(this.t === 'gastos' ? { revisado: true, created_by: yo.id } : {}), ...p };
+        if (okEscaner) Object.assign(r, { revisado: false, check_banca: false, fiscontal: 'False', created_by: yo.id });
+        return r;
+      });
       db[this.t].push(...rows);
       return { data: this.single_ ? rows[0] : rows, error: null };
     }
     if (this.op === 'upsert') {
-      if (!activo) return { data: null, error: { message: 'new row violates row-level security policy' } };
+      if (!editor) return { data: null, error: { message: 'new row violates row-level security policy' } };
       const col = this.upOpts.onConflict;
       const clave = (r) => (this.t === 'facturacion' && col === 'clave_linea' ? window.__claveFact(r) : col.split(',').map((c) => r[c.trim()]).join('|'));
       const existentes = new Set(db[this.t].map(clave));
@@ -59,6 +71,7 @@ class Q {
       return { data: this.single_ ? nuevos[0] || null : nuevos, error: null };
     }
     if (this.op === 'update') {
+      if (!editor && this.t !== 'profiles') return { data: null, error: { message: 'new row violates row-level security policy' } };
       const t = rows.filter(match);
       if (this.t === 'profiles' && !admin) return { data: null, error: { message: 'row-level security' } };
       t.forEach((r) => Object.assign(r, this.payload, { updated_at: new Date().toISOString() }));
@@ -76,8 +89,10 @@ class Q {
     }
     const [a, b] = this.rng || [0, PAGE_MAX - 1];
     out = out.slice(a, Math.min(b, a + PAGE_MAX - 1) + 1);
+    out = out.map((r) => ({ ...r })); // copias, como el servidor real
     if (this.single_) return { data: out[0] || null, error: null };
-    return { data: out, error: null };
+    if (this.head) return { data: null, count: out.length, error: null };
+    return { data: out, error: null, count: out.length };
   }
 }
 
@@ -90,9 +105,39 @@ export function createClient() {
         async createSignedUrl(path) { return { data: { signedUrl: `about:blank#${bucket}/${path}` }, error: null }; },
       }),
     },
+    functions: {
+      async invoke(nombre, { body }) {
+        window.__mock.calls.push({ fn: nombre, body });
+        const yo = session && db.profiles.find((p) => p.id === session.user.id);
+        if (!(yo && yo.activo && yo.rol === 'admin')) return { data: { error: 'Solo un administrador puede gestionar usuarios' }, error: null };
+        if (body.accion === 'crear') {
+          if (db.profiles.some((p) => p.email === body.email)) return { data: { error: 'Ya existe un usuario con ese email' }, error: null };
+          const perfil = { id: 'u-' + (nextId++), email: body.email, nombre: body.nombre, rol: body.rol, activo: true, debe_cambiar_password: true, created_at: new Date().toISOString() };
+          db.profiles.push(perfil); USERS[body.email] = perfil.id;
+          return { data: { perfil }, error: null };
+        }
+        if (body.accion === 'password') { const p = db.profiles.find((x) => x.id === body.user_id); p.debe_cambiar_password = true; return { data: { ok: true }, error: null }; }
+        return { data: { error: 'Acción desconocida' }, error: null };
+      },
+    },
     async rpc(fn, args) {
       window.__mock.calls.push({ rpc: fn, args });
       const yo = session && db.profiles.find((p) => p.id === session.user.id);
+      const norm = (x) => (x || '').toLowerCase().trim();
+      if (fn === 'password_cambiada') { yo.debe_cambiar_password = false; return { data: null, error: null }; }
+      if (fn === 'escaner_proveedores') {
+        const m = new Map(); for (const g of db.gastos) if (g.empresa && !m.has(norm(g.empresa))) m.set(norm(g.empresa), { nombre: g.empresa.trim(), nif: g.nif || null });
+        for (const g of db.gastos) { const x = m.get(norm(g.empresa)); if (x && !x.nif && g.nif) x.nif = g.nif; }
+        return { data: [...m.values()], error: null };
+      }
+      if (fn === 'escaner_sugerencia') {
+        const l = db.gastos.filter((g) => norm(g.empresa) === norm(args.p_empresa) || (args.p_nif && g.nif === args.p_nif)).sort((a, b) => (b.fecha_factura || '').localeCompare(a.fecha_factura || ''));
+        return { data: l.slice(0, 1), error: null };
+      }
+      if (fn === 'escaner_duplicado') {
+        const l = db.gastos.filter((g) => norm(g.empresa) === norm(args.p_empresa) && ((args.p_numero && norm(g.factura_nr) === norm(args.p_numero)) || (args.p_fecha && g.fecha_factura === args.p_fecha && Math.abs(Number(g.cantidad) - args.p_importe) < 0.01)));
+        return { data: l.slice(0, 1), error: null };
+      }
       if (!(yo && yo.activo && yo.rol === 'admin')) return { data: null, error: { message: 'Solo un administrador puede cambiar las listas' } };
       if (fn === 'renombrar_valor_lista') {
         const { p_lista: l, p_anterior: a, p_nuevo: n } = args;

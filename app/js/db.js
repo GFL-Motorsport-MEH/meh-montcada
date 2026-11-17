@@ -1,5 +1,7 @@
 // Acceso a datos (Supabase). Todo lo que toca la base de datos pasa por aquí.
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
+import { registrar, agrupar } from './deshacer.js';
+export { agrupar };
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -70,7 +72,7 @@ export async function getTaxonomia() {
 }
 
 // ---------- gastos ----------
-export const GASTO_COLS = 'id,curso_id,mes,tipo,empresa,factura_nr,fecha_factura,pago,concepto,fecha_pago,cantidad,link_factura,categoria_id,subcategoria_id,categoria_texto,subcategoria_texto,periodicidad,metodo_pago,comentarios,nif,iban,swift,check_banca,fiscontal,fiscontal_fecha,sin_factura,centro_id,division_id,updated_at';
+export const GASTO_COLS = 'id,curso_id,mes,tipo,empresa,factura_nr,fecha_factura,pago,concepto,fecha_pago,cantidad,link_factura,categoria_id,subcategoria_id,categoria_texto,subcategoria_texto,periodicidad,metodo_pago,comentarios,nif,iban,swift,check_banca,fiscontal,fiscontal_fecha,sin_factura,centro_id,division_id,revisado,revisado_at,created_by,updated_at';
 
 export async function getGastos(cursoId) {
   return selectAll('gastos', GASTO_COLS, (q) => q.eq('curso_id', cursoId).order('fecha_factura', { ascending: false }).order('id', { ascending: true }));
@@ -78,20 +80,68 @@ export async function getGastos(cursoId) {
 export async function getSugerenciasGastos() {
   return selectAll('gastos', 'tipo,empresa,periodicidad,metodo_pago', (q) => q.order('id', { ascending: true }));
 }
+const nombreGasto = (g) => [g?.empresa, g?.concepto].filter(Boolean).join(' · ') || 'gasto';
+// valores anteriores de los campos que se van a cambiar (solo los que cambian de verdad)
+function antesDe(prev, cambios) {
+  const igual = (a, b) => (a ?? null) === (b ?? null) || (typeof a === 'number' || typeof b === 'number' ? Number(a) === Number(b) : false);
+  const out = {};
+  for (const k of Object.keys(cambios)) if (!igual(prev?.[k], cambios[k])) out[k] = prev?.[k] ?? null;
+  return out;
+}
+const DESCRIPCION_CAMPO = { cantidad: 'importe', fecha_factura: 'fecha de factura', fecha_pago: 'fecha de pago', mes: 'mes contable', check_banca: 'banco', fiscontal: 'gestoría', pago: 'pagado', categoria_id: 'categoría', subcategoria_id: 'subcategoría', metodo_pago: 'método', centro_id: 'centro', comentarios: 'comentario', factura_nr: 'nº factura', revisado: 'revisado' };
+
 export async function crearGasto(gasto) {
-  return check(await supabase.from('gastos').insert(gasto).select(GASTO_COLS).single());
+  const nuevo = check(await supabase.from('gastos').insert(gasto).select(GASTO_COLS).single());
+  registrar(`Alta: ${nombreGasto(nuevo)}`, () => borrarGastos([nuevo.id]));
+  return nuevo;
 }
 export async function crearGastos(lista) {
   if (!lista.length) return [];
-  return check(await supabase.from('gastos').insert(lista).select(GASTO_COLS));
+  const nuevos = check(await supabase.from('gastos').insert(lista).select(GASTO_COLS));
+  registrar(nuevos.length === 1 ? `Alta: ${nombreGasto(nuevos[0])}` : `Alta de ${nuevos.length} gastos`, () => borrarGastos(nuevos.map((g) => g.id)));
+  return nuevos;
 }
 export async function actualizarGasto(id, cambios) {
-  return check(await supabase.from('gastos').update(cambios).eq('id', id).select(GASTO_COLS).single());
+  const prev = check(await supabase.from('gastos').select(GASTO_COLS).eq('id', id).maybeSingle());
+  const nuevo = check(await supabase.from('gastos').update(cambios).eq('id', id).select(GASTO_COLS).single());
+  const antes = antesDe(prev, cambios);
+  delete antes.fiscontal_fecha; delete antes.categoria_texto; delete antes.subcategoria_texto;
+  if (Object.keys(antesDe(prev, cambios)).length) {
+    const restaurar = antesDe(prev, cambios);
+    const campos = Object.keys(antes).map((k) => DESCRIPCION_CAMPO[k] || k.replace(/_/g, ' '));
+    registrar(`${campos.slice(0, 2).join(', ') || 'cambio'} de ${nombreGasto(prev)}`, async () => {
+      await supabase.from('gastos').update(restaurar).eq('id', id).then(check);
+    });
+  }
+  return nuevo;
+}
+// borra sin registrar (para deshacer altas). Solo admin por RLS.
+async function borrarGastos(ids) {
+  const { error, count } = await supabase.from('gastos').delete({ count: 'exact' }).in('id', ids);
+  if (error) throw new Error(traducirError(error));
+  if (!count) throw new Error('Para deshacer un alta hay que borrar el gasto, y solo un administrador puede borrar.');
 }
 export async function borrarGasto(id) {
+  const fila = check(await supabase.from('gastos').select('*').eq('id', id).maybeSingle());
   const { error, count } = await supabase.from('gastos').delete({ count: 'exact' }).eq('id', id);
   if (error) throw new Error(traducirError(error));
   if (count === 0) throw new Error('No tienes permiso para borrar gastos (solo administradores).');
+  if (fila) registrar(`Borrado: ${nombreGasto(fila)}`, async () => { check(await supabase.from('gastos').insert(fila).select('id')); });
+}
+// gastos pendientes de revisar (añadidos con el escáner)
+export async function getGastosPendientes() {
+  return selectAll('gastos', GASTO_COLS, (q) => q.eq('revisado', false).order('fecha_factura', { ascending: false }));
+}
+export async function contarPendientes() {
+  const { count, error } = await supabase.from('gastos').select('id', { count: 'exact', head: true }).eq('revisado', false);
+  if (error) return 0;
+  return count || 0;
+}
+// ayudas del escáner (funciones de la BD: no necesitan ver los gastos)
+export async function escanerProveedores() { return check(await supabase.rpc('escaner_proveedores')) || []; }
+export async function escanerSugerencia(empresa, nif) { return (check(await supabase.rpc('escaner_sugerencia', { p_empresa: empresa, p_nif: nif || null })) || [])[0] || null; }
+export async function escanerDuplicado(empresa, numero, fecha, importe) {
+  return (check(await supabase.rpc('escaner_duplicado', { p_empresa: empresa, p_numero: numero || null, p_fecha: fecha || null, p_importe: importe ?? null })) || [])[0] || null;
 }
 
 // ---------- ingresos ----------
@@ -135,7 +185,11 @@ export async function getFacturacion() {
   return selectAll('facturacion', FACT_COLS, (q) => q.order('fecha_pago', { ascending: false }).order('id', { ascending: true }));
 }
 export async function actualizarFacturacion(id, cambios) {
-  return check(await supabase.from('facturacion').update(cambios).eq('id', id).select(FACT_COLS).single());
+  const prev = check(await supabase.from('facturacion').select(FACT_COLS).eq('id', id).maybeSingle());
+  const nuevo = check(await supabase.from('facturacion').update(cambios).eq('id', id).select(FACT_COLS).single());
+  const antes = antesDe(prev, cambios);
+  if (Object.keys(antes).length) registrar(`Marca en recibo ${prev?.num_recibo || ''} ${prev?.alumno || ''}`.trim(), async () => { check(await supabase.from('facturacion').update(antes).eq('id', id).select('id')); });
+  return nuevo;
 }
 // Inserta las líneas nuevas; las que ya existen (misma clave_linea) se ignoran en la BD.
 export async function insertarFacturacion(lineas) {
@@ -199,10 +253,15 @@ export async function actualizarCentro(id, cambios) {
 }
 // Mueve varios gastos a otro centro. Devuelve los gastos actualizados.
 export async function moverGastosACentro(ids, centroId) {
+  const prev = [];
+  for (let i = 0; i < ids.length; i += 100) prev.push(...check(await supabase.from('gastos').select('id,centro_id').in('id', ids.slice(i, i + 100))));
   const out = [];
   for (let i = 0; i < ids.length; i += 100) {
     out.push(...check(await supabase.from('gastos').update({ centro_id: centroId }).in('id', ids.slice(i, i + 100)).select(GASTO_COLS)));
   }
+  registrar(`Mover ${ids.length} gastos de centro`, async () => {
+    for (const p of prev) check(await supabase.from('gastos').update({ centro_id: p.centro_id }).eq('id', p.id).select('id'));
+  });
   return out;
 }
 
@@ -250,8 +309,13 @@ export async function actualizarMovimientos(ids, cambios) {
   return out;
 }
 export async function marcarGastosBanca(ids, valor = true) {
+  const prev = [];
+  for (let i = 0; i < ids.length; i += 100) prev.push(...check(await supabase.from('gastos').select('id,check_banca').in('id', ids.slice(i, i + 100))));
   const out = [];
   for (let i = 0; i < ids.length; i += 100) out.push(...check(await supabase.from('gastos').update({ check_banca: valor }).in('id', ids.slice(i, i + 100)).select(GASTO_COLS)));
+  registrar(`Marcar ${ids.length} gastos en banco`, async () => {
+    for (const p of prev) check(await supabase.from('gastos').update({ check_banca: p.check_banca }).eq('id', p.id).select('id'));
+  });
   return out;
 }
 
@@ -315,6 +379,18 @@ export async function urlFactura(link) {
 // ---------- usuarios ----------
 export async function getPerfiles() {
   return check(await supabase.from('profiles').select('*').order('created_at', { ascending: true }));
+}
+export async function passwordCambiada() { check(await supabase.rpc('password_cambiada')); }
+// crear usuarios y poner contraseñas provisionales (función del servidor, solo admin)
+export async function adminUsuarios(cuerpo) {
+  const { data, error } = await supabase.functions.invoke('admin-usuarios', { body: cuerpo });
+  if (error) {
+    let msg = error.message;
+    try { const j = await error.context.json(); if (j?.error) msg = j.error; } catch { /* */ }
+    throw new Error(msg);
+  }
+  if (data?.error) throw new Error(data.error);
+  return data;
 }
 export async function actualizarPerfil(id, cambios) {
   return check(await supabase.from('profiles').update(cambios).eq('id', id).select('*').single());

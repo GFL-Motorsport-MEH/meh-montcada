@@ -578,3 +578,35 @@ table.tabla-gastos th .flecha { font-size: 9px; }
 /* ventanas: título fijo al desplazarse dentro */
 .dialog { max-height: 92vh; overflow-y: auto; }
 .dialog > h3:first-child, .dialog > .escaner-cab { position: sticky; top: -20px; margin: -20px -20px 0; padding: 16px 20px 10px; background: var(--surface); z-index: 3; border-bottom: 1px solid var(--border); }
+/* ---------- revisión de gastos del escáner ---------- */
+:root { --rev-bg: #fff6c7; --rev-borde: #e8c547; }
+[data-theme="dark"] { --rev-bg: #3d3412; --rev-borde: #a8892a; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --rev-bg: #3d3412; --rev-borde: #a8892a; } }
+table.data tbody tr.pendiente-rev > td { background: var(--rev-bg); }
+table.data tbody tr.pendiente-rev > td:first-child { box-shadow: inset 3px 0 0 var(--rev-borde); }
+table.tabla-gastos tbody tr.pendiente-rev:hover td { background: color-mix(in oklab, var(--rev-bg) 85%, var(--rev-borde)); }
+.banner.banner-revision { background: var(--rev-bg); border: 1px solid var(--rev-borde); color: var(--text-primary); align-items: center; }
+.check-revision { background: var(--rev-bg); padding: 2px 6px; border-radius: 4px; }
+.tab-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 17px; padding: 0 4px; margin-left: 5px; border-radius: 9px; background: var(--rev-borde); color: #1a1d23; font-size: 10.5px; font-weight: 700; }
+.tab-badge[hidden] { display: none; }
+.btn-deshacer { font-size: 12px; padding: 3px 9px; }
+.btn-deshacer:disabled { opacity: .45; }
+/* formulario corto del escáner */
+.form-escaner { display: flex; flex-direction: column; gap: 10px; }
+.form-grid-esc { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 12px; }
+.form-grid-esc .ancho2 { grid-column: span 2; } .form-grid-esc .ancho3 { grid-column: span 4; }
+.form-grid-esc input, .form-grid-esc select, .form-grid-esc textarea { width: 100%; }
+@media (max-width: 760px) { .form-grid-esc { grid-template-columns: 1fr 1fr; } .form-grid-esc .ancho2, .form-grid-esc .ancho3 { grid-column: span 2; } }
+table.tabla-pendientes { min-width: 0; }
+body.rol-escaner .page { max-width: 1100px; }
+/* usuarios */
+.matriz-permisos { min-width: 0; font-size: 12px; }
+.matriz-permisos td.si { color: var(--good); font-weight: 600; text-align: center; } .matriz-permisos td.no { color: var(--text-muted); text-align: center; }
+.alta-usuario { display: grid; grid-template-columns: 1.2fr 1.6fr 1fr 1fr auto; gap: 8px; align-items: end; }
+@media (max-width: 900px) { .alta-usuario { grid-template-columns: 1fr 1fr; } }
+.pass-provisional { font-family: ui-monospace, monospace; font-size: 14px; background: var(--surface-2); padding: 8px 10px; border-radius: 5px; user-select: all; }
+.rol-pill { font-size: 11px; padding: 1px 7px; border-radius: 3px; background: var(--surface-2); border: 1px solid var(--border); }
+
+h3.sub-titulo { margin: 6px 0 6px; }
+.nombre-corto { display: none; }
+@media (max-width: 1420px) { .nombre-largo, .brand-sub { display: none; } .nombre-corto { display: inline; } .modulos { margin-left: 12px; } }

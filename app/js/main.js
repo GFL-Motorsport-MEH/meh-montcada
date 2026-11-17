@@ -11,6 +11,8 @@ import { renderFacturacion } from './views/facturacion.js';
 import { renderControl } from './views/control.js';
 import { renderConfig } from './views/config.js';
 import { renderAcademia } from './views/academia.js';
+import { renderEscanerVista } from './views/escaner-vista.js';
+import * as historial from './deshacer.js';
 import './views/config-listas.js';
 import './views/config-centros.js';
 import './views/plantillas.js';
@@ -31,6 +33,10 @@ const ctx = {
   state,
   cursoActual: () => state.cursos.find((c) => c.id === state.cursoId),
   esAdmin: () => state.perfil?.rol === 'admin' && state.perfil?.activo,
+  rol: () => (state.perfil?.activo ? state.perfil.rol : null),
+  puedeEditar: () => ['admin', 'empleado'].includes(ctx.rol()),
+  esEscaner: () => ctx.rol() === 'escaner',
+  soloLectura: () => ctx.rol() === 'consulta',
   async gastos(cursoId) {
     if (!state.gastos.has(cursoId)) state.gastos.set(cursoId, await db.getGastos(cursoId));
     return state.gastos.get(cursoId);
@@ -80,6 +86,7 @@ const MODULOS = [
 const RUTAS = {
   panel: { titulo: 'Panel', render: renderPanel, modulo: 'facturacion' },
   gastos: { titulo: 'Gastos', render: renderGastos, modulo: 'facturacion' },
+  escaner: { titulo: 'Escáner', render: renderEscanerVista, modulo: 'facturacion' },
   ingresos: { titulo: 'Ingresos', render: renderIngresos, modulo: 'facturacion' },
   balance: { titulo: 'Balance', render: renderBalance, modulo: 'facturacion' },
   facturacion: { titulo: 'Facturación', render: renderFacturacion, modulo: 'facturacion' },
@@ -91,6 +98,7 @@ const RUTAS = {
 const LS_RUTA = 'meh.ruta.';
 function rutaActual() {
   const r = (window.location.hash.match(/^#\/(\w+)/) || [])[1];
+  if (ctx.esEscaner()) return 'escaner'; // el usuario del escáner solo tiene esta pantalla
   if (!RUTAS[r] || (RUTAS[r].admin && !ctx.esAdmin())) return 'panel';
   return r;
 }
@@ -115,11 +123,12 @@ function pintarShell() {
   clear(cabecera,
     h('header', { class: 'topbar' },
       h('div', { class: 'brand' }, h('div', { class: 'brand-mark', 'aria-hidden': 'true' }, 'M'),
-        h('div', {}, h('div', { class: 'brand-name' }, 'My English House — Montcada'), h('div', { class: 'brand-sub' }, 'Gestión y contabilidad'))),
-      modulosEl,
-      h('div', { class: 'header-controls' }, centroSelect(), cursoSel,
+        h('div', {}, h('div', { class: 'brand-name' }, h('span', { class: 'nombre-largo' }, 'My English House — Montcada'), h('span', { class: 'nombre-corto' }, 'MEH Montcada')), h('div', { class: 'brand-sub' }, 'Gestión y contabilidad'))),
+      ctx.esEscaner() ? null : modulosEl,
+      h('div', { class: 'header-controls' }, ctx.esEscaner() ? null : centroSelect(), ctx.esEscaner() ? null : cursoSel,
+        ctx.puedeEditar() ? botonDeshacer() : null,
         h('div', { class: 'user-chip' }, h('span', { class: 'dot', 'aria-hidden': 'true' }, inicial),
-          h('span', {}, `${p.nombre || p.email}${p.rol === 'admin' ? ' · admin' : ''}`),
+          h('span', { title: NOMBRE_ROL[p.rol] || p.rol }, `${p.nombre || p.email}${['consulta', 'escaner'].includes(p.rol) ? ' · ' + NOMBRE_ROL[p.rol].toLowerCase() : ''}`),
           h('button', { class: 'btn ghost', onclick: () => renderNuevaPassword(root, { titulo: 'Cambiar contraseña', onDone: async () => { toast('Contraseña cambiada'); await arrancar(); }, onCancel: () => { pintarShell(); pintarVista(); } }) }, 'Contraseña'),
           botonTema(),
           h('button', { class: 'btn ghost', onclick: salir }, 'Salir')))),
@@ -127,6 +136,57 @@ function pintarShell() {
   // altura de la cabecera fija, para que las cabeceras de las tablas se queden justo debajo
   if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => document.documentElement.style.setProperty('--cab', `${cabecera.offsetHeight}px`)).observe(cabecera);
 }
+
+// ---------- deshacer (botón y Ctrl+Z) ----------
+export const NOMBRE_ROL = { admin: 'Administrador', empleado: 'Gestión', consulta: 'Consulta', escaner: 'Solo escáner' };
+let quitarDeshacer = null;
+function botonDeshacer() {
+  const b = h('button', { class: 'btn ghost btn-deshacer', type: 'button', onclick: () => ejecutarDeshacer() }, '↶ Deshacer');
+  quitarDeshacer?.();
+  quitarDeshacer = historial.suscribir((u) => {
+    b.disabled = !u;
+    b.title = u ? `Deshacer: ${u.texto} (Ctrl+Z)` : 'No hay nada que deshacer';
+    b.setAttribute('aria-label', u ? `Deshacer: ${u.texto}` : 'Deshacer (no hay cambios)');
+  });
+  return b;
+}
+async function ejecutarDeshacer() {
+  if (!historial.ultimo()) { toast('No hay nada que deshacer'); return; }
+  try {
+    const e = await historial.deshacer();
+    if (e) toast(`Deshecho: ${e.texto}`);
+  } catch (ex) { toast('No se ha podido deshacer: ' + ex.message, 'error'); }
+}
+historial.alTerminar(async () => {
+  state.gastos.clear(); state.ingresos.clear(); state.facturacion = null;
+  await pintarVista();
+  actualizarPendientes();
+});
+// Ctrl+Z / Cmd+Z: dentro de un campo de texto deshace lo que se está escribiendo (lo normal del navegador);
+// fuera de los campos, deshace el último cambio guardado.
+document.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'z') return;
+  const t = document.activeElement;
+  const escribiendo = t && (t.isContentEditable || t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'submit', 'file'].includes(t.type)));
+  if (escribiendo || !state.arrancado || !ctx.puedeEditar() || document.querySelector('.overlay')) return;
+  e.preventDefault();
+  ejecutarDeshacer();
+});
+
+// ---------- gastos pendientes de revisar (aviso en la pestaña) ----------
+async function actualizarPendientes() {
+  if (!ctx.puedeEditar() && !ctx.soloLectura()) return;
+  const n = await db.contarPendientes().catch(() => 0);
+  state.pendientes = n;
+  document.querySelectorAll('.tab-badge-gastos').forEach((el) => { el.textContent = n ? String(n) : ''; el.hidden = !n; el.title = `${n} gastos pendientes de revisar`; });
+}
+ctx.actualizarPendientes = actualizarPendientes;
+// cambia de curso (p.ej. desde el aviso de pendientes) y abre Gastos
+ctx.irACurso = (cursoId, filtro) => {
+  state.cursoId = cursoId; guardarCurso(); state.filtroInicial = filtro || null;
+  pintarShell();
+  if (window.location.hash.startsWith('#/gastos')) pintarVista(); else window.location.hash = '#/gastos';
+};
 
 function centroSelect() {
   if (state.centros.filter((c) => c.activo !== false).length < 2) return null;
@@ -137,7 +197,7 @@ function centroSelect() {
 }
 // ---------- tema claro / oscuro (Auto = el del sistema) ----------
 const LS_TEMA = 'meh.tema';
-const TEMAS = [['auto', 'Tema automático (el del sistema)', 'Tema: auto'], ['light', 'Tema claro', 'Tema: claro'], ['dark', 'Tema oscuro', 'Tema: oscuro']];
+const TEMAS = [['auto', 'Tema automático (el del sistema)', '◐ Tema'], ['light', 'Tema claro', '☀ Claro'], ['dark', 'Tema oscuro', '☾ Oscuro']];
 function aplicarTema(t) {
   if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
 }
@@ -170,8 +230,18 @@ function pintarTabs(actual) {
     clear(tabsEl, tab('academia', 'Resumen'), proximamente('Alumnos'), proximamente('Grupos y horarios'), proximamente('Pagos'), proximamente('Asistencia'), proximamente('Profesores'));
     return;
   }
-  clear(tabsEl, tab('panel', 'Panel'), tab('gastos', 'Gastos'), tab('ingresos', 'Ingresos'), tab('balance', 'Balance'), tab('facturacion', 'Facturación'), tab('control', 'Control'), tab('config', 'Configuración'),
+  if (ctx.esEscaner()) { clear(tabsEl, tab('escaner', 'Escáner')); return; }
+  const badge = h('span', { class: 'tab-badge tab-badge-gastos', hidden: !state.pendientes, title: `${state.pendientes || 0} gastos pendientes de revisar` }, state.pendientes ? String(state.pendientes) : '');
+  clear(tabsEl, tab('panel', 'Panel'), h('a', { class: 'tab', href: '#/gastos', 'aria-current': actual === 'gastos' ? 'page' : false }, 'Gastos', badge), ctx.soloLectura() ? null : tab('escaner', 'Escáner'), tab('ingresos', 'Ingresos'), tab('balance', 'Balance'), tab('facturacion', 'Facturación'), tab('control', 'Control'), ctx.soloLectura() ? null : tab('config', 'Configuración'),
     ctx.esAdmin() ? tab('usuarios', 'Usuarios') : null);
+}
+
+// rol «Consulta»: se ve todo pero no se puede cambiar nada (la base de datos tampoco lo permite)
+const SELECTOR_EDICION = 'input.gc, select.gc, input.cell, select.select-celda, textarea, table input[type=checkbox]:not([aria-label^="Seleccionar"]), .btn.primary, .section-actions .btn, .subir-factura button, input[type=file]';
+function bloquearEdicion(raiz) {
+  const aplicar = () => raiz.querySelectorAll(SELECTOR_EDICION).forEach((el) => { if (!el.closest('.filters, .fila-filtros, [role=tablist]') && !/Exportar/i.test(el.textContent || '')) el.disabled = true; });
+  aplicar();
+  new MutationObserver(aplicar).observe(raiz, { childList: true, subtree: true });
 }
 
 let renderId = 0;
@@ -185,7 +255,7 @@ async function pintarVista() {
   clear(viewEl, cargando());
   try {
     await RUTAS[r].render(tmp, ctx);
-    if (id === renderId) clear(viewEl, ...tmp.childNodes);
+    if (id === renderId) { clear(viewEl, ...tmp.childNodes); if (ctx.soloLectura()) bloquearEdicion(viewEl); }
   } catch (ex) {
     if (id !== renderId) return;
     console.error(ex);
@@ -219,6 +289,14 @@ async function arrancar() {
     return renderPendiente(root, { email: session.user.email, onReintentar: arrancar });
   }
   state.perfil = perfil;
+  if (perfil.debe_cambiar_password) {
+    return renderNuevaPassword(root, {
+      titulo: 'Tu contraseña es provisional: elige una nueva',
+      onDone: async () => { await db.passwordCambiada(); toast('Contraseña guardada'); await arrancar(); },
+    });
+  }
+  document.body.classList.toggle('solo-lectura', ctx.soloLectura());
+  document.body.classList.toggle('rol-escaner', ctx.esEscaner());
   const [cursos, taxonomia, centros] = await Promise.all([db.getCursos(), db.getTaxonomia(), db.getCentros().catch(() => [])]);
   state.centros = centros;
   try { const c = localStorage.getItem(LS_CENTRO); state.centroId = centros.some((x) => x.id === c) ? c : ''; } catch { state.centroId = ''; }
@@ -227,11 +305,13 @@ async function arrancar() {
   state.cursosVisibles = cursos.filter((c) => !c.fecha_inicio || c.fecha_inicio <= hoy);
   if (!state.cursosVisibles.length) state.cursosVisibles = cursos;
   state.taxonomia = taxonomia;
-  state.cursoId = await elegirCurso();
+  state.cursoId = ctx.esEscaner() ? (cursos.find((c) => c.fecha_inicio <= hoy && hoy <= c.fecha_fin) || state.cursosVisibles.at(-1))?.id : await elegirCurso();
   state.arrancado = true;
+  historial.vaciar();
   if (/access_token=|type=/.test(window.location.hash)) history.replaceState(null, '', '#/panel');
   pintarShell();
   pintarVista();
+  actualizarPendientes();
 }
 
 async function salir() {
@@ -244,7 +324,7 @@ function reiniciarEstado() {
 }
 
 db.onAuthChange((event) => {
-  if (event === 'SIGNED_OUT') { reiniciarEstado(); renderLogin(root, { onLogin: arrancar }); }
+  if (event === 'SIGNED_OUT') { reiniciarEstado(); historial.vaciar(); renderLogin(root, { onLogin: arrancar }); }
   if (event === 'PASSWORD_RECOVERY') {
     renderNuevaPassword(root, { titulo: 'Elige una contraseña nueva', onDone: async () => { toast('Contraseña cambiada'); await arrancar(); } });
   }
