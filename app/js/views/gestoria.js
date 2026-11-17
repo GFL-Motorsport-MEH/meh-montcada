@@ -50,6 +50,7 @@ export function datosPeriodo({ periodo, gastos, facturacion, movimientos, extrac
   const porRevisar = lista.filter((g) => g.revisado === false);
   const movPend = movs.filter((m) => m.estado === 'pendiente');
   const checks = [
+    ...(activas.length ? [] : [{ ok: false, critico: true, texto: 'No hay cuentas bancarias dadas de alta: créalas en Control > Conciliación bancaria (con su IBAN) para poder subir los extractos' }]),
     ...porCuenta.map((x) => ({ ok: x.pdf, critico: true, texto: `Extracto PDF de ${x.cuenta.nombre} que cubra todo el mes` })),
     ...porCuenta.map((x) => ({ ok: x.n43, critico: true, texto: `Extracto N43 de ${x.cuenta.nombre} que cubra todo el mes` })),
     { ok: lista.length > 0, critico: true, texto: `Gastos del mes (${lista.length})` },
@@ -198,6 +199,7 @@ async function renderGestoria(cont, ctx) {
 
   // ----- subir / completar un extracto -----
   async function subirExtracto(ext = null) {
+    if (!cuentas.length) { toast('Primero da de alta las cuentas bancarias (con su IBAN) en Control > Conciliación bancaria.', 'error'); return; }
     const selCuenta = h('select', { 'aria-label': 'Cuenta' }, cuentas.filter((c) => c.activo !== false || c.id === ext?.cuenta_id).map((c) => h('option', { value: c.id, selected: c.id === ext?.cuenta_id }, c.nombre)));
     const fPdf = h('input', { type: 'file', accept: '.pdf,application/pdf', 'aria-label': 'Extracto en PDF' });
     const fN43 = h('input', { type: 'file', accept: '.n43,.txt,.aeb,.csb,.q43,text/plain', 'aria-label': 'Extracto N43' });
