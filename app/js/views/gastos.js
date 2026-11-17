@@ -4,6 +4,7 @@ import { h, clear, fmtEUR2, fmtFecha, fmtFechaCorta, num, MESES, MESES_CORTO, ca
 import { abrirGastoForm } from './gasto-form.js';
 import { moverGastosACentro, actualizarGasto, getListas, agrupar, getGastosPendientes } from '../db.js';
 import { generarGastosDelMes } from './plantillas.js';
+import { abrirEscaner } from './escaner.js';
 import { abrirFactura, esArchivoSubido, botonSubirFactura } from '../factura-archivo.js';
 
 const POR_PAGINA = 100;
@@ -100,6 +101,10 @@ export async function renderGastos(view, ctx) {
     clear(barra, h('strong', {}, `${seleccion.size} seleccionados`), h('span', { class: 'muted' }, ` · ${fmtEUR2(total)}`),
       h('button', { class: 'btn small', onclick: () => enBloque((g) => (esVerdad(g.fiscontal) ? null : { fiscontal: 'True', fiscontal_fecha: hoyISO() }), 'marcados como enviados a la gestoría') }, 'Enviados a gestoría'),
       h('button', { class: 'btn small', onclick: () => enBloque((g) => (esVerdad(g.pago) ? null : { pago: 'True' }), 'marcados como pagados') }, 'Marcar pagados'),
+      h('button', { class: 'btn small', onclick: () => {
+        const todos = gastos.filter((g) => seleccion.has(g.id)).every((g) => g.resaltado);
+        enBloque((g) => (g.resaltado === !todos ? null : { resaltado: !todos }), todos ? 'sin resaltar' : 'resaltados');
+      } }, gastos.filter((g) => seleccion.has(g.id)).every((g) => g.resaltado) ? 'Quitar resaltado' : 'Resaltar en amarillo'),
       gastos.some((g) => seleccion.has(g.id) && g.revisado === false) ? h('button', { class: 'btn small', onclick: () => enBloque((g) => (g.revisado === false ? { revisado: true } : null), 'marcados como revisados') }, 'Marcar revisados') : null,
       varios ? h('span', { class: 'barra-accion' }, 'Mover a', destino, h('button', { class: 'btn small primary', onclick: async () => {
         try {
@@ -117,7 +122,8 @@ export async function renderGastos(view, ctx) {
   const fQ = h('input', { type: 'search', placeholder: 'Buscar empresa, concepto, nº factura, comentario…', 'aria-label': 'Buscar', oninput: () => { f.q = fQ.value; limite = POR_PAGINA; pintar(); } });
   const fEstado = h('select', { 'aria-label': 'Estado', onchange: () => { f.estado = fEstado.value; limite = POR_PAGINA; pintar(); } },
     h('option', { value: '' }, 'Cualquier estado'),
-    h('option', { value: 'revisar' }, 'Pendientes de revisar (escáner)'),
+    h('option', { value: 'revisar' }, 'Pendientes de revisar (otra persona)'),
+    h('option', { value: 'resaltados' }, 'Resaltados'),
     h('option', { value: 'sin_pago' }, 'Pendientes de pago'),
     h('option', { value: 'sin_banca' }, 'Sin comprobar en banco'),
     h('option', { value: 'sin_gestoria' }, 'Sin enviar a gestoría'),
@@ -126,6 +132,7 @@ export async function renderGastos(view, ctx) {
     h('option', { value: 'comentarios' }, 'Con comentarios'));
 
   const titulo = h('div', { class: 'count' });
+  const btnUltimo = h('button', { class: 'link-btn small', type: 'button', hidden: true, onclick: () => { orden = { campo: -1, asc: false }; pintar(); } }, 'Volver al orden por último movimiento');
   const tbody = h('tbody');
   const pie = h('div', { class: 'table-foot' });
 
@@ -140,7 +147,6 @@ export async function renderGastos(view, ctx) {
     { cls: 'c-sel', th: () => h('th', { scope: 'col', class: 'col-check' }, chkTodos) },
     { cls: 'c-fecha', label: 'F. fact.', title: 'Fecha de la factura', orden: (g) => g.fecha_factura || '', filtro: texto((g) => `${fmtFechaCorta(g.fecha_factura)} ${fmtFecha(g.fecha_factura)}`) },
     { cls: 'c-cont', label: 'Contab.', title: 'Fecha contable: mes y año en que se contabiliza', orden: (g) => MESES.indexOf(g.mes), filtro: lista(MESES.map((m) => [m, etiquetaContable(m)]), (g) => g.mes || mesDeFecha(g.fecha_pago || g.fecha_factura), 'Mes') },
-    conCentro ? { cls: 'c-centro', label: 'Centro', orden: (g) => nombreCentro.get(g.centro_id) || '', filtro: lista(state.centros.map((c) => [c.id, ctx.tituloCentro(c.nombre)]), (g) => g.centro_id || ctx.centroPrincipal()?.id, 'Filtro centro') } : null,
     { cls: 'c-tipo', label: 'Tipo', orden: (g) => g.tipo || '', filtro: lista(LISTAS.tipo.map((v) => [v, v]), (g) => g.tipo, 'Filtro tipo') },
     { cls: 'c-emp', label: 'Empresa', orden: (g) => g.empresa || '', filtro: texto((g) => g.empresa) },
     { cls: 'c-nfac', label: 'Nº factura', orden: (g) => g.factura_nr || '', filtro: texto((g) => g.factura_nr) },
@@ -150,7 +156,6 @@ export async function renderGastos(view, ctx) {
     { cls: 'c-per', label: 'Periodicidad', orden: (g) => g.periodicidad || '', filtro: lista(LISTAS.periodicidad.map((v) => [v, v]), (g) => g.periodicidad, 'Filtro periodicidad') },
     { cls: 'c-met', label: 'Método', orden: (g) => g.metodo_pago || '', filtro: lista(LISTAS.metodo_pago.map((v) => [v, v]), (g) => g.metodo_pago, 'Filtro método') },
     { cls: 'c-imp', label: 'Importe', clsTh: 'num', orden: (g) => num(g.cantidad), filtro: { tipo: 'importe', valor: (g) => num(g.cantidad) } },
-    { cls: 'c-fecha c-fpago', label: 'F. pago', title: 'Fecha de pago', orden: (g) => g.fecha_pago || '', filtro: texto((g) => `${fmtFechaCorta(g.fecha_pago)} ${fmtFecha(g.fecha_pago)}`) },
     { cls: 'c-tick', label: 'Pago', clsTh: 'center', title: 'Pagado', orden: (g) => (esVerdad(g.pago) ? 1 : 0), filtro: lista(siNo.slice(1), (g) => (esVerdad(g.pago) ? 'si' : 'no'), 'Filtro pagado') },
     { cls: 'c-tick', label: 'Banco', clsTh: 'center', title: 'Comprobado en el extracto del banco', orden: (g) => (g.check_banca ? 1 : 0), filtro: lista(siNo.slice(1), (g) => (g.check_banca ? 'si' : 'no'), 'Filtro banco') },
     { cls: 'c-tick', label: 'Gest.', clsTh: 'center', title: 'Factura enviada a la gestoría (FISCONTAL)', orden: (g) => (esVerdad(g.fiscontal) ? 1 : 0), filtro: lista(siNo.slice(1), (g) => (esVerdad(g.fiscontal) ? 'si' : 'no'), 'Filtro gestoría') },
@@ -174,7 +179,7 @@ export async function renderGastos(view, ctx) {
     }
     return t;
   });
-  orden = { campo: 1, asc: false }; // por defecto: fecha de factura, más reciente primero
+  orden = { campo: -1, asc: false }; // por defecto: último movimiento (lo último añadido arriba) hasta que se ordene por una columna
 
   const alFiltrar = () => { limite = POR_PAGINA; pintar(); };
   const filaFiltros = COLDEF.map((c, i) => {
@@ -220,11 +225,12 @@ export async function renderGastos(view, ctx) {
     const q = normalizar(f.q.trim());
     const enCentro = new Set(ctx.filtrarCentro(gastos));
     const activos = [...cf.entries()].map(([i, v]) => [COLDEF[i].filtro, v, normalizar(v)]);
-    const c = COLDEF[orden.campo];
+    const c = orden.campo >= 0 ? COLDEF[orden.campo] : null;
     const dir = orden.asc ? 1 : -1;
     return gastos.filter((g) => {
       if (!enCentro.has(g)) return false;
       if (f.estado === 'revisar' && g.revisado !== false) return false;
+      if (f.estado === 'resaltados' && !g.resaltado) return false;
       if (f.estado === 'sin_pago' && esVerdad(g.pago)) return false;
       if (f.estado === 'sin_banca' && g.check_banca) return false;
       if (f.estado === 'sin_gestoria' && esVerdad(g.fiscontal)) return false;
@@ -239,6 +245,7 @@ export async function renderGastos(view, ctx) {
       }
       return true;
     }).sort((a, b) => {
+      if (!c) return (b.created_at || '').localeCompare(a.created_at || '') || (b.fecha_factura || '').localeCompare(a.fecha_factura || '') || String(b.id).localeCompare(String(a.id));
       let va = c.orden(a), vb = c.orden(b);
       if (typeof va === 'string') return dir * va.localeCompare(vb, 'es', { sensitivity: 'base', numeric: true }) || (b.fecha_factura || '').localeCompare(a.fecha_factura || '');
       return dir * (va - vb) || (b.fecha_factura || '').localeCompare(a.fecha_factura || '');
@@ -254,6 +261,7 @@ export async function renderGastos(view, ctx) {
       el?.classList.remove('saving');
       if (el) { el.classList.add('saved'); setTimeout(() => el.classList.remove('saved'), 900); }
       actualizarTotales();
+      if (['revisado', 'check_banca', 'fiscontal', 'link_factura', 'sin_factura', 'resaltado'].some((k) => k in cambios)) { ctx.refrescarResumen?.(); const tr = el?.closest('tr'); if (tr) { tr.className = ['clickable', ...clasesColor(g)].join(' '); tr.title = tituloColor(g) || ''; } }
       return true;
     } catch (ex) {
       el?.classList.remove('saving');
@@ -278,10 +286,22 @@ export async function renderGastos(view, ctx) {
     });
     return h('td', {}, inp);
   }
-  const celdaFecha = (g, campo, label) => celdaTexto(g, campo, {
-    cls: 'gc-fecha', label, formato: (v) => (v ? fmtFechaCorta(v) : ''),
-    leer: (t) => { const v = parsearFecha(t); if (v === null) { toast('Fecha no válida. Usa dd/mm/aa.', 'error'); return undefined; } return v || null; },
-  });
+  // fecha: se puede escribir (dd/mm/aa) o elegir en el calendario que se abre al hacer clic
+  function celdaFecha(g, campo, label) {
+    const td = celdaTexto(g, campo, {
+      cls: 'gc-fecha', label, formato: (v) => (v ? fmtFechaCorta(v) : ''),
+      leer: (t) => { const v = parsearFecha(t); if (v === null) { toast('Fecha no válida. Usa dd/mm/aa.', 'error'); return undefined; } return v || null; },
+    });
+    const txt = td.querySelector('input');
+    const cal = h('input', { type: 'date', class: 'cal-oculto', tabindex: '-1', 'aria-hidden': 'true', value: g[campo] || '' });
+    cal.addEventListener('change', () => { if (!cal.value) return; txt.value = fmtFechaCorta(cal.value); txt.dispatchEvent(new Event('change')); });
+    const abrir = () => { cal.value = g[campo] || ''; try { cal.showPicker(); } catch { /* navegador sin showPicker: se escribe a mano */ } };
+    txt.addEventListener('click', abrir);
+    txt.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown' && e.altKey) { e.preventDefault(); abrir(); } });
+    td.classList.add('celda-fecha');
+    td.append(cal);
+    return td;
+  }
   function celdaSelect(g, campo, valores, label) {
     const sel = h('select', { class: 'gc', 'aria-label': etq(label, g), title: g[campo] || '' }, opciones(valores, g[campo]));
     sel.addEventListener('change', async () => { if (!(await guardar(g, { [campo]: sel.value || null }, sel))) sel.value = g[campo] || ''; sel.title = sel.value; });
@@ -294,6 +314,18 @@ export async function renderGastos(view, ctx) {
     const tituloGestoria = () => { if (campo === 'fiscontal') td.title = esVerdad(g.fiscontal) ? `Enviada a la gestoría${g.fiscontal_fecha ? ' el ' + fmtFecha(g.fiscontal_fecha) : ''}` : 'Sin enviar a la gestoría'; };
     tituloGestoria();
     return td;
+  }
+
+  // colores de fila: resaltado manual (amarillo), añadido por otra persona sin revisar (naranja claro), sin factura (amarillo clarito)
+  const faltaFactura = (g) => !g.link_factura && !g.sin_factura;
+  function clasesColor(g) {
+    if (g.resaltado) return ['resaltado'];
+    if (g.revisado === false) return ['pendiente-rev'];
+    if (faltaFactura(g)) return ['falta-fra'];
+    return [];
+  }
+  function tituloColor(g) {
+    return [g.resaltado ? 'Resaltado' : null, g.revisado === false ? 'Añadido por otra persona: pendiente de revisar' : null, faltaFactura(g) ? 'Falta la factura' : null].filter(Boolean).join(' · ') || null;
   }
 
   function fila(g) {
@@ -332,14 +364,6 @@ export async function renderGastos(view, ctx) {
       pintarSubFila();
     });
 
-    // centro
-    let tdCentro = null;
-    if (conCentro) {
-      const selCen = h('select', { class: 'gc', 'aria-label': etq('Centro del gasto', g) }, state.centros.filter((c) => c.activo !== false || c.id === g.centro_id).map((c) => h('option', { value: c.id, selected: c.id === (g.centro_id || ctx.centroPrincipal()?.id) }, ctx.tituloCentro(c.nombre))));
-      selCen.addEventListener('change', async () => { if (!(await guardar(g, { centro_id: selCen.value }, selCen))) selCen.value = g.centro_id; });
-      tdCentro = h('td', {}, selCen);
-    }
-
     // factura adjunta
     let factura;
     if (g.sin_factura) factura = h('span', { class: 'sf', title: 'Marcado sin factura' }, 's/f');
@@ -362,11 +386,10 @@ export async function renderGastos(view, ctx) {
     const importe = celdaTexto(g, 'cantidad', { cls: 'gc-num', label: 'Importe', formato: (v) => fmtEUR2(num(v)).replace(/\s?€/, ''),
       leer: (t) => { const n = Number(t.replace(/\s|€/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')); if (!t.trim() || !Number.isFinite(n)) { toast('Importe no válido.', 'error'); return undefined; } return Math.round(n * 100) / 100; } });
 
-    const tr = h('tr', { class: 'clickable' + (g.revisado === false ? ' pendiente-rev' : ''), dataset: { id: g.id }, title: g.revisado === false ? 'Añadido con el escáner: pendiente de revisar' : null },
+    const tr = h('tr', { class: ['clickable', ...clasesColor(g)].join(' '), dataset: { id: g.id }, title: tituloColor(g) },
       h('td', { class: 'col-check' }, chk),
       celdaFecha(g, 'fecha_factura', 'Fecha factura'),
       h('td', {}, selMes),
-      tdCentro,
       celdaSelect(g, 'tipo', LISTAS.tipo, 'Tipo'),
       celdaTexto(g, 'empresa', { lista: 'dl-g-empresa', label: 'Empresa' }),
       celdaTexto(g, 'factura_nr', { label: 'Nº factura' }),
@@ -375,7 +398,6 @@ export async function renderGastos(view, ctx) {
       celdaSelect(g, 'periodicidad', LISTAS.periodicidad, 'Periodicidad'),
       celdaSelect(g, 'metodo_pago', LISTAS.metodo_pago, 'Método de pago'),
       importe,
-      celdaFecha(g, 'fecha_pago', 'Fecha pago'),
       celdaCheck(g, 'pago', 'Pagado', { valor: esVerdad, cambios: (on) => ({ pago: on ? 'True' : 'False' }) }),
       celdaCheck(g, 'check_banca', 'Comprobado en banco'),
       celdaCheck(g, 'fiscontal', 'Enviada a gestoría', { valor: esVerdad, cambios: (on) => ({ fiscontal: on ? 'True' : 'False', fiscontal_fecha: on ? hoyISO() : null }) }),
@@ -406,6 +428,7 @@ export async function renderGastos(view, ctx) {
     const lista = filtrados();
     listaActual = lista;
     actualizarTotales();
+    btnUltimo.hidden = orden.campo < 0;
     for (const t of ths) if (t._col !== undefined) {
       const activo = t._col === orden.campo;
       t.setAttribute('aria-sort', activo ? (orden.asc ? 'ascending' : 'descending') : 'none');
@@ -476,7 +499,7 @@ export async function renderGastos(view, ctx) {
       pend.length && ctx.puedeEditar() ? h('button', { class: 'btn small', type: 'button', onclick: () => { pend.forEach((g) => seleccion.add(g.id)); pintar(); } }, 'Seleccionarlos') : null,
       ...irA);
   }
-  if (ctx.state.filtroInicial === 'revisar') { ctx.state.filtroInicial = null; f.estado = 'revisar'; }
+  if (ctx.state.filtroInicial) { f.estado = ctx.state.filtroInicial; ctx.state.filtroInicial = null; }
   if (/pendientes/.test(window.location.hash)) f.estado = 'revisar';
   fEstado.value = f.estado;
 
@@ -484,10 +507,11 @@ export async function renderGastos(view, ctx) {
     avisoRevision,
     h('div', { class: 'banner' }, h('span', {}, 'Los cambios de la tabla se guardan al salir de cada celda. ', h('strong', {}, 'Deshacer'), ' (arriba, o Ctrl+Z fuera de un campo) vuelve atrás el último cambio.')),
     h('div', { class: 'section-head' },
-      h('div', {}, h('h2', {}, `Gastos · ${curso.nombre}`), titulo),
+      h('div', {}, h('h2', {}, `Gastos · ${curso.nombre}`), titulo, btnUltimo),
       h('div', { class: 'section-actions' },
         h('button', { class: 'btn', onclick: exportar }, 'Exportar CSV'),
         h('button', { class: 'btn', onclick: () => generarGastosDelMes(ctx, { curso, gastos, onCreados: (creados) => { gastos.unshift(...creados); ctx.setGastos(curso.id, gastos); pintar(); } }) }, 'Generar gastos del mes'),
+        h('button', { class: 'btn', onclick: () => abrirEscaner(ctx, { onDatos: (inicial) => nuevoGasto(inicial) }) }, 'Escanear factura'),
         h('button', { class: 'btn primary', onclick: () => nuevoGasto() }, '+ Nuevo gasto'))),
     h('div', { class: 'filters filters-gastos' }, h('div', { class: 'search' }, fQ), fEstado),
     barra, empresasDL,

@@ -610,3 +610,28 @@ body.rol-escaner .page { max-width: 1100px; }
 h3.sub-titulo { margin: 6px 0 6px; }
 .nombre-corto { display: none; }
 @media (max-width: 1420px) { .nombre-largo, .brand-sub { display: none; } .nombre-corto { display: inline; } .modulos { margin-left: 12px; } }
+
+/* ---------- colores de fila en Gastos ---------- */
+:root { --resaltado-bg: #ffeb7a; --falta-fra-bg: #fffbe3; --rev-bg: #ffe6cc; --rev-borde: #f0a050; }
+[data-theme="dark"] { --resaltado-bg: #5a4a10; --falta-fra-bg: #2e2a1a; --rev-bg: #4a2f16; --rev-borde: #c07a35; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --resaltado-bg: #5a4a10; --falta-fra-bg: #2e2a1a; --rev-bg: #4a2f16; --rev-borde: #c07a35; } }
+table.data tbody tr.resaltado > td { background: var(--resaltado-bg); }
+table.data tbody tr.falta-fra > td { background: var(--falta-fra-bg); }
+table.tabla-gastos tbody tr.resaltado:hover td { background: color-mix(in oklab, var(--resaltado-bg) 88%, #000); }
+table.tabla-gastos tbody tr.falta-fra:hover td { background: color-mix(in oklab, var(--falta-fra-bg) 92%, #000); }
+.check-resaltado { background: var(--resaltado-bg); padding: 2px 6px; border-radius: 4px; }
+/* importe en negrita */
+table.tabla-gastos td.c-imp input { font-weight: 700; }
+/* calendario de las fechas */
+td.celda-fecha { position: relative; }
+.cal-oculto { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
+/* miniresumen junto al curso */
+.mini-resumen { display: inline-flex; gap: 2px; align-items: center; font-size: 10.5px; }
+.mini-resumen .mr { border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); border-radius: 10px; padding: 1px 7px; cursor: pointer; font: inherit; white-space: nowrap; }
+.mini-resumen .mr b { color: var(--text-primary); }
+.mini-resumen .mr:hover { border-color: var(--accent); }
+.mini-resumen .mr.cero { opacity: .55; }
+.mini-resumen .mr-revisar:not(.cero) { background: var(--rev-bg); border-color: var(--rev-borde); }
+.mini-resumen .mr-sin_link:not(.cero) { background: var(--falta-fra-bg); }
+@media (max-width: 1500px) { .mini-resumen .mr-sin_pago { display: none; } }
+@media (max-width: 760px) { .mini-resumen { display: none; } }

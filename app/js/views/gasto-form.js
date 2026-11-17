@@ -72,6 +72,7 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado, onDividido, 
   const cSinFactura = h('input', { type: 'checkbox', checked: !!g.sin_factura });
   const cFiscontal = h('input', { type: 'checkbox', checked: esVerdad(g.fiscontal) });
   const cRevisado = h('input', { type: 'checkbox', checked: g.revisado !== false });
+  const cResaltado = h('input', { type: 'checkbox', checked: !!g.resaltado });
 
   function pintarSubs() {
     const cat = state.taxonomia.find((c) => c.id === fCategoria.value);
@@ -131,7 +132,8 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado, onDividido, 
           h('label', { class: 'check' }, cBanca, 'Comprobado en el banco'),
           h('label', { class: 'check' }, cSinFactura, 'Sin factura'),
           h('label', { class: 'check' }, cFiscontal, 'Enviada a la gestoría (FISCONTAL)', g.fiscontal_fecha ? h('span', { class: 'muted small' }, ` · ${fmtFecha(g.fiscontal_fecha)}`) : null),
-          nuevo ? null : h('label', { class: 'check' + (g.revisado === false ? ' check-revision' : '') }, cRevisado, 'Revisado', g.revisado === false ? h('span', { class: 'muted small' }, ' · añadido con el escáner') : null)),
+          nuevo ? null : h('label', { class: 'check' + (g.revisado === false ? ' check-revision' : '') }, cRevisado, 'Revisado', g.revisado === false ? h('span', { class: 'muted small' }, ' · añadido por otra persona') : null),
+          h('label', { class: 'check check-resaltado' }, cResaltado, 'Resaltar en amarillo')),
         campo('Factura (enlace o archivo)', h('div', { class: 'link-factura' }, fLink,
           botonSubirFactura({ carpeta: () => state.cursos.find((c) => c.id === fCurso.value)?.nombre || 'general',
             onSubido: (link, file) => { fLink.value = link; sucio = true; cSinFactura.checked = false; toast(`"${file.name}" subido. Guarda el gasto para conservarlo.`); } }),
@@ -193,6 +195,7 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado, onDividido, 
       comentarios: limpio(fComentarios.value),
       pago: cPago.checked ? 'True' : 'False', fiscontal: cFiscontal.checked ? 'True' : 'False',
       ...(nuevo ? {} : { revisado: cRevisado.checked }),
+      resaltado: cResaltado.checked,
       fiscontal_fecha: cFiscontal.checked ? (esVerdad(g.fiscontal) && g.fiscontal_fecha ? g.fiscontal_fecha : hoyISO()) : null,
       check_banca: cBanca.checked, sin_factura: cSinFactura.checked,
     };

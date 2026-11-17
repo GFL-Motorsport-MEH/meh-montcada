@@ -126,6 +126,7 @@ function pintarShell() {
         h('div', {}, h('div', { class: 'brand-name' }, h('span', { class: 'nombre-largo' }, 'My English House — Montcada'), h('span', { class: 'nombre-corto' }, 'MEH Montcada')), h('div', { class: 'brand-sub' }, 'Gestión y contabilidad'))),
       ctx.esEscaner() ? null : modulosEl,
       h('div', { class: 'header-controls' }, ctx.esEscaner() ? null : centroSelect(), ctx.esEscaner() ? null : cursoSel,
+        ctx.esEscaner() ? null : resumenEl,
         ctx.puedeEditar() ? botonDeshacer() : null,
         h('div', { class: 'user-chip' }, h('span', { class: 'dot', 'aria-hidden': 'true' }, inicial),
           h('span', { title: NOMBRE_ROL[p.rol] || p.rol }, `${p.nombre || p.email}${['consulta', 'escaner'].includes(p.rol) ? ' · ' + NOMBRE_ROL[p.rol].toLowerCase() : ''}`),
@@ -172,6 +173,25 @@ document.addEventListener('keydown', (e) => {
   e.preventDefault();
   ejecutarDeshacer();
 });
+
+// ---------- miniresumen del curso junto al selector de curso ----------
+const resumenEl = h('div', { class: 'mini-resumen', 'aria-label': 'Resumen de gastos del curso' });
+async function refrescarResumen() {
+  if (!state.cursoId || ctx.esEscaner()) return;
+  let l;
+  try { l = ctx.filtrarCentro(await ctx.gastos(state.cursoId)); } catch { return; }
+  const si = (v) => /^(true|1|x|verdadero|s[ií])$/i.test(String(v ?? '').trim());
+  const datos = [
+    ['revisar', 'Revisar', l.filter((g) => g.revisado === false).length, 'Añadidos por otra persona, pendientes de revisar'],
+    ['sin_banca', 'Banco', l.filter((g) => !g.check_banca).length, 'Sin comprobar en el banco'],
+    ['sin_gestoria', 'Gestoría', l.filter((g) => !si(g.fiscontal)).length, 'Sin enviar a la gestoría'],
+    ['sin_link', 'Sin fra.', l.filter((g) => !g.link_factura && !g.sin_factura).length, 'Sin factura adjunta'],
+    ['sin_pago', 'Sin pagar', l.filter((g) => !si(g.pago)).length, 'Pendientes de pago'],
+  ];
+  clear(resumenEl, datos.map(([k, t, n, title]) => h('button', { type: 'button', class: `mr mr-${k}` + (n ? '' : ' cero'), title: `${title}: ${n}. Clic para verlos en Gastos.`,
+    onclick: () => { state.filtroInicial = k; if (window.location.hash.startsWith('#/gastos')) pintarVista(); else window.location.hash = '#/gastos'; } }, t, ' ', h('b', {}, String(n)))));
+}
+ctx.refrescarResumen = refrescarResumen;
 
 // ---------- gastos pendientes de revisar (aviso en la pestaña) ----------
 async function actualizarPendientes() {
@@ -255,7 +275,7 @@ async function pintarVista() {
   clear(viewEl, cargando());
   try {
     await RUTAS[r].render(tmp, ctx);
-    if (id === renderId) { clear(viewEl, ...tmp.childNodes); if (ctx.soloLectura()) bloquearEdicion(viewEl); }
+    if (id === renderId) { clear(viewEl, ...tmp.childNodes); if (ctx.soloLectura()) bloquearEdicion(viewEl); refrescarResumen(); }
   } catch (ex) {
     if (id !== renderId) return;
     console.error(ex);
