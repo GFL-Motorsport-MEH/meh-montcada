@@ -6,7 +6,7 @@ const L = (lista, ...vals) => vals.map((valor, i) => ({ id: `l-${lista}-${i}`, l
 const db = {
   profiles: [ADMIN], cursos: CURSOS, categorias: [], subcategorias: [], centros: [{ id: 'ce1', nombre: 'MONTCADA', principal: true, activo: true, orden: 0 }], gastos: [], listas: [], empresas: [],
   ac_listas: [...L('modalidad', 'Babies', 'Kids', 'Teens', 'Adults'), ...L('metodo_pago', 'Domiciliacion', 'Efectivo'), ...L('motivo_baja', 'Incompatibilidad horaria', 'Otros'), ...L('categoria_documento', 'Protocolo', 'Familias'), ...L('situacion_contacto', 'posible alumno', 'prueba', 'inscrito'), ...L('descuento', 'Hermanos')],
-  ac_responsables: [], ac_responsables_priv: [], ac_profesoras: [], ac_aulas: [], ac_alumnos: [], ac_inscripciones: [], ac_grupos: [], ac_sesiones: [], ac_alumno_grupo: [], ac_remesas: [], ac_cuotas: [], ac_bajas: [], ac_contactos: [], ac_tutorias: [], ac_anotaciones: [], ac_tareas: [], ac_documentos: [],
+  ac_responsables: [], ac_responsables_priv: [], ac_profesoras: [], ac_aulas: [], ac_alumnos: [], ac_inscripciones: [], ac_grupos: [], ac_sesiones: [], ac_alumno_grupo: [], ac_remesas: [], ac_cuotas: [], ac_bajas: [], ac_contactos: [], ac_tutorias: [], ac_anotaciones: [], ac_tareas: [], ac_documentos: [], ac_prestamos: [],
 };
 const DEFAULTS = {
   ac_alumnos: { estado: 'inscrito', autoriza_rrss: false }, ac_cuotas: { estado: 'pendiente', concepto: 'mensualidad', mes: '', importe: 0 }, ac_grupos: { activo: true, capacidad: 8 },
@@ -19,6 +19,7 @@ const REL = {
   ac_alumnos: { responsable: ['ac_responsables', 'responsable_id', 'uno'] },
   ac_grupos: { sesiones: ['ac_sesiones', 'grupo_id', 'muchos'], miembros: ['ac_alumno_grupo', 'grupo_id', 'muchos'] },
   ac_bajas: { alumno: ['ac_alumnos', 'alumno_id', 'uno'] },
+  ac_prestamos: { alumno: ['ac_alumnos', 'alumno_id', 'uno'] },
   ac_tutorias: { alumno: ['ac_alumnos', 'alumno_id', 'uno'], profesora: ['ac_profesoras', 'profesora_id', 'uno'] },
   ac_anotaciones: { alumno: ['ac_alumnos', 'alumno_id', 'uno'], profesora: ['ac_profesoras', 'profesora_id', 'uno'] },
 };

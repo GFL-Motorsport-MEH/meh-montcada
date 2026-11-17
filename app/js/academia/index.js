@@ -9,7 +9,7 @@ import { renderBajas } from './bajas.js';
 import { renderHorarios } from './horarios.js';
 import { renderCalendario } from './calendario.js';
 import { renderTareas } from './tareas.js';
-import { renderBiblioteca } from './biblioteca.js';
+import { renderBiblioteca, renderImportarBiblioteca } from './biblioteca.js';
 import { renderDocumentos } from './documentos.js';
 import { renderImportar } from './importar.js';
 
@@ -38,6 +38,7 @@ export const RUTAS_ACADEMIA = {
   ac_calendario: R('Calendario', renderCalendario),
   ac_tareas: R('Tareas', renderTareas),
   ac_biblioteca: R('Biblioteca', renderBiblioteca),
+  ac_biblioteca_importar: R('Importar biblioteca', renderImportarBiblioteca),
   ac_documentos: R('Protocolos', renderDocumentos),
   ac_importar: R('Importar del Excel', renderImportar),
 };

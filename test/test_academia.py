@@ -47,7 +47,7 @@ try:
             ir(page, r)
             check(page.locator(".banner.error").count() == 0, f"{r} sin errores")
         ir(page, "ac_biblioteca")
-        check("Pendiente de hacer" in page.locator("main").inner_text(), "Biblioteca: recordatorio visible")
+        check("0 préstamos" in page.locator("main").inner_text(), "Biblioteca: vacía al principio")
 
         print("3. profesora y aula")
         ir(page, "ac_grupos")
@@ -203,8 +203,27 @@ try:
         page.get_by_role("button", name="Importar 3 alumnos").click(); page.wait_for_timeout(1000)
         check(len(db(page, "ac_alumnos")) == 3, "reimportar no duplica")
 
+        print("12b. biblioteca: importar Excel y devolver un libro")
+        ir(page, "ac_biblioteca_importar")
+        hoja = {"BIBLIOTECA": [["NOMBRE ALUMNO", "NOMBRE ADULTO", "LIBRO", "FECHA", "DEVUELTO", "CONDICIONES"],
+                               ["Alba Bueno Foz", "Anna Foz", "The Winter Train", "2024-11-12T00:00:00.000Z", "2024-11-14T00:00:00.000Z", "Perfecto"],
+                               ["Niño Desconocido", "Ana", "Kate on the car", "2026-11-01T00:00:00.000Z", None, None]],
+                "MASCOTASVIAJERAS": [["LEVEL", "NOMBRE ALUMNO", "NOMBRE ADULTO", "FECHA", "DEVUELTO", "CONDICIONES"], ["2", "Bueno Foz Martí", "Anna Foz", "2024-11-13T00:00:00.000Z", "2024-11-18T00:00:00.000Z", "Perfecto"]]}
+        f2 = pathlib.Path(tempfile.mkdtemp()) / "biblioteca.xlsx"; f2.write_text(json.dumps(hoja), encoding="utf-8")
+        page.locator("input[type=file]").set_input_files(str(f2))
+        expect(page.get_by_text("Importar 3 préstamos")).to_be_visible(timeout=8000)
+        check("2 libros" not in page.locator("main").inner_text() and "2 se enlazan" in page.locator("main").inner_text().replace("\n", " ") or "2 se enlazan" in page.locator("main").inner_text(), "biblioteca: 2 préstamos enlazados por nombre (orden indiferente)")
+        page.get_by_role("button", name="Importar 3 préstamos").click(); page.wait_for_timeout(1000)
+        pr = db(page, "ac_prestamos")
+        check(len(pr) == 3 and len([x for x in pr if x["alumno_id"]]) == 2 and [x for x in pr if not x["alumno_id"]][0]["alumno_texto"] == "Niño Desconocido", "préstamos guardados, 2 enlazados y 1 con nombre libre")
+        ir(page, "ac_biblioteca")
+        check("1 sin devolver" in page.locator("main").inner_text() and page.locator("main tbody tr").count() == 1, "biblioteca: solo el préstamo sin devolver, con aviso de retraso")
+        page.locator("main tbody tr").first.click()
+        page.get_by_role("button", name="Marcar devuelto hoy").click(); page.wait_for_timeout(700)
+        check(len([x for x in db(page, "ac_prestamos") if not x["fecha_devolucion"]]) == 0, "marcar devuelto")
+
         print("13. sin scroll lateral en las pantallas con tablas")
-        for r in ["ac_alumnos", "ac_pagos", "ac_grupos", "ac_calendario", "ac_tareas"]:
+        for r in ["ac_alumnos", "ac_pagos", "ac_grupos", "ac_calendario", "ac_tareas", "ac_biblioteca"]:
             ir(page, r)
             check(page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), f"{r}: sin scroll lateral en 1280 px")
         check(not [e for e in errores if "favicon" not in e and "ERR_FAILED" not in e], "sin errores de consola: " + "; ".join(errores[:3]))

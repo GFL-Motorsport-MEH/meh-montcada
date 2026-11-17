@@ -51,6 +51,7 @@ export const bajas = () => memo('bajas', () => all('ac_bajas', '*, alumno:ac_alu
 export const contactos = () => memo('contactos', () => all('ac_contactos'));
 export const tutorias = () => memo('tutorias', () => all('ac_tutorias', '*, alumno:ac_alumnos(id,apellidos,nombre), profesora:ac_profesoras(id,nombre)'));
 export const anotaciones = (alumnoId) => memo('anot' + (alumnoId || ''), () => all('ac_anotaciones', '*, alumno:ac_alumnos(id,apellidos,nombre), profesora:ac_profesoras(id,nombre)', alumnoId ? (q) => q.eq('alumno_id', alumnoId) : undefined));
+export const prestamos = () => memo('prestamos', () => all('ac_prestamos', '*, alumno:ac_alumnos(id,apellidos,nombre)'));
 export const tareas = () => memo('tareas', () => all('ac_tareas'));
 export const documentos = () => memo('documentos', () => all('ac_documentos'));
 export const usuarios = () => memo('usuarios', async () => chk(await supabase.from('profiles').select('id,nombre,email,activo,rol').eq('activo', true)));
