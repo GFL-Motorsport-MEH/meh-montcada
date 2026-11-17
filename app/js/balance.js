@@ -62,6 +62,7 @@ export function calcularBalance(gastos, ingresos, taxonomia, isPct = 0.25) {
   };
 }
 
+const MESES_VACIOS = () => Array.from({ length: 12 }, () => []);
 // Balance por subcategorías (hoja Balance Subcat): categoría -> subcategoría -> 12 meses
 export function calcularSubcategorias(gastos, taxonomia) {
   const n = nombres(taxonomia);
@@ -70,18 +71,20 @@ export function calcularSubcategorias(gastos, taxonomia) {
   for (const g of gastos) {
     const i = mesIdx(g); if (i < 0) continue;
     const c = n.cat(g), s = n.sub(g);
-    if (!cats.has(c)) cats.set(c, { nombre: c, meses: vacio(), subs: new Map() });
+    if (!cats.has(c)) cats.set(c, { nombre: c, meses: vacio(), subs: new Map(), items: MESES_VACIOS() });
     const cc = cats.get(c);
-    if (!cc.subs.has(s)) cc.subs.set(s, vacio());
-    cc.subs.get(s)[i] += num(g.cantidad); cc.meses[i] += num(g.cantidad);
+    if (!cc.subs.has(s)) cc.subs.set(s, { meses: vacio(), items: MESES_VACIOS() });
+    const ss = cc.subs.get(s);
+    ss.meses[i] += num(g.cantidad); cc.meses[i] += num(g.cantidad);
+    ss.items[i].push(g); cc.items[i].push(g); // para ver qué gastos forman cada cifra
   }
   // incluir las subcategorías sin gasto, como el Excel
   for (const c of taxonomia) {
-    if (!cats.has(c.nombre)) cats.set(c.nombre, { nombre: c.nombre, meses: vacio(), subs: new Map() });
-    for (const s of c.subcategorias || []) if (!cats.get(c.nombre).subs.has(s.nombre)) cats.get(c.nombre).subs.set(s.nombre, vacio());
+    if (!cats.has(c.nombre)) cats.set(c.nombre, { nombre: c.nombre, meses: vacio(), subs: new Map(), items: MESES_VACIOS() });
+    for (const s of c.subcategorias || []) if (!cats.get(c.nombre).subs.has(s.nombre)) cats.get(c.nombre).subs.set(s.nombre, { meses: vacio(), items: MESES_VACIOS() });
   }
   const lista = [...cats.values()].sort((a, b) => (orden.get(a.nombre) ?? 99) - (orden.get(b.nombre) ?? 99));
-  for (const c of lista) c.subs = [...c.subs.entries()].map(([nombre, meses]) => ({ nombre, meses })).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  for (const c of lista) c.subs = [...c.subs.entries()].map(([nombre, x]) => ({ nombre, meses: x.meses, items: x.items })).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
   return lista;
 }
 

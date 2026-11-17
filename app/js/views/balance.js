@@ -24,8 +24,44 @@ function tabla({ cab, filas, claseTabla = '' }) {
       ? h('tr', { class: ['titulo', f.grupo].filter(Boolean).join(' ') }, h('th', { scope: 'rowgroup', colspan: cab.length, class: 'sticky-col' }, f.titulo))
       : h('tr', { class: [f.clase, f.grupo].filter(Boolean).join(' ') },
         h('th', { scope: 'row', class: 'sticky-col' }, f.label),
-        f.valores.map((v) => h('td', { class: `num ${typeof v === 'number' ? signo(v) : ''}` }, typeof v === 'number' ? eur(v) : v))))))));
+        f.valores.map((v, i) => {
+          const td = h('td', { class: `num ${typeof v === 'number' ? signo(v) : ''}` }, typeof v === 'number' ? eur(v) : v);
+          const det = f.detalle?.[i];
+          if (det?.length) { td.classList.add('con-detalle'); detalleAlPasar(td, () => ({ titulo: `${f.label} · ${cab[i + 1]}`, gastos: det })); }
+          return td;
+        })))))));
 }
+
+// Al dejar el ratón ~1,5 s sobre una cifra (o al tocarla) sale un recuadro con los gastos que la forman.
+let pop = null, temporizador = null;
+function cerrarDetalle() { clearTimeout(temporizador); pop?.remove(); pop = null; }
+function detalleAlPasar(td, datos) {
+  const abrir = () => {
+    cerrarDetalle();
+    const { titulo, gastos } = datos();
+    const orden = [...gastos].sort((a, b) => Math.abs(num(b.cantidad)) - Math.abs(num(a.cantidad)));
+    const MAX = 25;
+    pop = h('div', { class: 'popover-detalle', role: 'tooltip' },
+      h('div', { class: 'pd-titulo' }, titulo, h('span', { class: 'muted' }, ` · ${gastos.length} gasto${gastos.length === 1 ? '' : 's'}`)),
+      h('table', {}, h('tbody', {}, orden.slice(0, MAX).map((g) => h('tr', {},
+        h('td', { class: 'mono' }, (g.fecha_factura || g.fecha_pago || '').split('-').reverse().join('/')),
+        h('td', {}, g.empresa || '—', g.concepto ? h('span', { class: 'muted' }, ` · ${g.concepto}`) : null),
+        h('td', { class: 'num' }, fmtEUR2(num(g.cantidad))))))),
+      orden.length > MAX ? h('div', { class: 'muted small' }, `y ${orden.length - MAX} más…`) : null);
+    pop.addEventListener('mouseleave', cerrarDetalle);
+    document.body.appendChild(pop);
+    const r = td.getBoundingClientRect(), p = pop.getBoundingClientRect();
+    let left = r.left + r.width / 2 - p.width / 2, top = r.bottom + 4;
+    left = Math.max(8, Math.min(left, window.innerWidth - p.width - 8));
+    if (top + p.height > window.innerHeight - 8) top = Math.max(8, r.top - p.height - 4);
+    Object.assign(pop.style, { left: `${left + window.scrollX}px`, top: `${top + window.scrollY}px` });
+  };
+  td.addEventListener('mouseenter', () => { clearTimeout(temporizador); temporizador = setTimeout(abrir, 1500); });
+  td.addEventListener('mouseleave', (e) => { clearTimeout(temporizador); if (pop && !pop.contains(e.relatedTarget)) cerrarDetalle(); });
+  td.addEventListener('click', abrir);
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarDetalle(); });
+document.addEventListener('scroll', cerrarDetalle, true);
 
 function csvDe(nombre, cab, filas) {
   const n2 = (v) => (typeof v === 'number' ? v.toFixed(2).replace('.', ',') : v ?? '');
@@ -112,17 +148,17 @@ function vistaSubcat(curso, gastos, taxonomia) {
   const filas = [];
   for (const c of cats) {
     const tc = suma(c.meses);
-    filas.push({ label: tituloCategoria(c.nombre), valores: [...c.meses, tc, total ? fmtPct(tc / total) : '—'], clase: 'total', grupo: 'gas' });
+    filas.push({ label: tituloCategoria(c.nombre), valores: [...c.meses, tc, total ? fmtPct(tc / total) : '—'], clase: 'total', grupo: 'gas', detalle: [...c.items, c.items.flat()] });
     for (const s of c.subs) {
       const ts = suma(s.meses);
-      filas.push({ label: s.nombre, valores: [...s.meses, ts, tc ? fmtPct(ts / tc) : '—'], clase: 'sub-indent' + (ts ? '' : ' vacia') });
+      filas.push({ label: s.nombre, valores: [...s.meses, ts, tc ? fmtPct(ts / tc) : '—'], clase: 'sub-indent' + (ts ? '' : ' vacia'), detalle: [...s.items, s.items.flat()] });
     }
   }
   filas.push({ label: 'Total gastos', valores: [...MESES.map((_, i) => suma(cats.map((c) => c.meses[i]))), total, ''], clase: 'final' });
   const cab = ['', ...MESES_CORTO, 'Total', '%'];
   return {
     kpis: null,
-    nota: 'Todos los gastos del curso (incluida Inversión y Welcome Pack). El % de cada categoría es sobre el total; el de cada subcategoría, sobre su categoría.',
+    nota: 'Todos los gastos del curso (incluida Inversión y Welcome Pack). El % de cada categoría es sobre el total; el de cada subcategoría, sobre su categoría. Deja el ratón sobre una cifra (o tócala) para ver los gastos que la forman.',
     el: tabla({ cab, filas, claseTabla: 'balance-subcat' }),
     csv: () => csvDe(`balance_subcategorias_${curso.nombre}.csv`, ['Concepto', ...MESES.map(capitalizar), 'Total', '%'], filas),
   };

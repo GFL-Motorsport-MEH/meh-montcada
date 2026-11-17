@@ -670,3 +670,13 @@ td.celda-fecha { position: relative; }
 .tabla-historial .despues { color: var(--good); }
 .gestoria-filtros { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
 .gestoria-filtros input[type=month] { width: auto; }
+/* Balance: detalle de los gastos de una cifra */
+td.con-detalle { cursor: help; }
+td.con-detalle:hover { outline: 1px dashed var(--border-strong, #9aa3af); outline-offset: -2px; }
+.popover-detalle { position: absolute; z-index: 60; max-width: min(460px, calc(100vw - 16px)); max-height: 60vh; overflow: auto; background: var(--surface); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 24px rgba(0,0,0,.18); padding: 8px 10px; font-size: 12px; }
+.popover-detalle .pd-titulo { font-weight: 600; margin-bottom: 4px; }
+.popover-detalle table { border-collapse: collapse; width: 100%; }
+.popover-detalle td { padding: 2px 6px 2px 0; vertical-align: top; border-top: 1px solid var(--border); }
+.popover-detalle td.num { text-align: right; white-space: nowrap; font-weight: 600; }
+.popover-detalle td.mono { white-space: nowrap; }
