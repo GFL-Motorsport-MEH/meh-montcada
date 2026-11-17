@@ -67,8 +67,13 @@ export function propuestaDesdePlantillas(plantillas, { curso, mes, existentes, c
 }
 
 // Sugerencias de plantillas: gastos que se repiten (misma empresa y subcategoría) en al menos `minMeses` meses del curso
-export function sugerirPlantillas(gastos, plantillas, minMeses = 4) {
+export function sugerirPlantillas(gastos, plantillas, minMeses = 5) {
+  // Solo lo que se repite de verdad: aparece en >= minMeses meses, más o menos una vez al mes (las nóminas pueden tener extras),
+  // y sigue vivo (último pago en los 4 últimos meses con datos). De cada mes se toma el pago principal (el mayor).
   const ya = new Set(plantillas.map((p) => `${p.empresa.toLowerCase()}|${p.subcategoria_id || ''}`));
+  const fecha = (g) => g.fecha_pago || g.fecha_factura || '';
+  const fMax = gastos.reduce((m, g) => (fecha(g) > m ? fecha(g) : m), '');
+  const limite = fMax ? new Date(new Date(fMax).getTime() - 120 * 864e5).toISOString().slice(0, 10) : '';
   const grupos = new Map();
   for (const g of gastos) {
     if (!g.empresa || !g.mes) continue;
@@ -79,14 +84,29 @@ export function sugerirPlantillas(gastos, plantillas, minMeses = 4) {
   const out = [];
   for (const [k, lista] of grupos) {
     if (ya.has(k)) continue;
-    const meses = new Set(lista.map((g) => g.mes));
-    if (meses.size < minMeses) continue;
-    const ult = [...lista].sort((a, b) => (b.fecha_pago || b.fecha_factura || '').localeCompare(a.fecha_pago || a.fecha_factura || ''))[0];
-    const nomina = /nomina/i.test(ult.tipo || '');
-    const concepto = (ult.concepto || '').replace(new RegExp(`\\b(${MESES.join('|')})\\b`, 'i'), '{mes}');
+    const porMes = new Map();
+    for (const g of lista) { const a = porMes.get(g.mes); if (!a || num(g.cantidad) > num(a.cantidad)) porMes.set(g.mes, g); }
+    if (porMes.size < minMeses) continue;
+    const principales = [...porMes.values()].sort((a, b) => fecha(b).localeCompare(fecha(a)));
+    const importes = principales.map((g) => num(g.cantidad)).sort((a, b) => a - b);
+    const mediana = importes[Math.floor(importes.length / 2)];
+    // El último mes "normal" (evita coger un mes a medias, p.ej. solo un extra o un 0)
+    const ult = principales.find((g) => num(g.cantidad) >= mediana * 0.5) || principales[0];
+    const nomina = /nomina|nómina/i.test(ult.tipo || '');
+    if (/impuesto/i.test(ult.tipo || '')) continue;
+    if (limite && fecha(principales[0]) < limite) continue;
+    if (!nomina) {
+      if (lista.length / porMes.size > 1.5) continue;
+      const media = importes.reduce((a, b) => a + b, 0) / importes.length;
+      const cv = media ? Math.sqrt(importes.reduce((a, b) => a + (b - media) ** 2, 0) / importes.length) / media : 1;
+      if (cv > 0.6) continue; // compras sueltas de importe muy variable: no son un gasto fijo
+    }
+    const reMes = new RegExp(`\\b(${MESES.join('|')})\\b`, 'gi');
+    const c0 = ult.concepto || '';
+    const concepto = (c0.match(reMes) || []).length === 1 ? c0.replace(reMes, '{mes}') : c0;
     out.push({ grupo: nomina ? 'nomina' : 'mensual', empresa: ult.empresa.trim(), concepto, cantidad: num(ult.cantidad), tipo: ult.tipo, categoria_id: ult.categoria_id,
-      subcategoria_id: ult.subcategoria_id, metodo_pago: ult.metodo_pago, periodicidad: 'Mensual', dia_pago: Number((ult.fecha_pago || ult.fecha_factura || '').slice(8, 10)) || 1,
-      centro_id: ult.centro_id || null, meses: meses.size });
+      subcategoria_id: ult.subcategoria_id, metodo_pago: ult.metodo_pago, periodicidad: 'Mensual', dia_pago: Number(fecha(ult).slice(8, 10)) || 1,
+      centro_id: ult.centro_id || null, meses: porMes.size });
   }
   return out.sort((a, b) => (a.grupo === b.grupo ? b.meses - a.meses || a.empresa.localeCompare(b.empresa, 'es') : a.grupo === 'nomina' ? -1 : 1));
 }

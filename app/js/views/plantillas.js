@@ -120,6 +120,51 @@ async function renderPlantillas(cont, ctx) {
       return p;
     } catch (ex) { toast('No se ha creado: ' + ex.message, 'error'); return null; }
   }
+  // Empresas para el desplegable: maestro de empresas + las que aparecen en los gastos de los últimos cursos
+  const ultimosCursos = () => { const i = ctx.state.cursos.findIndex((c) => c.id === ctx.cursoActual()?.id); return ctx.state.cursos.slice(Math.max(0, i - 1), i + 1); };
+  const dlEmpresa = h('datalist', { id: 'dl-pl-empresa' });
+  (async () => {
+    const nombres = new Set();
+    try { for (const e of await ctx.empresas()) if (e.nombre_comercial) nombres.add(e.nombre_comercial.trim()); } catch { /* sin maestro */ }
+    for (const c of ultimosCursos()) { try { for (const g of await ctx.gastos(c.id)) if (g.empresa) nombres.add(g.empresa.trim()); } catch { /* curso sin datos */ } }
+    dlEmpresa.replaceChildren(...[...nombres].sort((a, b) => a.localeCompare(b, 'es')).map((n) => h('option', { value: n })));
+  })();
+
+  // Crear / actualizar plantillas a partir de lo que se repite cada mes (nunca borra: solo añade o actualiza)
+  async function crearDesdeGastos() {
+    const cursos = ultimosCursos();
+    const gastos = [];
+    for (const c of cursos) for (const g of await ctx.gastos(c.id)) gastos.push({ ...g, mes: `${c.id}|${g.mes}` });
+    const props = sugerirPlantillas(gastos, []);
+    const clave = (e, sub) => `${String(e || '').trim().toLowerCase()}|${sub || ''}`;
+    const existentes = new Map(plantillas.map((p) => [clave(p.empresa, p.subcategoria_id), p]));
+    const CAMPOS = [['cantidad', 'importe'], ['dia_pago', 'día'], ['metodo_pago', 'método'], ['categoria_id', 'categoría'], ['tipo', 'tipo']];
+    const filas = [];
+    for (const s of props) {
+      const { meses, ...datos } = s;
+      const p = existentes.get(clave(s.empresa, s.subcategoria_id));
+      if (!p) { filas.push({ nuevo: true, s, datos, texto: `${s.empresa} · ${s.concepto || ''} · ${fmtEUR2(s.cantidad)} · ${meses} meses` }); continue; }
+      const cambios = {};
+      for (const [k] of CAMPOS) if (datos[k] != null && datos[k] !== '' && (k === 'cantidad' ? num(datos[k]) !== num(p[k]) : datos[k] !== p[k])) cambios[k] = datos[k];
+      if (Object.keys(cambios).length) filas.push({ nuevo: false, p, cambios, texto: `${p.empresa}: ` + Object.keys(cambios).map((k) => `${CAMPOS.find((c) => c[0] === k)[1]} ${k === 'cantidad' ? fmtEUR2(p[k]) + ' → ' + fmtEUR2(cambios[k]) : (p[k] ?? '—') + ' → ' + cambios[k]}`).join(' · ') });
+    }
+    if (!filas.length) { toast(`Las plantillas ya están al día con los gastos de ${cursos.map((c) => c.nombre).join(' y ')}.`); return; }
+    filas.forEach((f) => { f.chk = h('input', { type: 'checkbox', checked: true, 'aria-label': f.texto }); });
+    const lista = (nuevo) => filas.filter((f) => f.nuevo === nuevo);
+    const ok = await confirmar({ titulo: 'Crear / actualizar plantillas', ok: 'Aplicar',
+      texto: h('div', {}, h('p', { class: 'muted small' }, `Gastos que se repiten al menos 5 meses en ${cursos.map((c) => c.nombre).join(' y ')}. No se borra ninguna plantilla.`),
+        lista(true).length ? h('div', {}, h('h4', {}, `Nuevas (${lista(true).length})`), h('ul', { class: 'lista-checks' }, lista(true).map((f) => h('li', {}, h('label', { class: 'check small' }, f.chk, f.texto, h('span', { class: 'pill' }, f.s.grupo === 'nomina' ? 'nómina' : 'mensual')))))) : null,
+        lista(false).length ? h('div', {}, h('h4', {}, `A actualizar (${lista(false).length})`), h('ul', { class: 'lista-checks' }, lista(false).map((f) => h('li', {}, h('label', { class: 'check small' }, f.chk, f.texto))))) : null) });
+    if (!ok) return;
+    let n = 0, u = 0;
+    for (const f of filas.filter((x) => x.chk.checked)) {
+      if (f.nuevo) { if (await anadir(f.s.grupo, f.datos)) n++; }
+      else { try { Object.assign(f.p, await db.actualizarPlantilla(f.p.id, f.cambios)); u++; } catch (ex) { toast('No se ha actualizado ' + f.p.empresa + ': ' + ex.message, 'error'); } }
+    }
+    pintar();
+    toast(`${n} plantillas nuevas · ${u} actualizadas`);
+  }
+
   const sugCont = h('div');
   async function sugerir() {
     const curso = ctx.cursoActual();
@@ -136,9 +181,10 @@ async function renderPlantillas(cont, ctx) {
   clear(cont,
     h('div', { class: 'section-head' }, h('div', {}, h('h2', {}, 'Plantillas de gastos'),
       h('div', { class: 'count' }, 'Gastos que se repiten cada mes y nóminas. Desde Gastos > "Generar gastos del mes" se crean todos de una vez. En el concepto, {mes} se cambia por el mes.')),
-      h('div', { class: 'section-actions' }, h('button', { class: 'btn', onclick: sugerir }, 'Sugerir desde los gastos'))),
+      h('div', { class: 'section-actions' }, h('button', { class: 'btn primary', onclick: crearDesdeGastos, title: 'Crea las que faltan y actualiza importes, día y método de las que ya hay. No borra nada.' }, 'Crear / actualizar plantillas'),
+        h('button', { class: 'btn', onclick: sugerir }, 'Sugerir desde los gastos'))),
     sugCont,
-    h('datalist', { id: 'dl-pl-empresa' }, (ctx.state.empresas || []).map((e) => h('option', { value: e.nombre_comercial }))),
+    dlEmpresa,
     GRUPOS.map(([g, titulo]) => {
       secciones[g] = h('tbody');
       totales[g] = h('span', { class: 'muted small' });
