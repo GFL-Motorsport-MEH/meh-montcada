@@ -10,7 +10,7 @@ import { renderBalance } from './views/balance.js';
 import { renderFacturacion } from './views/facturacion.js';
 import { renderControl } from './views/control.js';
 import { renderConfig } from './views/config.js';
-import { renderAcademia } from './views/academia.js';
+import { RUTAS_ACADEMIA, TABS_ACADEMIA } from './academia/index.js';
 import { renderEscanerVista } from './views/escaner-vista.js';
 import * as historial from './deshacer.js';
 import './views/config-listas.js';
@@ -93,7 +93,7 @@ const RUTAS = {
   control: { titulo: 'Control', render: renderControl, modulo: 'facturacion' },
   config: { titulo: 'Configuración', render: renderConfig, modulo: 'facturacion' },
   usuarios: { titulo: 'Usuarios', render: renderUsuarios, admin: true, modulo: 'facturacion' },
-  academia: { titulo: 'Academia', render: renderAcademia, modulo: 'academia' },
+  ...RUTAS_ACADEMIA, // módulo Academia (todo su código está en js/academia/)
 };
 const LS_RUTA = 'meh.ruta.';
 function rutaActual() {
@@ -247,7 +247,7 @@ function pintarTabs(actual) {
   const tab = (id, label) => h('a', { class: 'tab', href: `#/${id}`, 'aria-current': id === actual ? 'page' : false }, label);
   const proximamente = (label) => h('span', { class: 'tab disabled', title: 'Próximamente' }, label, h('span', { class: 'soon' }, 'pronto'));
   if (modulo === 'academia') {
-    clear(tabsEl, tab('academia', 'Resumen'), proximamente('Alumnos'), proximamente('Grupos y horarios'), proximamente('Pagos'), proximamente('Asistencia'), proximamente('Profesores'));
+    clear(tabsEl, TABS_ACADEMIA.map(([id, label]) => tab(id, label)), proximamente('Asistencia'));
     return;
   }
   if (ctx.esEscaner()) { clear(tabsEl, tab('escaner', 'Escáner')); return; }

@@ -1,0 +1,119 @@
+// Supabase simulado para probar el módulo Academia (sin red). Un solo usuario admin ya con sesión.
+const hoy = new Date().toISOString().slice(0, 10);
+const ADMIN = { id: 'u-admin', email: 'admin@test.es', nombre: 'Admin Prueba', rol: 'admin', activo: true, debe_cambiar_password: false, created_at: hoy };
+const CURSOS = [{ id: 'c1', nombre: '2025.26', fecha_inicio: '2025-09-01', fecha_fin: '2026-08-31' }, { id: 'c2', nombre: '2026.27', fecha_inicio: '2026-09-01', fecha_fin: '2027-08-31' }];
+const L = (lista, ...vals) => vals.map((valor, i) => ({ id: `l-${lista}-${i}`, lista, valor, orden: i }));
+const db = {
+  profiles: [ADMIN], cursos: CURSOS, categorias: [], subcategorias: [], centros: [{ id: 'ce1', nombre: 'MONTCADA', principal: true, activo: true, orden: 0 }], gastos: [], listas: [], empresas: [],
+  ac_listas: [...L('modalidad', 'Babies', 'Kids', 'Teens', 'Adults'), ...L('metodo_pago', 'Domiciliacion', 'Efectivo'), ...L('motivo_baja', 'Incompatibilidad horaria', 'Otros'), ...L('categoria_documento', 'Protocolo', 'Familias'), ...L('situacion_contacto', 'posible alumno', 'prueba', 'inscrito'), ...L('descuento', 'Hermanos')],
+  ac_responsables: [], ac_responsables_priv: [], ac_profesoras: [], ac_aulas: [], ac_alumnos: [], ac_inscripciones: [], ac_grupos: [], ac_sesiones: [], ac_alumno_grupo: [], ac_remesas: [], ac_cuotas: [], ac_bajas: [], ac_contactos: [], ac_tutorias: [], ac_anotaciones: [], ac_tareas: [], ac_documentos: [],
+};
+const DEFAULTS = {
+  ac_alumnos: { estado: 'inscrito', autoriza_rrss: false }, ac_cuotas: { estado: 'pendiente', concepto: 'mensualidad', mes: '', importe: 0 }, ac_grupos: { activo: true, capacidad: 8 },
+  ac_tareas: { hecha: false, items: [], prioridad: 0 }, ac_documentos: { version: 1, estado: 'vigente', contenido: '' }, ac_profesoras: { activa: true, color: '#4f7cff' }, ac_aulas: { activa: true },
+  ac_inscripciones: { cuota_mensual: 0, welcome_pack: 0, activa: true }, ac_remesas: { estado: 'borrador' }, ac_tutorias: { estado: 'pendiente', formato: 'presencial', fecha: hoy }, ac_anotaciones: { tipo: 'nota', fecha: hoy },
+  ac_contactos: { situacion: 'posible alumno' }, ac_bajas: { fecha_baja: hoy }, ac_alumno_grupo: {},
+};
+// relaciones embebidas: alias -> [tabla destino, columna, 'uno'|'muchos']  (columna = FK en la tabla que se lee o en la destino)
+const REL = {
+  ac_alumnos: { responsable: ['ac_responsables', 'responsable_id', 'uno'] },
+  ac_grupos: { sesiones: ['ac_sesiones', 'grupo_id', 'muchos'], miembros: ['ac_alumno_grupo', 'grupo_id', 'muchos'] },
+  ac_bajas: { alumno: ['ac_alumnos', 'alumno_id', 'uno'] },
+  ac_tutorias: { alumno: ['ac_alumnos', 'alumno_id', 'uno'], profesora: ['ac_profesoras', 'profesora_id', 'uno'] },
+  ac_anotaciones: { alumno: ['ac_alumnos', 'alumno_id', 'uno'], profesora: ['ac_profesoras', 'profesora_id', 'uno'] },
+};
+let session = { user: { id: ADMIN.id, email: ADMIN.email }, access_token: 'x' };
+const listeners = [];
+let nextId = 1;
+window.__mock = { db, calls: [] };
+
+class Q {
+  constructor(t) { this.t = t; this.f = []; this.orders = []; this.op = 'select'; }
+  select(cols) { this.cols = cols || '*'; this.ret = true; return this; }
+  eq(c, v) { this.f.push((r) => r[c] === v); return this; }
+  is(c, v) { this.f.push((r) => (r[c] ?? null) === v); return this; }
+  in(c, vs) { this.f.push((r) => vs.includes(r[c])); return this; }
+  order(c, o = {}) { this.orders.push([c, o.ascending !== false]); return this; }
+  range(a, b) { this.rng = [a, b]; return this; }
+  maybeSingle() { this.single_ = 'maybe'; return this; }
+  single() { this.single_ = 'one'; return this; }
+  insert(o) { this.op = 'insert'; this.payload = o; return this; }
+  update(o) { this.op = 'update'; this.payload = o; return this; }
+  upsert(o, opts = {}) { this.op = 'upsert'; this.payload = o; this.up = opts; return this; }
+  delete() { this.op = 'delete'; return this; }
+  then(res, rej) { return Promise.resolve().then(() => this.exec()).then(res, rej); }
+  embed(r) {
+    const out = { ...r };
+    for (const [, alias, tabla, cols] of (this.cols || '').matchAll(/(\w+):(\w+)\(([^)]*)\)/g)) {
+      const rel = REL[this.t]?.[alias]; if (!rel) continue;
+      const [dest, col, tipo] = rel;
+      if (tipo === 'uno') { const o = db[dest].find((x) => x.id === r[col]); out[alias] = o ? { ...o } : null; }
+      else out[alias] = db[dest].filter((x) => x[col] === r.id).map((x) => ({ ...x }));
+    }
+    return out;
+  }
+  aplicarDefaults(p) {
+    const r = { id: 'id-' + (nextId++), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), created_by: ADMIN.id, ...(DEFAULTS[this.t] || {}), ...p };
+    if (this.t === 'ac_alumnos') r.nombre_completo = `${r.nombre} ${r.apellidos}`.trim();
+    return r;
+  }
+  exec() {
+    window.__mock.calls.push({ t: this.t, op: this.op });
+    if (!db[this.t]) db[this.t] = []; // tablas de Facturación que esta prueba no usa
+    const match = (r) => this.f.every((fn) => fn(r));
+    if (this.op === 'insert') {
+      const rows = [].concat(this.payload).map((p) => this.aplicarDefaults(p));
+      for (const r of rows) {
+        if (this.t === 'ac_alumnos' && r.num && db.ac_alumnos.some((x) => x.num === r.num)) return { data: null, error: { message: 'duplicate key value violates unique constraint "ac_alumnos_num_uq"' } };
+        if (this.t === 'ac_cuotas' && db.ac_cuotas.some((x) => ['alumno_id', 'curso_id', 'concepto', 'mes'].every((k) => x[k] === r[k]))) return { data: null, error: { message: 'duplicate key value violates unique constraint' } };
+      }
+      db[this.t].push(...rows);
+      return { data: this.single_ ? rows[0] : rows, error: null };
+    }
+    if (this.op === 'upsert') {
+      const cols = (this.up.onConflict || 'id').split(',').map((c) => c.trim()); const out = [];
+      for (const p of [].concat(this.payload)) {
+        const ex = db[this.t].find((x) => cols.every((c) => x[c] !== undefined && x[c] !== null && x[c] === p[c]));
+        if (ex) { if (!this.up.ignoreDuplicates) { Object.assign(ex, p); if (this.t === 'ac_alumnos') ex.nombre_completo = `${ex.nombre} ${ex.apellidos}`.trim(); out.push(ex); } continue; }
+        const r = this.aplicarDefaults(p); db[this.t].push(r); out.push(r);
+      }
+      return { data: this.single_ ? out[0] || null : out.map((r) => ({ ...r })), error: null };
+    }
+    if (this.op === 'update') {
+      const t = db[this.t].filter(match);
+      t.forEach((r) => { Object.assign(r, this.payload, { updated_at: new Date().toISOString() }); if (this.t === 'ac_alumnos') r.nombre_completo = `${r.nombre} ${r.apellidos}`.trim(); });
+      return { data: this.single_ ? t[0] || null : t, error: this.single_ === 'one' && !t.length ? { message: 'no rows' } : null };
+    }
+    if (this.op === 'delete') { db[this.t] = db[this.t].filter((r) => !match(r)); return { data: null, error: null }; }
+    let out = db[this.t].filter(match);
+    for (const [c, asc] of [...this.orders].reverse()) out = [...out].sort((a, b) => { const x = a[c] ?? '', y = b[c] ?? ''; return (x < y ? -1 : x > y ? 1 : 0) * (asc ? 1 : -1); });
+    const [a, b] = this.rng || [0, 999]; out = out.slice(a, b + 1).map((r) => this.embed(r));
+    if (this.single_) return { data: out[0] || null, error: null };
+    return { data: out, error: null };
+  }
+}
+export function createClient() {
+  return {
+    from: (t) => new Q(t),
+    storage: { from: () => ({ async upload() { return { data: {}, error: null }; }, async createSignedUrl() { return { data: { signedUrl: 'about:blank' }, error: null }; } }) },
+    functions: { async invoke() { return { data: {}, error: null }; } },
+    async rpc(fn, args) {
+      window.__mock.calls.push({ rpc: fn, args });
+      if (fn === 'ac_generar_cuotas') {
+        let n = 0;
+        for (const i of db.ac_inscripciones.filter((x) => x.curso_id === args.p_curso && x.activa && Number(x.cuota_mensual) > 0)) {
+          const al = db.ac_alumnos.find((a) => a.id === i.alumno_id); if (!al || al.estado !== 'inscrito') continue;
+          if (db.ac_cuotas.some((c) => c.alumno_id === i.alumno_id && c.curso_id === i.curso_id && c.concepto === 'mensualidad' && c.mes === args.p_mes)) continue;
+          db.ac_cuotas.push({ id: 'id-' + (nextId++), alumno_id: i.alumno_id, curso_id: i.curso_id, concepto: 'mensualidad', mes: args.p_mes, importe: i.cuota_mensual, estado: 'pendiente', metodo_pago: al.metodo_pago, created_at: new Date().toISOString() }); n++;
+        }
+        return { data: n, error: null };
+      }
+      return { data: null, error: { message: 'función desconocida' } };
+    },
+    auth: {
+      async getSession() { return { data: { session }, error: null }; },
+      onAuthStateChange(cb) { listeners.push(cb); setTimeout(() => cb('INITIAL_SESSION', session)); return { data: { subscription: { unsubscribe() {} } } }; },
+      async signOut() { session = null; return { error: null }; }, async signInWithPassword() { return { data: { session }, error: null }; }, async resetPasswordForEmail() { return { data: {}, error: null }; }, async updateUser() { return { data: {}, error: null }; },
+    },
+  };
+}

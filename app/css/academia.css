@@ -1,0 +1,67 @@
+/* Módulo Academia: solo estilos propios (el resto viene de app.css). Todos los selectores empiezan por .ac- o cuelgan de él. */
+.filters.filters-4 { grid-template-columns: 2fr 1fr 1fr 1fr; }
+.ac-tabla td { vertical-align: middle; }
+.ac-fila { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 3px 0; }
+.ac-fila > .muted { flex: 1; }
+.ac-nota { border-bottom: 1px solid var(--border); padding: 6px 0; display: flex; flex-direction: column; gap: 2px; }
+.ac-nota:last-child { border-bottom: none; }
+.ac-nueva-nota { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.ac-sec-completa { display: block; }
+.ac-sec-completa > h3 { margin-bottom: 8px; }
+.ac-dos-col { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 800px) { .ac-dos-col { grid-template-columns: 1fr; } }
+.ac-punto { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+.kpi-link { text-decoration: none; color: inherit; }
+.kpi-link:hover { background: var(--surface-2); }
+
+/* pagos: matriz alumno × mes sin scroll lateral */
+table.ac-matriz { min-width: 0; table-layout: fixed; font-size: 12px; }
+table.ac-matriz th, table.ac-matriz td { padding: 3px 4px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.ac-matriz th:first-child, table.ac-matriz td.ac-nom { text-align: left; width: 18%; }
+table.ac-matriz th:nth-child(2), table.ac-matriz th:nth-child(3) { width: 6.5%; }
+table.ac-matriz td.ac-nom { font-size: 12px; }
+table.ac-matriz tfoot th { font-size: 11px; }
+.ac-imp { width: 100%; min-width: 0; text-align: right; padding: 2px 3px; font-size: 11.5px; box-sizing: border-box; }
+.ac-pago { width: 100%; min-width: 24px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); font: 600 11px var(--font-body); padding: 2px 0; cursor: pointer; color: var(--text-secondary); }
+.ac-pago.pendiente { background: color-mix(in oklab, var(--warning) 16%, var(--surface)); border-color: color-mix(in oklab, var(--warning) 45%, var(--border)); color: var(--warning); }
+.ac-pago.pagado { background: color-mix(in oklab, var(--good) 16%, var(--surface)); border-color: color-mix(in oklab, var(--good) 45%, var(--border)); color: var(--good); }
+.ac-pago.devuelto { background: color-mix(in oklab, var(--critical) 14%, var(--surface)); border-color: color-mix(in oklab, var(--critical) 45%, var(--border)); color: var(--critical); }
+.ac-pago[disabled] { cursor: default; }
+.ac-cel.vacia { color: var(--text-muted); }
+
+/* horarios */
+table.ac-parrilla { min-width: 0; table-layout: fixed; }
+table.ac-parrilla th:first-child { width: 64px; }
+table.ac-parrilla td { vertical-align: top; }
+.ac-chip { display: inline-block; margin: 1px 3px 1px 0; padding: 1px 7px; border-radius: 999px; font-size: 11.5px; border: 1px solid var(--c); background: color-mix(in oklab, var(--c) 14%, var(--surface)); white-space: nowrap; }
+
+/* calendario por profesora / aula */
+.ac-cal-cont { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 12px; }
+.ac-cal-card { padding: 10px; overflow: hidden; }
+.ac-cal { display: grid; grid-template-columns: 42px repeat(6, minmax(0, 1fr)); gap: 0 2px; font-size: 11px; }
+.ac-cal-h { text-align: center; font-weight: 600; color: var(--text-secondary); padding-bottom: 2px; }
+.ac-cal-hora { grid-column: 1; color: var(--text-muted); text-align: right; padding-right: 4px; border-top: 1px solid var(--border); font-size: 10px; }
+.ac-cal-ses { border-left: 3px solid var(--c); background: color-mix(in oklab, var(--c) 18%, var(--surface)); border-radius: 3px; padding: 1px 3px; overflow: hidden; display: flex; flex-direction: column; line-height: 1.15; }
+.ac-cal-ses span { color: var(--text-secondary); font-size: 10px; }
+.ac-cal-ses.choque { outline: 2px solid var(--critical); background: color-mix(in oklab, var(--critical) 18%, var(--surface)); }
+
+/* tareas (estilo Keep) */
+.ac-keep { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; align-items: start; }
+.ac-tarjeta { display: flex; flex-direction: column; gap: 6px; border-left: 4px solid var(--border-strong); }
+.ac-tarjeta.prio1 { border-left-color: var(--warning); }
+.ac-tarjeta.prio2 { border-left-color: var(--critical); }
+.ac-tarjeta.hecha { opacity: .6; }
+.ac-tarjeta-titulo { text-align: left; font-weight: 600; font-size: 13.5px; }
+.ac-tarjeta.hecha .ac-tarjeta-titulo { text-decoration: line-through; }
+.ac-notas { white-space: pre-wrap; }
+.ac-items { display: flex; flex-direction: column; gap: 2px; }
+.ac-items .check.hecho { text-decoration: line-through; color: var(--text-muted); }
+.ac-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ac-tarea-nueva { width: 100%; }
+
+/* protocolos */
+.ac-doc-cat { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.ac-doc-item { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; text-align: left; padding: 6px 4px; background: none; border: none; border-bottom: 1px solid var(--border); cursor: pointer; font: inherit; color: inherit; }
+.ac-doc-item:hover { background: var(--surface-2); }
+.ac-doc h3 { margin: 12px 0 4px; } .ac-doc h4 { margin: 10px 0 4px; } .ac-doc p { margin: 6px 0; } .ac-doc ul, .ac-doc ol { margin: 6px 0 6px 20px; }
+.buscador-alumno input { min-width: 240px; }
