@@ -130,10 +130,11 @@ function primeraRuta(modulo) {
   const orden = modulo === 'academia' ? TABS_ACADEMIA.map((t) => t[0]) : ['panel', 'gastos', 'escaner', 'ingresos', 'ac_pagos', 'ac_remesas', 'facturacion', 'balance', 'control', 'config', 'usuarios'];
   return orden.find(puedeRuta) || null;
 }
-// Ingresos agrupa sus pantallas hermanas como sub-pestañas: Resumen (la cuadrícula de ingresos), Pagos, Remesas y Facturación.
-// Cada una conserva su permiso; se ven solo las que el usuario puede abrir. Importar pagos cuelga de Pagos.
-const SUBTABS_INGRESOS = [['ingresos', 'Resumen'], ['ac_pagos', 'Pagos'], ['ac_remesas', 'Remesas'], ['facturacion', 'Facturación']];
-const subtabDe = (ruta) => (ruta === 'ac_pagos_importar' ? 'ac_pagos' : ruta);
+// Ingresos tiene dos sub-pestañas: Resumen de Pagos (la cuadrícula, que se rellena con los pagos marcados en Pagos) y Facturación.
+// Pagos y Remesas son pestañas propias porque llevan un permiso exclusivo (ver permisos.js).
+const SUBTABS_INGRESOS = [['ingresos', 'Resumen de Pagos'], ['facturacion', 'Facturación']];
+const subtabDe = (ruta) => ruta;
+const TABS_COBROS = [['ac_pagos', 'Pagos'], ['ac_remesas', 'Remesas']];
 const enIngresos = (ruta) => SUBTABS_INGRESOS.some(([id]) => id === subtabDe(ruta));
 const modulosVisibles = () => MODULOS.filter((m) => primeraRuta(m.id));
 const LS_RUTA = 'meh.ruta.';
@@ -301,12 +302,13 @@ function pintarTabs(actual) {
   const fact = ctx.veAlgo('fact');
   const badge = h('span', { class: 'tab-badge tab-badge-gastos', hidden: !state.pendientes, title: `${state.pendientes || 0} gastos pendientes de revisar` }, state.pendientes ? String(state.pendientes) : '');
   clear(tabsEl, fact ? tab('panel', 'Panel') : null, fact ? h('a', { class: 'tab', href: '#/gastos', 'aria-current': actual === 'gastos' ? 'page' : false }, 'Gastos', badge) : null, ctx.veAlgo('escaner') ? tab('escaner', 'Escáner') : null,
-    pestanaIngresos(actual),
+    pestanaIngresos(actual), TABS_COBROS.filter(([id]) => puedeRuta(id)).map(([id, label]) => h('a', { class: 'tab', href: `#/${id}`, 'aria-current': subtabCobro(id, actual) ? 'page' : false }, label)),
     fact ? tab('balance', 'Balance') : null, fact ? tab('control', 'Control') : null, ctx.edita('fact') ? tab('config', 'Configuración') : null,
     ctx.esAdmin() ? tab('usuarios', 'Usuarios') : null);
 }
 
 // La pestaña Ingresos abre su primera sub-pestaña accesible y, dentro de ellas, muestra la barra de sub-pestañas.
+const subtabCobro = (id, actual) => id === actual || (id === 'ac_pagos' && actual === 'ac_pagos_importar');
 function pestanaIngresos(actual) {
   const subs = SUBTABS_INGRESOS.filter(([id]) => puedeRuta(id));
   if (!subs.length) return null;

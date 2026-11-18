@@ -715,7 +715,7 @@ td.nfac-vacio input::placeholder { color: var(--text-primary); opacity: .75; fon
 .subtab:hover { background: color-mix(in oklab, var(--sc) 10%, var(--surface)); }
 .subtab[aria-current="page"] { background: var(--sc); border-color: var(--sc); color: #fff; }
 .subtab[aria-current="page"]::before { background: #fff; }
-.st-ingresos { --sc: #1f5fa8; } .st-ac_pagos { --sc: #1a7f37; } .st-ac_remesas { --sc: #6d4bc4; } .st-facturacion { --sc: #c2571a; }
+.st-ingresos { --sc: #1a7f37; } .st-facturacion { --sc: #c2571a; }
 
 :root {
   --g-babies: #d6538c; --g-kids: #e8742c; --g-teens: #7c5ad8; --g-adultos: #2a6fc0; --g-1-to-1: #0f8f8f; --g-empresas: #5f6b7a; --g-activities: #2f9e44;
@@ -739,20 +739,5 @@ table.grid-ing tfoot > tr > td.total-col { color: var(--accent); }
 .card.kpi[class*="kpi-c-"] .value { color: color-mix(in oklab, var(--kc) 80%, var(--text-primary)); }
 .kpi-c-total { --kc: var(--accent); } .kpi-c-mensualidades { --kc: var(--good); } .kpi-c-wp { --kc: #7c5ad8; } .kpi-c-extras { --kc: var(--accent-gas); }
 
-.vinculo-kpis { display: flex; gap: 8px; flex-wrap: wrap; }
-.vk { --vc: var(--text-muted); padding: 4px 12px; border-radius: 999px; font-size: 12.5px; color: var(--text-secondary);
-  background: color-mix(in oklab, var(--vc) 12%, var(--surface)); border: 1px solid color-mix(in oklab, var(--vc) 40%, var(--border)); }
-.vk b { font-variant-numeric: tabular-nums; color: color-mix(in oklab, var(--vc) 75%, var(--text-primary)); }
-.vk-ing { --vc: var(--accent); } .vk-cob, .vk-ok { --vc: var(--good); } .vk-mas, .vk-pen { --vc: var(--warning); } .vk-menos { --vc: var(--critical); }
-table.grid-vinculo td { padding: 7px 10px; text-align: right; font: 13px var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
-table.grid-vinculo td.total-col { font-weight: 600; }
-table.grid-vinculo tbody th.sticky-col { --vc: var(--text-muted); background: color-mix(in oklab, var(--vc) 14%, var(--surface)); box-shadow: inset 5px 0 0 var(--vc), 1px 0 0 var(--border); padding-left: 14px; }
-table.grid-vinculo tr.v-ing { --vc: var(--accent); } table.grid-vinculo tr.v-cob { --vc: var(--good); } table.grid-vinculo tr.v-dif { --vc: var(--text-secondary); }
-table.grid-vinculo tr.v-pen { --vc: var(--warning); } table.grid-vinculo tr.v-dev { --vc: var(--critical); }
-table.grid-vinculo tbody tr > td { background: color-mix(in oklab, var(--vc) 6%, transparent); }
-table.grid-vinculo tbody tr + tr > * { border-top: 1px solid var(--border); }
-table.grid-vinculo td.avisa { color: var(--warning); } table.grid-vinculo td.malo { color: var(--critical); }
-table.grid-vinculo td.dif-ok { color: var(--good); font-weight: 700; background: color-mix(in oklab, var(--good) 14%, transparent); text-align: center; }
-table.grid-vinculo td.dif-mas { color: var(--warning); font-weight: 600; background: color-mix(in oklab, var(--warning) 16%, transparent); }
-table.grid-vinculo td.dif-menos { color: var(--critical); font-weight: 600; background: color-mix(in oklab, var(--critical) 14%, transparent); }
-table.grid-vinculo td.dif-vacio { color: var(--text-muted); }
+input.cell.desde-pagos { cursor: default; font-weight: 600; background: color-mix(in oklab, var(--good) 13%, transparent); color: color-mix(in oklab, var(--good) 55%, var(--text-primary)); }
+.banner.info-pagos { background: color-mix(in oklab, var(--good) 10%, var(--surface)); border-color: color-mix(in oklab, var(--good) 40%, var(--border)); }

@@ -242,7 +242,7 @@ export async function renderPagos(view, ctx) {
       COLS.map((k) => h('th', { class: 'ac-mes' }, k.t, h('div', { class: 'ac-sub' }, '€ · P · R')))), ), cuerpo, pie);
   pintar(); pintarPie(); pintarKpis();
   clear(view,
-    cabecera(`Pagos · ${curso.nombre}`, 'Por mes: cuantía · P (pagado) · R (recibo hecho). Arrastra o usa Ctrl/Mayús+clic para elegir varias celdas.', mesSel, btnGen, btnWp, btnPrecios, h('a', { class: 'btn small', href: '#/ac_pagos_importar' }, 'Importar del CRM'), ctx.veAlgo('fact') ? h('a', { class: 'btn small', href: '#/ingresos', title: 'Compara lo cobrado aquí con la cuadrícula de Ingresos' }, 'Ver en Ingresos →') : null),
+    cabecera(`Pagos · ${curso.nombre}`, 'Por mes: cuantía · P (pagado) · R (recibo hecho). Arrastra o usa Ctrl/Mayús+clic para elegir varias celdas.', mesSel, btnGen, btnWp, btnPrecios, h('a', { class: 'btn small', href: '#/ac_pagos_importar' }, 'Importar del CRM'), ctx.veAlgo('fact') ? h('a', { class: 'btn small', href: '#/ingresos', title: 'El cuadro de Ingresos se rellena con los pagos marcados aquí' }, 'Ver Resumen de Pagos →') : null),
     sinInsc ? h('div', { class: 'banner warn' }, `${sinInsc} alumnos inscritos todavía no tienen cuota fijada en este curso: escribe su cuota en la fila (si no aparecen aquí, ábrelos desde Alumnos).`) : null,
     kpisEl,
     h('div', { class: 'filters filters-4' }, h('input', { type: 'search', placeholder: 'Buscar alumno o ID…', oninput: (e) => { f.q = e.target.value; pintar(); } }),

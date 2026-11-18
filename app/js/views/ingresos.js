@@ -1,9 +1,9 @@
 // Ingresos del curso: una cuadricula grupo/level/tipo x mes, como el resumen de las
 // hojas "20xx.xx Ing" del Excel. Cada celda se edita y se guarda al salir de ella.
-import { h, clear, ajustarAncho, fmtEUR, fmtEUR2, num, MESES, MESES_CORTO, capitalizar, cargando, toast, descargarCSV, grupoClase } from '../ui.js';
+import { h, clear, ajustarAncho, fmtEUR, fmtEUR2, num, MESES, MESES_CORTO, capitalizar, cargando, toast, descargarCSV, grupoClase, normalizar } from '../ui.js';
 import { crearIngreso, actualizarIngreso } from '../db.js';
 import { renderResumenIngresos } from './ingresos-resumen.js';
-import { renderPagosVsIngresos } from './ingresos-pagos.js';
+import * as api from '../academia/api.js';
 
 const ORDEN_GRUPOS = ['Babies', 'Kids', 'Teens', 'Adultos', '1 to 1', 'Empresas', 'Activities'];
 const esWP = (tipo) => /welcome/i.test(tipo || '');
@@ -48,11 +48,47 @@ export function construirFilas(registros) {
     || String(a.tipo).localeCompare(String(b.tipo)));
 }
 
+// Modalidad del grupo de Academia -> nombre de grupo de la cuadrícula (Adults -> Adultos…)
+const nombreGrupo = (m) => { const n = normalizar(m).replace(/s$/, ''); return ORDEN_GRUPOS.find((g) => normalizar(g).replace(/s$/, '') === n || (n === 'adult' && g === 'Adultos')) || (m || 'Sin grupo'); };
+
+// Lo cobrado en Pagos (cuotas marcadas como pagadas) por grupo, level y mes: así se rellena el cuadro, como en el Excel.
+// Cada alumno cuenta en su grupo activo del curso (modalidad y nivel del grupo); sin grupo va a «Sin grupo».
+async function pagosDelCurso(cursoId) {
+  const [cuotas, grupos] = await Promise.all([api.cuotas(cursoId), api.grupos(cursoId)]);
+  const deAlumno = new Map();
+  for (const g of grupos) for (const m of g.miembros || []) if (!m.fecha_baja && !deAlumno.has(m.alumno_id)) deAlumno.set(m.alumno_id, g);
+  const res = new Map();
+  for (const c of cuotas) {
+    if (c.estado !== 'pagado' || !num(c.importe)) continue;
+    const g = deAlumno.get(c.alumno_id);
+    const grupo = g ? nombreGrupo(g.modalidad) : 'Sin grupo'; const level = g?.nivel || '';
+    const k = `${grupo}|${level}`;
+    if (!res.has(k)) res.set(k, { grupo, level, meses: {}, wp: null });
+    const e = res.get(k);
+    if (c.concepto === 'welcome_pack') e.wp = (e.wp || 0) + num(c.importe);
+    else if (c.concepto === 'mensualidad' && MESES.includes(c.mes)) e.meses[c.mes] = (e.meses[c.mes] || 0) + num(c.importe);
+  }
+  for (const e of res.values()) for (const m of Object.keys(e.meses)) e.meses[m] = Math.round(e.meses[m] * 100) / 100;
+  return [...res.values()];
+}
+// valor efectivo de una celda: lo de Pagos si hay pagos marcados; si no, lo guardado en Ingresos
+const val = (f, mes) => (mes ? (f.pagos?.meses[mes] ?? num(f.celdas[mes]?.cantidad)) : (f.pagos?.wp ?? num(f.wp?.cantidad)));
+const deriva = (f, mes) => (mes ? f.pagos?.meses[mes] != null : f.pagos?.wp != null);
+
 export async function renderIngresos(view, ctx) {
   clear(view, cargando());
   const curso = ctx.cursoActual();
   const registros = await ctx.ingresos(curso.id); // array compartido con el Panel
   let filas = construirFilas(registros);
+  let hayPagos = false;
+  try {
+    for (const e of await pagosDelCurso(curso.id)) {
+      let f = filas.find((x) => x.grupo === e.grupo && x.level === e.level && !/extra/i.test(x.tipo) && x.tipo);
+      if (!f) { f = { grupo: e.grupo, level: e.level, tipo: 'Mensualidad', celdas: {}, wp: null }; filas.push(f); }
+      f.pagos = e; hayPagos = true;
+    }
+    filas = filas.sort((a, b) => ordenGrupo(a.grupo) - ordenGrupo(b.grupo) || String(a.level).localeCompare(String(b.level), 'es', { numeric: true }) || String(a.tipo).localeCompare(String(b.tipo)));
+  } catch { /* sin acceso a Pagos: se ve lo guardado */ }
 
   const kpiVals = {};
   const kpi = (id, label) => {
@@ -63,18 +99,18 @@ export async function renderIngresos(view, ctx) {
   const tbody = h('tbody');
 
   function totalFila(f) {
-    return MESES.reduce((s, m) => s + num(f.celdas[m]?.cantidad), 0) + num(f.wp?.cantidad);
+    return MESES.reduce((s, m) => s + val(f, m), 0) + val(f, null);
   }
   function recalcular() {
     let total = 0, wp = 0, extras = 0;
     for (const m of MESES) totalesMes[m].textContent = '';
     const porMes = Object.fromEntries(MESES.map((m) => [m, 0]));
     for (const f of filas) {
-      for (const m of MESES) porMes[m] += num(f.celdas[m]?.cantidad);
-      wp += num(f.wp?.cantidad);
+      for (const m of MESES) porMes[m] += val(f, m);
+      wp += val(f, null);
       const t = totalFila(f);
       total += t;
-      if (/extra/i.test(f.tipo)) extras += t - num(f.wp?.cantidad);
+      if (/extra/i.test(f.tipo)) extras += t - val(f, null);
       if (f._celdaTotal) f._celdaTotal.textContent = fmtEUR2(t);
     }
     for (const m of MESES) totalesMes[m].textContent = porMes[m] ? fmtEUR(porMes[m]) : '—';
@@ -85,17 +121,13 @@ export async function renderIngresos(view, ctx) {
     kpiVals.wp.textContent = fmtEUR(wp);
     kpiVals.extras.textContent = fmtEUR(extras);
     if (resumen) resumen.refrescar();
-    if (vinculo) vinculo.refrescar();
   }
   // mensualidades (sin extras ni welcome pack) por mes y welcome pack: es lo que se compara con Pagos
-  const mensualidadesPorMes = () => MESES.map((m) => filas.filter((f) => !/extra/i.test(f.tipo)).reduce((s, f) => s + num(f.celdas[m]?.cantidad), 0));
-  const welcomePack = () => filas.reduce((s, f) => s + num(f.wp?.cantidad), 0);
   function totalesPorMes() {
-    return MESES.map((m) => filas.reduce((s, f) => s + num(f.celdas[m]?.cantidad), 0));
+    return MESES.map((m) => filas.reduce((s, f) => s + val(f, m), 0));
   }
-  let resumen = null, vinculo = null;
+  let resumen = null;
   const resumenCont = h('div', { class: 'resumen-cont' });
-  const vinculoCont = h('div', { class: 'resumen-cont' });
 
   async function guardar(f, mes, input) {
     const valor = leerImporte(input.value);
@@ -133,6 +165,9 @@ export async function renderIngresos(view, ctx) {
   function celda(f, mes) {
     const reg = mes ? f.celdas[mes] : f.wp;
     const etiqueta = `${f.grupo} ${f.level}${f.tipo ? ' ' + f.tipo : ''} · ${mes ? capitalizar(mes) : 'Welcome pack'}`;
+    if (deriva(f, mes)) { // viene de los pagos marcados en Pagos: no se edita aquí
+      return h('td', { class: 'cell-td' }, h('input', { class: 'cell desde-pagos', type: 'text', readonly: true, tabindex: -1, 'aria-label': `${etiqueta} (desde Pagos)`, title: 'Suma de los pagos marcados como pagados en Pagos', value: fmtCelda(val(f, mes)) }));
+    }
     const input = h('input', { class: 'cell', type: 'text', inputmode: 'decimal', 'aria-label': etiqueta, value: fmtCelda(num(reg?.cantidad)) });
     input.addEventListener('focus', () => { const v = num((mes ? f.celdas[mes] : f.wp)?.cantidad); input.value = v ? String(v).replace('.', ',') : ''; input.select(); });
     input.addEventListener('blur', () => guardar(f, mes, input));
@@ -192,7 +227,7 @@ export async function renderIngresos(view, ctx) {
   function exportar() {
     const cab = ['Grupo', 'Level', 'Tipo', 'Welcome pack', ...MESES.map(capitalizar), 'Total'];
     const n2 = (v) => (v ? num(v).toFixed(2).replace('.', ',') : '');
-    const cuerpo = filas.map((f) => [f.grupo, f.level, f.tipo, n2(f.wp?.cantidad), ...MESES.map((m) => n2(f.celdas[m]?.cantidad)), n2(totalFila(f))]);
+    const cuerpo = filas.map((f) => [f.grupo, f.level, f.tipo, n2(val(f, null)), ...MESES.map((m) => n2(val(f, m))), n2(totalFila(f))]);
     descargarCSV(`ingresos_${curso.nombre}.csv`, [cab, ...cuerpo]);
   }
 
@@ -201,6 +236,7 @@ export async function renderIngresos(view, ctx) {
 
   clear(view,
     h('div', { class: 'banner' }, h('span', {}, h('strong', {}, 'Fase de pruebas: '), 'el Excel sigue siendo la referencia. Lo que cambies aquí no se copia al Excel.')),
+    hayPagos ? h('div', { class: 'banner info-pagos' }, h('span', {}, h('strong', {}, 'Resumen de Pagos: '), 'los importes con este fondo se rellenan solos con los pagos marcados como pagados en ', h('a', { href: '#/ac_pagos' }, 'Pagos'), '. El resto son importes guardados (histórico), que sí puedes editar.')) : null,
     ctx.centroActual() && !ctx.centroActual().principal
       ? h('div', { class: 'banner warn' }, h('span', {}, 'Los ingresos todavía no se separan por centro: estos son los del centro principal (', ctx.tituloCentro(ctx.centroPrincipal()?.nombre), '). En Balance y Panel, este centro aparece sin ingresos.'))
       : null,
@@ -219,10 +255,7 @@ export async function renderIngresos(view, ctx) {
           h('th', { scope: 'col', class: 'num' }, 'Total'))),
         tbody,
         h('tfoot', {}, h('tr', {}, h('th', { scope: 'row', class: 'sticky-col' }, 'Total'), totalWP, MESES.map((m) => totalesMes[m]), totalGeneral))))),
-    vinculoCont,
     resumenCont);
   pintarFilas();
   resumen = await renderResumenIngresos(resumenCont, ctx, curso, totalesPorMes);
-  vinculo = await renderPagosVsIngresos(vinculoCont, ctx, curso, mensualidadesPorMes, welcomePack);
-  recalcular();
 }
