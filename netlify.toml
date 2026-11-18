@@ -2,3 +2,8 @@
 [build]
   publish = "app"
   command = ""
+  # Cada publicación cuesta créditos de Netlify (15 por publicación).
+  # La rama «prueba» siempre se publica como vista previa: prueba--meh-montcada.netlify.app
+  # En «main» (la web real) solo se publica si el mensaje del commit contiene la marca [publicar]
+  # y han cambiado archivos de app/ desde la última publicación (migraciones, tests y este archivo no cuentan).
+  ignore = "[ \"$BRANCH\" != \"main\" ] && exit 1; git log -1 --pretty=%B | grep -qF '[publicar]' || exit 0; git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- app && exit 0 || exit 1"
