@@ -43,7 +43,7 @@ try:
         check(page.locator(".tabs .tab").count() >= 12, "12 pestañas de Academia")
 
         print("2. todas las pestañas cargan sin error")
-        for r in ["academia", "ac_alumnos", "ac_pagos", "ac_remesas", "ac_seguimiento", "ac_tutorias", "ac_bajas", "ac_grupos", "ac_calendario", "ac_recogidas", "ac_tareas", "ac_biblioteca", "ac_documentos", "ac_importar"]:
+        for r in ["academia", "ac_alumnos", "ac_pagos", "ac_pagos_importar", "ac_remesas", "ac_seguimiento", "ac_tutorias", "ac_bajas", "ac_grupos", "ac_calendario", "ac_recogidas", "ac_tareas", "ac_biblioteca", "ac_documentos", "ac_importar"]:
             ir(page, r)
             check(page.locator(".banner.error").count() == 0, f"{r} sin errores")
         ir(page, "ac_biblioteca")
@@ -256,6 +256,25 @@ try:
         page.locator("main tbody tr").first.click()
         check("Anna Foz" in page.locator(".drawer").inner_text(), "ficha de recogida muestra a los autorizados")
         page.keyboard.press("Escape")
+
+        print("12d. pagos: importar el export del CRM")
+        ir(page, "ac_pagos_importar")
+        def r(num, nom, fecha, recibo, met, desc, imp, tipo="CREACION"): return {"numero_referencia": num, "nombre_alumno": nom, "fecha_pago": fecha, "tipoOperacion": tipo, "numero_recibo": recibo, "metodo_pago": met, "modalidad_pago": "Mensual", "descripcion_detalle_factura": desc, "importe": imp}
+        crm = [r(1, "Alba Bueno Foz", "01-06-2026", "R1", "Domiciliacion bancaria", "Mensualidad de niños - Ingles para Niños - Nivel 3 (Junio)", "75.00"),
+               r(1, "Alba Bueno Foz", "01-06-2026", "R1", "Domiciliacion bancaria", "Descuento Convenio AMPA/AFA (10%)", "-7.50"),
+               r(1, "Alba Bueno Foz", "17-06-2026", "R2", "Tarjeta", "Welcome Pack prematrícula", "65.00"),
+               r(2, "Martí Bueno Foz", "01-06-2026", "R3", "Domiciliacion bancaria", "Mensualidad de niños - Ingles para Niños - Nivel 3 (Junio)", "75.00"),
+               r(99, "Nadie Desconocido", "01-06-2026", "R4", "Efectivo", "Mensualidad de niños (Junio)", "55.00")]
+        f4 = pathlib.Path(tempfile.mkdtemp()) / "pagos.xlsx"; f4.write_text(json.dumps({"Sheet1": crm}), encoding="utf-8")
+        page.locator("input[type=file]").set_input_files(str(f4))
+        expect(page.get_by_text("Importar 3 cobros")).to_be_visible(timeout=8000)
+        check("1 alumnos no encontrados" in page.locator("main").inner_text(), "pagos CRM: un alumno no encontrado")
+        page.get_by_role("button", name="Importar 3 cobros").click(); page.wait_for_timeout(1500)
+        cu = db(page, "ac_cuotas"); rm = db(page, "ac_remesas")
+        m1 = [c for c in cu if c["concepto"] == "mensualidad" and c["mes"] == "junio" and float(c["importe"]) == 67.5]
+        check(len(m1) == 1 and m1[0]["estado"] == "pagado" and m1[0]["metodo_pago"] == "Domiciliacion" and m1[0]["fecha_pago"] == "2026-06-01", "mensualidad de junio con el descuento restado, pagada y por domiciliación")
+        check([c for c in cu if c["concepto"] == "welcome_pack" and float(c["importe"]) == 65][0]["curso_id"] != m1[0]["curso_id"], "el welcome pack de junio pasa al curso siguiente")
+        check(len(rm) >= 1 and all(c["remesa_id"] for c in cu if c["metodo_pago"] == "Domiciliacion" and c["concepto"] == "mensualidad" and c["mes"] == "junio"), "domiciliaciones agrupadas en remesas históricas")
 
         print("13. sin scroll lateral en las pantallas con tablas")
         for r in ["ac_alumnos", "ac_pagos", "ac_grupos", "ac_calendario", "ac_tareas", "ac_biblioteca", "ac_recogidas"]:

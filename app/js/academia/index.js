@@ -9,6 +9,7 @@ import { renderBajas } from './bajas.js';
 import { renderHorarios } from './horarios.js';
 import { renderCalendario } from './calendario.js';
 import { renderTareas } from './tareas.js';
+import { renderImportarPagos } from './importar_pagos.js';
 import { renderRecogidas, renderImportarRecogidas } from './recogidas.js';
 import { renderBiblioteca, renderImportarBiblioteca } from './biblioteca.js';
 import { renderDocumentos } from './documentos.js';
@@ -38,6 +39,7 @@ export const RUTAS_ACADEMIA = {
   ac_grupos: R('Grupos y horarios', renderHorarios),
   ac_calendario: R('Calendario', renderCalendario),
   ac_tareas: R('Tareas', renderTareas),
+  ac_pagos_importar: R('Importar pagos', renderImportarPagos),
   ac_recogidas: R('Recogidas', renderRecogidas),
   ac_recogidas_importar: R('Importar recogidas', renderImportarRecogidas),
   ac_biblioteca: R('Biblioteca', renderBiblioteca),
