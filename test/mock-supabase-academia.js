@@ -16,12 +16,12 @@ const db = {
   roles: ROLES_DB, rol_permisos: PERMISOS_DB,
   profiles: [ADMIN], cursos: CURSOS, categorias: [], subcategorias: [], centros: [{ id: 'ce1', nombre: 'MONTCADA', principal: true, activo: true, orden: 0 }], gastos: [], listas: [], empresas: [],
   ac_listas: [...L('modalidad', 'Babies', 'Kids', 'Teens', 'Adults'), ...L('metodo_pago', 'Domiciliacion', 'Efectivo'), ...L('motivo_baja', 'Incompatibilidad horaria', 'Otros'), ...L('categoria_documento', 'Protocolo', 'Familias'), ...L('situacion_contacto', 'posible alumno', 'prueba', 'inscrito'), ...L('descuento', 'Hermanos')],
-  ac_responsables: [], ac_responsables_priv: [], ac_vinculos: [], ac_profesoras: [], ac_aulas: [], ac_alumnos: [], ac_inscripciones: [], ac_grupos: [], ac_sesiones: [], ac_alumno_grupo: [], ac_remesas: [], ac_cuotas: [], ac_wp_precios: [], ac_bajas: [], ac_contactos: [], ac_tutorias: [], ac_anotaciones: [], ac_tareas: [], ac_reuniones: [], ac_reunion_temas: [], ac_documentos: [], ac_prestamos: [], ac_biblioteca_items: [], ac_recogidas: [], ac_autorizados: [], ac_autorizados_priv: [], ac_calendario_dias: [], ac_calendario_marcas: [], ac_descuentos: [], ac_cuotas_tarifa: [], ac_nivel_historial: [], ac_portal_docs: [],
+  ac_responsables: [], ac_responsables_priv: [], ac_vinculos: [], ac_profesoras: [], ac_aulas: [], ac_alumnos: [], ac_inscripciones: [], ac_grupos: [], ac_sesiones: [], ac_alumno_grupo: [], ac_remesas: [], ac_cuotas: [], ac_wp_precios: [], ac_bajas: [], ac_contactos: [], ac_tutorias: [], ac_anotaciones: [], ac_tareas: [], ac_reuniones: [], ac_reunion_temas: [], ac_documentos: [], ac_prestamos: [], ac_biblioteca_items: [], ac_recogidas: [], ac_recogidas_pagos: [], ac_autorizados: [], ac_autorizados_priv: [], ac_calendario_dias: [], ac_calendario_marcas: [], ac_descuentos: [], ac_cuotas_tarifa: [], ac_nivel_historial: [], ac_portal_docs: [],
 };
 const DEFAULTS = {
   ac_alumnos: { estado: 'inscrito', autoriza_rrss: false }, ac_cuotas: { estado: 'pendiente', concepto: 'mensualidad', mes: '', importe: 0 }, ac_grupos: { activo: true, capacidad: 8 },
   ac_tareas: { hecha: false, items: [], prioridad: 0, estado: 'pend', area: 'aca', comentarios: [] }, ac_documentos: { version: 1, estado: 'vigente', contenido: '' }, ac_profesoras: { activa: true, color: '#4f7cff' }, ac_aulas: { activa: true },
-  ac_recogidas: { activa: true, dias: [], sale_solo: false, autorizacion_firmada: false }, ac_inscripciones: { cuota_mensual: 0, welcome_pack: 0, activa: true }, ac_remesas: { estado: 'borrador' }, ac_tutorias: { estado: 'pendiente', formato: 'presencial', fecha: hoy }, ac_anotaciones: { tipo: 'nota', fecha: hoy },
+  ac_recogidas_pagos: { importe: 10, metodo: 'efectivo', traspasado_at: null }, ac_recogidas: { activa: true, dias: [], sale_solo: false, autorizacion_firmada: false }, ac_inscripciones: { cuota_mensual: 0, welcome_pack: 0, activa: true }, ac_remesas: { estado: 'borrador' }, ac_tutorias: { estado: 'pendiente', formato: 'presencial', fecha: hoy }, ac_anotaciones: { tipo: 'nota', fecha: hoy },
   ac_contactos: { situacion: 'posible alumno' }, ac_bajas: { fecha_baja: hoy }, ac_alumno_grupo: {},
 };
 // relaciones embebidas: alias -> [tabla destino, columna, 'uno'|'muchos']  (columna = FK en la tabla que se lee o en la destino)
@@ -29,7 +29,7 @@ const REL = {
   ac_alumnos: { responsable: ['ac_responsables', 'responsable_id', 'uno'] },
   ac_grupos: { sesiones: ['ac_sesiones', 'grupo_id', 'muchos'], miembros: ['ac_alumno_grupo', 'grupo_id', 'muchos'] },
   ac_bajas: { alumno: ['ac_alumnos', 'alumno_id', 'uno'] },
-  ac_recogidas: { alumno: ['ac_alumnos', 'alumno_id', 'uno'] },
+  ac_recogidas: { alumno: ['ac_alumnos', 'alumno_id', 'uno'] }, ac_recogidas_pagos: { alumno: ['ac_alumnos', 'alumno_id', 'uno'] },
   ac_prestamos: { alumno: ['ac_alumnos', 'alumno_id', 'uno'] },
   ac_tutorias: { alumno: ['ac_alumnos', 'alumno_id', 'uno'], profesora: ['ac_profesoras', 'profesora_id', 'uno'] },
   ac_anotaciones: { alumno: ['ac_alumnos', 'alumno_id', 'uno'], profesora: ['ac_profesoras', 'profesora_id', 'uno'] },
