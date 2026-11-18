@@ -1,6 +1,6 @@
 // Recogidas: quién recoge a cada niño, de dónde (colegio / extraescolar), qué días y a qué hora, y las personas autorizadas.
 // Incluye la hoja del día (para imprimir) y el importador de la hoja RECOGIDAS con mapeo de columnas.
-import { h, clear, cargando, toast, confirmar, fmtFecha, hoyISO, normalizar } from '../ui.js';
+import { h, clear, cargando, toast, confirmar, fmtFecha, hoyISO, normalizar, fmtEUR2, MESES } from '../ui.js';
 import * as api from './api.js';
 import { campo, txt, area, fecha, sel, drawer, cabecera, tabla, pill, nombreAlumno, hhmm, DIAS, DIAS_CORTO, guardarBoton, buscadorAlumno, refrescar, esVerdad } from './kit.js';
 import { parseFecha } from './importar.js';
@@ -8,26 +8,49 @@ import { parseFecha } from './importar.js';
 const SERVICIOS = [['tarde', 'Tarde (colegio → academia)'], ['extraescolar', 'Extraescolar'], ['otro', 'Otro']];
 const servicioTxt = (v) => (SERVICIOS.find(([k]) => k === v) || [0, v])[1].replace(/ \(.*\)/, '');
 const diasTxt = (dias) => (dias || []).slice().sort().map((d) => DIAS_CORTO[d]).join(' ');
-let f = { q: '', servicio: '', centro: '', dia: '' };
+let f = { q: '', servicio: '', centro: '', dia: '', falta: false, pq: '', pmes: '' };
+const PRECIO = 10; // cada pago de recogida: 10 € en efectivo
+const DOCS = [['doc_autorizacion', 'autorizacion', 'Autorización'], ['doc_dni_padres', 'dni_padres', 'DNI padres']];
+const faltaDoc = (r) => DOCS.some(([c]) => !r[c]);
+const mesDe = (fecha) => ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'][Number(fecha.slice(5, 7)) - 1];
+
+// Icono por documento: si está, se abre; si falta, se puede subir (aviso en rojo). Los clics no abren la ficha de la fila.
+function iconoDoc(r, [col, tipo, etiqueta], { editor, recargar }) {
+  const input = h('input', { type: 'file', accept: 'application/pdf,image/*', hidden: true, 'aria-label': `Subir ${etiqueta}` });
+  const sube = async () => { const file = input.files[0]; input.value = ''; if (!file) return; if (file.size > 10 * 1024 * 1024) { toast('El archivo pasa de 10 MB.', 'error'); return; }
+    try { const ruta = await api.subirDocRecogida(file, r.alumno_id, tipo); await api.upd('ac_recogidas', r.id, { [col]: ruta }); toast(`${etiqueta} subida`); recargar(); } catch (ex) { toast('No se ha subido: ' + ex.message, 'error'); } };
+  input.addEventListener('change', sube);
+  const para = (fn) => (e) => { e.stopPropagation(); fn(); };
+  const abre = async () => { const w = window.open('', '_blank'); try { const url = await api.urlDocRecogida(r[col]); if (w) { w.opener = null; w.location.href = url; } else window.location.href = url; } catch (ex) { w?.close(); toast('No se puede abrir: ' + ex.message, 'error'); } };
+  const ico = tipo === 'autorizacion' ? '📄' : '🪪';
+  return h('span', { class: 'ac-fila', onclick: (e) => e.stopPropagation(), style: 'gap:4px;flex-wrap:nowrap' }, input,
+    r[col] ? h('button', { class: 'btn small', type: 'button', title: `Ver ${etiqueta}`, disabled: !editor, onclick: para(abre) }, ico + ' ✓') : null,
+    editor ? h('button', { class: r[col] ? 'btn small ghost' : 'btn small danger', type: 'button', title: r[col] ? `Cambiar ${etiqueta}` : `Falta ${etiqueta}: subir`, onclick: para(() => input.click()) }, r[col] ? '↻' : `${ico} Falta`) : (r[col] ? null : pill('falta', 'bad')));
+}
 let vista = 'dia';
 
 export async function renderRecogidas(view, ctx) {
   clear(view, cargando());
   const curso = ctx.cursoActual(); const editor = ctx.edita('ac_recogidas');
-  const [recs, alumnos, auts] = await Promise.all([api.recogidas(curso.id), api.alumnos(), api.autorizados()]);
+  const [recs, alumnos, auts, pagos] = await Promise.all([api.recogidas(curso.id), api.alumnos(), api.autorizados(), api.recogidasPagos(curso.id)]);
   const autDe = new Map(); for (const a of auts) (autDe.get(a.alumno_id) || autDe.set(a.alumno_id, []).get(a.alumno_id)).push(a);
   const recargar = () => { api.invalidar(); refrescar(); };
   const centros = [...new Set(recs.map((r) => r.centro).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
   if (!f.dia) { const d = new Date().getDay(); f.dia = String(d >= 1 && d <= 5 ? d : 1); }
-  const cont = h('div'); const resumen = h('div', { class: 'small muted' });
+  const cont = h('div'); const resumen = h('div', { class: 'small muted' }); const aviso = h('div');
+  const ctxDocs = { editor, recargar };
   const quienes = (r) => (autDe.get(r.alumno_id) || []).map((a) => `${a.nombre}${a.parentesco ? ` (${a.parentesco})` : ''}${a.telefono ? ` ${a.telefono}` : ''}`);
 
   function pintar() {
+    if (vista === 'pagos') { pintarPagos(); return; }
     const q = normalizar(f.q);
     let filas = recs.filter((r) => r.activa && (!f.servicio || r.servicio === f.servicio) && (!f.centro || r.centro === f.centro) && (!q || normalizar(`${nombreAlumno(r.alumno)} ${r.centro || ''} ${quienes(r).join(' ')}`).includes(q)));
+    if (f.falta) filas = filas.filter(faltaDoc);
     if (vista === 'dia') filas = filas.filter((r) => (r.dias || []).includes(Number(f.dia))).sort((a, b) => (a.hora_recogida || '99').localeCompare(b.hora_recogida || '99') || (a.centro || '').localeCompare(b.centro || '') || nombreAlumno(a.alumno).localeCompare(nombreAlumno(b.alumno)));
     else filas = filas.sort((a, b) => nombreAlumno(a.alumno).localeCompare(nombreAlumno(b.alumno), 'es'));
     const sinFirma = recs.filter((r) => r.activa && !r.autorizacion_firmada).length; const sinAut = recs.filter((r) => r.activa && !r.sale_solo && !(autDe.get(r.alumno_id) || []).length).length;
+    const sinDocs = recs.filter((r) => r.activa && faltaDoc(r)).length;
+    clear(aviso, sinDocs ? h('div', { class: 'banner warn' }, h('strong', {}, `⚠ ${sinDocs} alumno${sinDocs === 1 ? '' : 's'} sin la documentación obligatoria`), ' (autorización y copia del DNI de los padres). ', h('button', { class: 'btn small', type: 'button', onclick: () => { f.falta = !f.falta; pintar(); } }, f.falta ? 'Ver todos' : 'Ver solo los que faltan')) : null);
     resumen.textContent = `${filas.length} ${vista === 'dia' ? `recogidas el ${DIAS[Number(f.dia)].toLowerCase()}` : 'servicios'} · ${sinFirma} sin autorización firmada · ${sinAut} sin personas autorizadas`;
     const cols = [
       ...(vista === 'dia' ? [{ t: 'Hora', v: (r) => hhmm(r.hora_recogida) }] : [{ t: 'Días', v: (r) => diasTxt(r.dias) }, { t: 'Hora', v: (r) => hhmm(r.hora_recogida) }]),
@@ -35,16 +58,45 @@ export async function renderRecogidas(view, ctx) {
       { t: 'Recoge', v: (r) => (r.sale_solo ? pill('sale solo', 'warn') : quienes(r).join(' · ') || h('span', { class: 'muted' }, 'sin autorizados')) },
       { t: 'Alergias / notas', v: (r) => [r.alumno?.intolerancias, r.observaciones].filter(Boolean).join(' · ') },
       { t: 'Firma', v: (r) => (r.autorizacion_firmada ? pill('firmada', 'ok') : pill('falta', 'bad')) },
+      { t: 'Documentos', s: (r) => (faltaDoc(r) ? 'falta' : 'completos'), v: (r) => h('span', { class: 'ac-fila', style: 'gap:6px' }, DOCS.map((d) => iconoDoc(r, d, ctxDocs))) },
     ];
     clear(cont, tabla(cols, filas.slice(0, 3000), { onClick: (r) => abrir(r, { alumnos, autDe, centros, curso, ctx, recargar }), vacio: recs.length ? 'No hay recogidas con este filtro.' : 'Todavía no hay recogidas. Usa «Importar del Excel» o «+ Nueva recogida».' }));
   }
-  const seg = h('div', { class: 'segmented', role: 'tablist' }, [['dia', 'Hoja del día'], ['todas', 'Todas']].map(([k, l]) => h('button', { class: 'seg-btn', role: 'tab', type: 'button', 'aria-selected': String(vista === k), onclick: () => { vista = k; seg.querySelectorAll('.seg-btn').forEach((b) => b.setAttribute('aria-selected', String(b.textContent === l))); selDia.hidden = k !== 'dia'; pintar(); } }, l)));
+  const seg = h('div', { class: 'segmented', role: 'tablist' }, [['dia', 'Hoja del día'], ['todas', 'Todas'], ['pagos', 'Pagos']].map(([k, l]) => h('button', { class: 'seg-btn', role: 'tab', type: 'button', 'aria-selected': String(vista === k), onclick: () => { vista = k; seg.querySelectorAll('.seg-btn').forEach((b) => b.setAttribute('aria-selected', String(b.textContent === l))); selDia.hidden = k !== 'dia'; selServ.hidden = selCentro.hidden = k === 'pagos'; pintar(); } }, l)));
+  // ---- pagos de recogidas: cada uno 10 € en efectivo; totales; «Llevar a Ingresos» solo cuando se pulsa ----
+  function pintarPagos() {
+    clear(aviso); resumen.textContent = '';
+    const q = normalizar(f.pq);
+    const lista = pagos.filter((p) => (!f.pmes || mesDe(p.fecha) === f.pmes) && (!q || normalizar(nombreAlumno(p.alumno)).includes(q))).sort((a, b) => b.fecha.localeCompare(a.fecha) || nombreAlumno(a.alumno).localeCompare(nombreAlumno(b.alumno), 'es'));
+    const suma = (l) => l.reduce((s, p) => s + Number(p.importe), 0);
+    const pend = lista.filter((p) => !p.traspasado_at); const hechos = lista.filter((p) => p.traspasado_at);
+    const kpi = (t, v, sub) => h('div', { class: 'card kpi' }, h('div', { class: 'label' }, t), h('div', { class: 'value' }, v), sub ? h('div', { class: 'small muted' }, sub) : null);
+    const meses = MESES.filter((m) => pagos.some((p) => mesDe(p.fecha) === m));
+    const porMes = meses.map((m) => { const l = pagos.filter((p) => mesDe(p.fecha) === m); return [m, l.length, suma(l)]; });
+    const filtros = h('div', { class: 'filters filters-3' }, h('input', { type: 'search', placeholder: 'Buscar alumno…', value: f.pq, oninput: (e) => { f.pq = e.target.value; pintarPagos(); } }),
+      sel([['', 'Todos los meses'], ...meses.map((m) => [m, m[0].toUpperCase() + m.slice(1)])], f.pmes, { onchange: (e) => { f.pmes = e.target.value; pintarPagos(); } }),
+      h('div', { class: 'ac-fila' }, editor ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrirPago(null, { recs, alumnos, curso, recargar }) }, '+ Añadir pago') : null,
+        editor ? h('button', { class: 'btn small', type: 'button', disabled: !pend.length, title: 'Suma estos pagos a la hoja Ingresos (fila Activities · Recogidas). Solo se hace cuando tú lo pides.', onclick: () => llevarAIngresos(pend) }, `Llevar a Ingresos (${pend.length} · ${fmtEUR2(suma(pend))})`) : null));
+    async function llevarAIngresos(l) {
+      const meses2 = [...new Set(l.map((p) => mesDe(p.fecha)))];
+      if (!(await confirmar({ titulo: 'Llevar pagos a Ingresos', texto: `${l.length} pagos en efectivo · ${fmtEUR2(suma(l))}. Se suman a Ingresos → Activities · Recogidas (${meses2.join(', ')}). Después ya no se podrán borrar desde aquí.`, ok: 'Llevar a Ingresos' }))) return;
+      try { const r = await api.traspasarPagosAIngresos(curso, l.map((p) => p.id), ctx.state.perfil?.id); ctx.limpiarCache?.(); toast(`${r.pagos} pagos (${fmtEUR2(r.total)}) llevados a Ingresos`); recargar(); } catch (ex) { toast('No se ha podido: ' + ex.message, 'error'); }
+    }
+    clear(cont, filtros,
+      h('div', { class: 'kpi-row kpi-4' }, kpi('Pagos', String(lista.length), 'Cada pago: 10 € en efectivo'), kpi('Total cobrado', fmtEUR2(suma(lista))), kpi('Pendiente de llevar a Ingresos', fmtEUR2(suma(pend)), `${pend.length} pagos`), kpi('Ya en Ingresos', fmtEUR2(suma(hechos)), `${hechos.length} pagos`)),
+      lista.length ? tabla([{ t: 'Fecha', v: (p) => fmtFecha(p.fecha), s: (p) => p.fecha }, { t: 'Alumno', v: (p) => h('strong', {}, nombreAlumno(p.alumno)) }, { t: 'Mes', v: (p) => mesDe(p.fecha) },
+        { t: 'Importe', num: true, v: (p) => fmtEUR2(Number(p.importe)) }, { t: 'Método', v: (p) => p.metodo }, { t: 'Estado', v: (p) => (p.traspasado_at ? pill('en Ingresos', 'ok') : pill('pendiente', 'warn')) }, { t: 'Notas', v: (p) => p.notas || '' }], lista, { onClick: (p) => abrirPago(p, { recs, alumnos, curso, recargar }) }) : h('div', { class: 'card empty' }, pagos.length ? 'No hay pagos con este filtro.' : 'Todavía no hay pagos. Usa «+ Añadir pago».'),
+      porMes.length ? h('div', { class: 'card' }, h('h3', { class: 'sub-titulo' }, 'Totales por mes'), tabla([{ t: 'Mes', v: (x) => x[0] }, { t: 'Pagos', num: true, v: (x) => x[1] }, { t: 'Total', num: true, v: (x) => fmtEUR2(x[2]) }], [...porMes, ['TOTAL', pagos.length, suma(pagos)]], { ordenable: false })) : null);
+  }
   const selDia = sel(DIAS.slice(1, 6).map((n, i) => [String(i + 1), n]), f.dia, { onchange: (e) => { f.dia = e.target.value; pintar(); } }); selDia.hidden = vista !== 'dia';
+  const selServ = sel([['', 'Todos los servicios'], ...SERVICIOS], f.servicio, { onchange: (e) => { f.servicio = e.target.value; pintar(); } });
+  const selCentro = sel([['', 'Todos los centros'], ...centros], f.centro, { onchange: (e) => { f.centro = e.target.value; pintar(); } });
+  selServ.hidden = selCentro.hidden = vista === 'pagos';
   clear(view, cabecera(`Recogidas · ${curso.nombre}`, 'Quién recoge a cada niño, de dónde y a qué hora',
     h('a', { class: 'btn small', href: '#/ac_recogidas_importar' }, 'Importar del Excel'), h('button', { class: 'btn small', type: 'button', onclick: () => window.print() }, 'Imprimir'),
     editor ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrir(null, { alumnos, autDe, centros, curso, ctx, recargar }) }, '+ Nueva recogida') : null),
     h('div', { class: 'filters filters-4' }, h('input', { type: 'search', placeholder: 'Buscar alumno, centro o persona…', oninput: (e) => { f.q = e.target.value; pintar(); } }),
-      h('div', {}, seg, selDia), sel([['', 'Todos los servicios'], ...SERVICIOS], f.servicio, { onchange: (e) => { f.servicio = e.target.value; pintar(); } }), sel([['', 'Todos los centros'], ...centros], f.centro, { onchange: (e) => { f.centro = e.target.value; pintar(); } })), resumen, cont);
+      h('div', {}, seg, selDia), selServ, selCentro), aviso, resumen, cont);
   pintar();
 }
 
@@ -58,6 +110,15 @@ async function abrir(r, { alumnos, autDe, centros, curso, ctx, recargar }) {
   d.cuerpo.append(dl, h('div', { class: 'form-section' }, campo('Alumno', F.al, { full: true, req: true }), campo('Servicio', F.servicio), campo('Centro de origen', F.centro), campo('Hora de recogida', F.hora),
     campo('Días', h('div', { class: 'ac-fila' }, checks)), h('label', { class: 'check' }, F.solo, ' Puede salir solo al terminar (autorización de salida sin acompañante)'),
     h('label', { class: 'check' }, F.firmada, ' Autorización firmada'), campo('Fecha de la autorización', F.fautor), campo('Observaciones', F.obs, { full: true })));
+
+  // documentación obligatoria de los padres (aviso si falta)
+  if (r) {
+    const bloque = h('div');
+    const pintarDocs = () => { clear(bloque, faltaDoc(r) ? h('div', { class: 'banner warn' }, `⚠ Falta: ${DOCS.filter(([c]) => !r[c]).map((d) => d[2]).join(' y ')}. Es obligatorio.`) : null,
+      h('div', { class: 'ac-fila' }, DOCS.map((d) => h('span', {}, h('strong', {}, d[2] + ': '), iconoDoc(r, d, { editor, recargar: () => { d_cerrar(); recargar(); } }))))); };
+    const d_cerrar = () => d.cerrar();
+    pintarDocs(); d.cuerpo.append(h('div', { class: 'form-section' }, h('h3', {}, 'Documentación de los padres'), h('div', { class: 'full' }, bloque)));
+  }
 
   // personas autorizadas (solo se pueden gestionar con la recogida ya guardada)
   const caja = h('div'); let auts = []; let priv = new Map();
@@ -202,4 +263,25 @@ export async function renderImportarRecogidas(view, ctx) {
     h('div', { class: 'banner' }, h('strong', {}, 'Importa antes los alumnos. '), 'Cada fila se enlaza con el alumno por su nombre (el orden de nombre y apellidos da igual). Los nombres que no coincidan se muestran para que los corrijas y vuelvas a importar.'),
     editor ? null : h('div', { class: 'banner warn' }, 'Tu rol no permite importar.'),
     h('div', { class: 'card' }, h('p', { class: 'small' }, 'Elige el Excel de Control Alumnos (Drive → Archivo → Descargar → Microsoft Excel) o un Excel solo con la hoja RECOGIDAS. Después puedes ajustar qué columna es cada campo. Reimportar no duplica.'), input), salida);
+}
+
+// ---------------------------- pagos de recogidas ----------------------------
+function abrirPago(p, { recs, alumnos, curso, recargar }) {
+  const bloqueado = !!p?.traspasado_at;
+  const d = drawer({ titulo: p ? `Pago · ${nombreAlumno(p.alumno)}` : 'Nuevo pago de recogida', ancho: 480 });
+  const conRec = new Map(recs.filter((r) => r.activa).map((r) => [r.alumno_id, r]));
+  const F = { al: buscadorAlumno(alumnos.filter((a) => conRec.has(a.id)), { valorId: p?.alumno_id }), fecha: fecha(p?.fecha || hoyISO()), importe: h('input', { type: 'number', step: '0.01', min: '0', value: p ? p.importe : PRECIO }), metodo: txt('efectivo', { disabled: true }), notas: area(p?.notas) };
+  [F.fecha, F.importe, F.notas].forEach((i) => { i.disabled = bloqueado; });
+  d.cuerpo.append(bloqueado ? h('div', { class: 'banner' }, 'Este pago ya está en Ingresos: no se puede modificar desde aquí.') : null,
+    h('div', { class: 'form-section' }, campo('Alumno (con recogida activa)', F.al, { full: true, req: true }), campo('Fecha', F.fecha), campo('Importe (€)', F.importe), campo('Método', F.metodo), campo('Notas', F.notas, { full: true })));
+  const guardar = guardarBoton('Guardar', async () => {
+    const al = F.al.getAlumno() || (p ? { id: p.alumno_id } : null); const rec = al && conRec.get(al.id);
+    if (!rec) { toast('Elige un alumno que tenga una recogida activa.', 'error'); return; }
+    const imp = Number(F.importe.value); if (!(imp >= 0) || F.importe.value === '') { toast('Importe no válido.', 'error'); return; }
+    const fila = { recogida_id: rec.id, alumno_id: al.id, curso_id: curso.id, fecha: F.fecha.value || hoyISO(), importe: imp, metodo: 'efectivo', notas: F.notas.value.trim() || null };
+    try { p ? await api.upd('ac_recogidas_pagos', p.id, fila) : await api.ins('ac_recogidas_pagos', fila); toast('Pago guardado'); d.cerrar(); recargar(); } catch (ex) { toast('No se ha guardado: ' + ex.message, 'error'); }
+  });
+  guardar.hidden = bloqueado;
+  const borrar = p && !bloqueado ? h('button', { class: 'btn danger', type: 'button', onclick: async () => { if (await confirmar({ titulo: 'Borrar pago', texto: `${nombreAlumno(p.alumno)} · ${fmtEUR2(Number(p.importe))}`, ok: 'Borrar', peligro: true })) { try { await api.del('ac_recogidas_pagos', p.id); d.cerrar(); recargar(); } catch (ex) { toast(ex.message, 'error'); } } } }, 'Borrar') : h('span');
+  d.pie.append(borrar, guardar);
 }

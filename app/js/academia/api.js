@@ -53,6 +53,7 @@ export const tutorias = () => memo('tutorias', () => all('ac_tutorias', '*, alum
 export const anotaciones = (alumnoId) => memo('anot' + (alumnoId || ''), () => all('ac_anotaciones', '*, alumno:ac_alumnos(id,apellidos,nombre), profesora:ac_profesoras(id,nombre)', alumnoId ? (q) => q.eq('alumno_id', alumnoId) : undefined));
 export const prestamos = () => memo('prestamos', () => all('ac_prestamos', '*, alumno:ac_alumnos(id,apellidos,nombre)'));
 export const recogidas = (curso) => memo('rec' + curso, () => all('ac_recogidas', '*, alumno:ac_alumnos(id,apellidos,nombre,intolerancias,colegio)', (q) => q.eq('curso_id', curso)));
+export const recogidasPagos = (curso) => memo('rpag' + curso, () => all('ac_recogidas_pagos', '*, alumno:ac_alumnos(id,apellidos,nombre)', (q) => q.eq('curso_id', curso)));
 export const autorizados = () => memo('autorizados', () => all('ac_autorizados').then((l) => l.sort((a, b) => a.orden - b.orden)));
 export const autorizadosPriv = (ids) => (ids?.length ? supabase.from('ac_autorizados_priv').select('*').in('autorizado_id', ids).then(chk) : Promise.resolve([]));
 export const tareas = () => memo('tareas', () => all('ac_tareas'));
@@ -89,3 +90,46 @@ export async function updMany(tabla, ids, parche, lote = 100) {
   invalidar();
 }
 export const responsables = () => memo('responsables', () => all('ac_responsables'));
+
+// ---------- Recogidas: documentos de los padres (bucket privado) y traspaso de pagos a Ingresos ----------
+const NOMBRE_SEGURO = (n) => n.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w.\-]+/g, '_').slice(-80);
+export async function subirDocRecogida(file, alumnoId, tipo) {
+  const ruta = `${alumnoId}/${tipo}-${Date.now()}-${NOMBRE_SEGURO(file.name)}`;
+  const { error } = await supabase.storage.from('recogidas-docs').upload(ruta, file, { contentType: file.type || 'application/pdf', upsert: false });
+  if (error) throw new Error(traducirError(error));
+  return ruta;
+}
+export async function urlDocRecogida(ruta) {
+  const { data, error } = await supabase.storage.from('recogidas-docs').createSignedUrl(ruta, 600);
+  if (error) throw new Error(traducirError(error));
+  return data.signedUrl;
+}
+
+// Lleva pagos de recogidas a la hoja Ingresos (fila Activities / All / Recogidas, una celda por mes). Solo se llama a petición del usuario.
+// Primero marca los pagos (solo los que aún no estaban traspasados, así un doble clic no duplica) y luego suma a la celda de cada mes.
+const MES_NATURAL = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+export async function traspasarPagosAIngresos(curso, ids, perfilId) {
+  const marcados = chk(await supabase.from('ac_recogidas_pagos').update({ traspasado_at: new Date().toISOString(), traspasado_por: perfilId || null })
+    .in('id', ids).is('traspasado_at', null).select('id,fecha,importe'));
+  const porMes = new Map();
+  for (const p of marcados) { const mes = MES_NATURAL[Number(p.fecha.slice(5, 7)) - 1]; porMes.set(mes, Math.round(((porMes.get(mes) || 0) + Number(p.importe)) * 100) / 100); }
+  const hecho = [];
+  try {
+    for (const [mes, suma] of porMes) {
+      const filas = chk(await supabase.from('ingresos').select('id,cantidad').eq('curso_id', curso.id).eq('grupo', 'Activities').eq('level', 'All').eq('tipo', 'Recogidas').eq('mes', mes));
+      if (filas.length) chk(await supabase.from('ingresos').update({ cantidad: Math.round((Number(filas[0].cantidad) + suma) * 100) / 100 }).eq('id', filas[0].id));
+      else {
+        const i = MES_NATURAL.indexOf(mes); const y1 = Number(String(curso.nombre).slice(0, 4)); const anio = i + 1 >= 9 ? y1 : y1 + 1;
+        chk(await supabase.from('ingresos').insert({ curso_id: curso.id, trimestre: `${Math.ceil((i + 1) / 3)}T ${anio}`, mes, grupo: 'Activities', level: 'All', tipo: 'Recogidas', cantidad: suma }));
+      }
+      hecho.push([mes, suma]);
+    }
+  } catch (ex) {
+    // si algo falla a medias, se desmarcan los pagos de los meses que no llegaron a sumarse
+    const pendientes = marcados.filter((p) => !hecho.some(([m]) => m === MES_NATURAL[Number(p.fecha.slice(5, 7)) - 1])).map((p) => p.id);
+    if (pendientes.length) await supabase.from('ac_recogidas_pagos').update({ traspasado_at: null, traspasado_por: null }).in('id', pendientes);
+    invalidar(); throw ex;
+  }
+  invalidar();
+  return { pagos: marcados.length, total: marcados.reduce((s, p) => s + Number(p.importe), 0), meses: hecho };
+}
