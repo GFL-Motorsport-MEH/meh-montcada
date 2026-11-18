@@ -284,7 +284,17 @@ export const tituloCentro = (s) => (s || '').toLowerCase().replace(/(^|\s)\S/g, 
 ctx.tituloCentro = tituloCentro;
 ctx.repintarCabecera = () => { pintarShell(); pintarVista(); };
 
-function pintarTabs(actual) {
+// color pastel de cada pestaña (solo para ir asociando color y sección; se reparte por el nombre, no por la posición)
+const COLOR_PESTANA = {
+  Panel: '#9db4e8', Gastos: '#f2b5a0', 'Escáner': '#b7a6e0', Ingresos: '#9fd4b0', Pagos: '#f0d58a', Remesas: '#8fcfd6', Balance: '#e8a9c4', Control: '#b5c98a', 'Configuración': '#c2c6cc', Usuarios: '#d4b99a',
+  Alumnos: '#9db4e8', Seguimiento: '#b7a6e0', 'Tutorías': '#8fcfd6', Bajas: '#f2b5a0', Grupos: '#9fd4b0', Horarios: '#f0d58a', Calendario: '#e8a9c4', Recogidas: '#b5c98a', Tareas: '#d4b99a',
+  'Biblioteca y Mascotas': '#a9c6e0', Protocolos: '#c2c6cc', Programaciones: '#e8c19a', 'Mi portal': '#c9b6e4',
+};
+function colorearTabs() {
+  tabsEl.querySelectorAll('.tab').forEach((t) => { const c = COLOR_PESTANA[(t.firstChild?.textContent || '').trim()]; if (c) t.style.setProperty('--tc', c); });
+}
+function pintarTabs(actual) { pintarTabsBase(actual); colorearTabs(); }
+function pintarTabsBase(actual) {
   const modulo = RUTAS[actual].modulo;
   resumenEl.hidden = modulo !== 'facturacion'; // los chips de gastos solo en el módulo Facturación
   try { localStorage.setItem(LS_RUTA + modulo, actual); } catch { /* */ }

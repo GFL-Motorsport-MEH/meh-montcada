@@ -92,6 +92,10 @@ a { color: var(--accent); }
   text-decoration: none;
 }
 .tab[aria-current="page"] { color: var(--accent); border-bottom-color: var(--accent); }
+/* color pastel de cada pestaña (--tc lo pone main.js): un tinte suave y, en la activa, más fuerte y con la raya del color */
+.tab[style*="--tc"] { background: color-mix(in oklab, var(--tc) 24%, transparent); border-radius: 6px 6px 0 0; }
+.tab[style*="--tc"]:hover { background: color-mix(in oklab, var(--tc) 38%, transparent); }
+.tab[style*="--tc"][aria-current="page"] { background: color-mix(in oklab, var(--tc) 48%, transparent); border-bottom-color: var(--tc); color: var(--text-primary); font-weight: 600; }
 .tab.disabled { color: var(--text-muted); cursor: default; }
 .tab .soon { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; margin-left: 5px; }
 
