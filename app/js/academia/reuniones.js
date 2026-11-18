@@ -41,7 +41,7 @@ export async function renderReuniones(view, ctx, { conmutador, verTarea } = {}) 
   const [reuniones, temas, tareas, usuarios] = await Promise.all([api.reuniones(), api.temas(), api.tareas(), api.usuarios().catch(() => [])]);
   const yo = ctx.state.perfil;
   const editor = ctx.edita('ac_tareas');
-  const verDinero = yo.rol === 'admin' || (ctx.ve('ac_pagos') && !yo.sin_dinero);
+  const verDinero = yo.rol === 'admin' || ctx.ve('ac_pagos');
   const areasPropias = Object.keys(AREAS).filter((a) => verDinero || !AREAS_DINERO.includes(a));
   const hoy = hoyISO();
   const tarPor = new Map(tareas.map((t) => [t.id, t]));

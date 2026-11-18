@@ -39,7 +39,7 @@ export async function renderUsuarios(view, ctx) {
   // Una profesora ve «lo suyo» (grupos, tutorías, alumnos) a través de su ficha en Academia > Profesoras.
   function fichaSelect(p) {
     const actual = fichasProf.find((f) => f.profile_id === p.id);
-    const sel = h('select', { 'aria-label': `Ficha de profesora de ${p.email}`, class: 'ficha-prof' },
+    const sel = h('select', { 'aria-label': `Ficha de profesora de ${p.email || p.nombre}`, class: 'ficha-prof' },
       h('option', { value: '' }, actual ? '— quitar ficha —' : '— sin ficha de profesora —'),
       fichasProf.filter((f) => !f.profile_id || f.profile_id === p.id).map((f) => h('option', { value: f.id, selected: actual?.id === f.id }, f.nombre)));
     sel.addEventListener('change', async () => {
@@ -60,51 +60,90 @@ export async function renderUsuarios(view, ctx) {
       actual ? null : h('div', {}, h('span', { class: 'pill warn', title: 'Sin ficha no ve sus grupos, tutorías ni alumnos' }, 'Sin ficha: no verá nada suyo'), ' ', crear));
   }
 
+  const EMAIL_OK = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  const reemplazar = (nuevo) => { perfiles = perfiles.map((x) => (x.id === nuevo.id ? { ...x, ...nuevo } : x)); };
+
   function fila(p) {
     const esYo = p.id === yo;
-    const nombre = h('input', { type: 'text', value: p.nombre || '', 'aria-label': `Nombre de ${p.email}` });
-    const siglas = h('input', { type: 'text', value: p.siglas || '', maxlength: 4, placeholder: 'Siglas', class: 'siglas', style: 'width:64px;margin-top:4px', title: 'Abreviatura que se ve en las tareas (GF, MG…)', 'aria-label': `Siglas de ${p.email}` });
-    const rol = h('select', { 'aria-label': `Rol de ${p.email}`, disabled: esYo }, ROLES.map(([v, t]) => h('option', { value: v, selected: p.rol === v }, t)));
-    const activo = h('input', { type: 'checkbox', checked: p.activo, disabled: esYo, 'aria-label': `Activo ${p.email}` });
-    const sinDinero = h('input', { type: 'checkbox', checked: !!p.sin_dinero, 'aria-label': `Sin acceso a dinero ${p.email}` });
+    const sinAcceso = !p.email; // sin email no hay cuenta para entrar: solo la ficha (tareas, profesoras…)
+    const etq = p.email || p.nombre || 'usuario';
+    const nombre = h('input', { type: 'text', value: p.nombre || '', 'aria-label': `Nombre de ${etq}` });
+    const siglas = h('input', { type: 'text', value: p.siglas || '', maxlength: 4, placeholder: 'Siglas', class: 'siglas', style: 'width:64px;margin-top:4px', title: 'Abreviatura que se ve en las tareas (GF, MG…)', 'aria-label': `Siglas de ${etq}` });
+    const email = h('input', { type: 'email', value: p.email || '', placeholder: 'Sin email · sin acceso', 'aria-label': `Email de ${etq}`, title: sinAcceso ? 'Cuando le pongas un email y guardes, podrá entrar (se le da una contraseña provisional)' : 'Cambia el email con el que entra' });
+    const rol = h('select', { 'aria-label': `Rol de ${etq}`, disabled: esYo }, ROLES.map(([v, t]) => h('option', { value: v, selected: p.rol === v }, t)));
     const ficha = fichaSelect(p);
     const btn = h('button', { class: 'btn small', disabled: true }, 'Guardar');
     const marcar = () => { btn.disabled = false; btn.classList.add('primary'); };
-    nombre.addEventListener('input', marcar); siglas.addEventListener('input', marcar); rol.addEventListener('change', marcar); activo.addEventListener('change', marcar); sinDinero.addEventListener('change', marcar);
+    nombre.addEventListener('input', marcar); siglas.addEventListener('input', marcar); rol.addEventListener('change', marcar); email.addEventListener('input', marcar);
     btn.addEventListener('click', async () => {
       btn.disabled = true;
       try {
-        const cambios = { nombre: nombre.value.trim() || p.nombre, sin_dinero: sinDinero.checked, siglas: siglas.value.trim().toUpperCase() || null };
-        if (!esYo) { cambios.rol = rol.value; cambios.activo = activo.checked; }
+        const cambios = { nombre: nombre.value.trim() || p.nombre, siglas: siglas.value.trim().toUpperCase() || null };
+        if (!esYo) cambios.rol = rol.value;
+        const nuevoEmail = email.value.trim().toLowerCase();
+        const cambiaEmail = nuevoEmail !== (p.email || '');
+        if (cambiaEmail) {
+          if (!nuevoEmail) { toast('El email no se puede quitar: si no quieres que entre, bloquea su acceso', 'error'); email.value = p.email || ''; btn.disabled = false; return; }
+          if (!EMAIL_OK.test(nuevoEmail)) { toast('Escribe un email válido', 'error'); email.focus(); btn.disabled = false; return; }
+        }
         if (!esYo && cambios.rol === 'admin' && p.rol !== 'admin'
-          && !(await confirmar({ titulo: 'Dar permisos de administrador', texto: `${p.email} podrá borrar datos y gestionar usuarios. ¿Seguro?`, ok: 'Sí, hacerle administrador' }))) { btn.disabled = false; return; }
-        const nuevo = await actualizarPerfil(p.id, cambios);
-        perfiles = perfiles.map((x) => (x.id === p.id ? nuevo : x));
+          && !(await confirmar({ titulo: 'Dar permisos de administrador', texto: `${etq} podrá borrar datos y gestionar usuarios. ¿Seguro?`, ok: 'Sí, hacerle administrador' }))) { btn.disabled = false; return; }
+        if (cambiaEmail && !sinAcceso
+          && !(await confirmar({ titulo: 'Cambiar el email', texto: `${p.email} pasará a ser ${nuevoEmail}. ${esYo ? 'Con este nuevo email entrarás tú a partir de ahora.' : 'Con el nuevo email entrará esta persona a partir de ahora.'}`, ok: 'Cambiar email' }))) { btn.disabled = false; return; }
+        let nuevo = await actualizarPerfil(p.id, cambios);
+        reemplazar(nuevo);
+        let pass = null;
+        if (cambiaEmail) {
+          pass = sinAcceso ? generarPassword() : null;
+          const r = await adminUsuarios({ accion: 'email', user_id: p.id, email: nuevoEmail, ...(pass ? { password: pass } : {}) });
+          nuevo = r.perfil; reemplazar(nuevo);
+        }
         btn.classList.remove('primary');
-        toast('Usuario actualizado');
-        if (esYo) ctx.state.perfil = nuevo;
+        toast(cambiaEmail ? (pass ? 'Acceso creado' : 'Email cambiado') : 'Usuario actualizado');
+        if (esYo) ctx.state.perfil = { ...ctx.state.perfil, ...nuevo };
         pintar();
-      } catch (ex) { btn.disabled = false; toast(ex.message, 'error'); }
+        if (pass) await mostrarPassword({ titulo: 'Acceso creado', email: nuevoEmail, pass });
+      } catch (ex) { btn.disabled = false; toast(ex.message, 'error'); pintar(); }
     });
-    const btnPass = esYo ? null : h('button', { class: 'btn small ghost', type: 'button', title: 'Pone una contraseña provisional nueva (por si la ha olvidado)', onclick: async () => {
+    const btnPass = esYo || sinAcceso ? null : h('button', { class: 'btn small ghost', type: 'button', title: 'Pone una contraseña provisional nueva (por si la ha olvidado)', onclick: async () => {
       if (!(await confirmar({ titulo: 'Nueva contraseña provisional', texto: `Se cambiará la contraseña de ${p.email}. Tendrá que elegir otra al entrar.`, ok: 'Cambiar' }))) return;
       const pass = generarPassword();
       try { await adminUsuarios({ accion: 'password', user_id: p.id, password: pass }); p.debe_cambiar_password = true; pintar(); await mostrarPassword({ titulo: 'Contraseña provisional', email: p.email, pass }); }
       catch (ex) { toast(ex.message, 'error'); }
     } }, 'Nueva contraseña');
+    const btnBloq = esYo ? null : h('button', { class: 'btn small ghost', type: 'button',
+      title: p.activo ? 'No podrá entrar ni se le podrán asignar tareas. Sus datos se conservan y puedes desbloquearlo cuando quieras.' : 'Vuelve a darle acceso',
+      onclick: async () => {
+        if (p.activo && !(await confirmar({ titulo: 'Bloquear el acceso', texto: `${etq} no podrá entrar ni aparecerá para asignarle tareas. Sus datos se conservan y podrás desbloquearlo cuando quieras.`, ok: 'Bloquear' }))) return;
+        try {
+          const r = await adminUsuarios({ accion: 'bloquear', user_id: p.id, bloquear: p.activo });
+          reemplazar(r.perfil); toast(r.perfil.activo ? 'Acceso desbloqueado' : 'Acceso bloqueado'); pintar();
+        } catch (ex) { toast(ex.message, 'error'); }
+      } }, p.activo ? 'Bloquear' : 'Desbloquear');
+    const btnBorrar = esYo ? null : h('button', { class: 'btn small danger', type: 'button', title: 'Elimina el usuario para siempre', onclick: async () => {
+      if (!(await confirmar({ titulo: 'Eliminar usuario', texto: `Se eliminará a ${etq}${sinAcceso ? '' : ' y su acceso'}. Sus tareas se quedarán con su nombre escrito, y lo que haya creado o modificado se conserva sin nombre de autor. No se puede deshacer. Si solo quieres que no entre, mejor «Bloquear».`, ok: 'Eliminar para siempre' }))) return;
+      try {
+        await adminUsuarios({ accion: 'borrar', user_id: p.id });
+        perfiles = perfiles.filter((x) => x.id !== p.id);
+        fichasProf = fichasProf.map((f) => (f.profile_id === p.id ? { ...f, profile_id: null } : f));
+        toast('Usuario eliminado'); pintar();
+      } catch (ex) { toast(ex.message, 'error'); }
+    } }, 'Eliminar');
+    const estado = !p.activo ? h('span', { class: 'pill warn' }, 'Bloqueado')
+      : sinAcceso ? h('span', { class: 'pill', title: 'Existe para tareas y fichas, pero no puede entrar hasta que tenga email' }, 'Sin acceso') : h('span', { class: 'pill ok' }, 'Activo');
     return h('tr', { class: p.activo ? '' : 'inactivo' },
       h('td', {}, nombre, siglas),
-      h('td', {}, p.email || '—', esYo ? h('span', { class: 'line2' }, '(tú)') : null),
+      h('td', {}, email, esYo ? h('span', { class: 'line2' }, '(tú)') : null),
       h('td', {}, rol, p.rol === 'profesora' ? ficha : null),
-      h('td', {}, h('label', { class: 'check' }, activo, p.activo ? 'Activo' : h('span', { class: 'pill warn' }, 'Desactivado')),
-        h('label', { class: 'check small', title: 'No ve las tareas de Contabilidad ni de Domiciliaciones y pagos' }, sinDinero, ' Sin dinero')),
-      h('td', { class: 'small' }, p.debe_cambiar_password ? h('span', { class: 'pill warn', title: 'Todavía no ha cambiado la contraseña provisional' }, 'Provisional') : h('span', { class: 'muted' }, 'Propia')),
+      h('td', {}, estado),
+      h('td', { class: 'small' }, sinAcceso ? h('span', { class: 'muted' }, '—') : p.debe_cambiar_password ? h('span', { class: 'pill warn', title: 'Todavía no ha cambiado la contraseña provisional' }, 'Provisional') : h('span', { class: 'muted' }, 'Propia')),
       h('td', { class: 'small muted' }, fmtFecha(p.created_at)),
-      h('td', { class: 'acciones-usuario' }, btn, btnPass));
+      h('td', { class: 'acciones-usuario' }, btn, btnPass, btnBloq, btnBorrar));
   }
   function pintar() {
     const act = perfiles.filter((p) => p.activo).length;
-    contador.textContent = `${perfiles.length} usuarios · ${act} activos`;
+    const sin = perfiles.filter((p) => p.activo && !p.email).length;
+    contador.textContent = `${perfiles.length} usuarios · ${act} activos${sin ? ` (${sin} sin acceso por no tener email)` : ''}`;
     clear(tbody, perfiles.map(fila));
   }
 
@@ -116,24 +155,27 @@ export async function renderUsuarios(view, ctx) {
   const alta = h('form', { class: 'alta-usuario', onsubmit: async (e) => {
     e.preventDefault();
     const email = aEmail.value.trim().toLowerCase();
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast('Escribe un email válido', 'error'); aEmail.focus(); return; }
-    const pass = generarPassword();
+    const nombreNuevo = aNombre.value.trim();
+    if (!nombreNuevo) { toast('Escribe el nombre', 'error'); aNombre.focus(); return; }
+    if (email && !EMAIL_OK.test(email)) { toast('Escribe un email válido (o déjalo vacío)', 'error'); aEmail.focus(); return; }
+    const pass = email ? generarPassword() : null;
     aBtn.disabled = true;
     try {
-      const r = await adminUsuarios({ accion: 'crear', email, nombre: aNombre.value.trim(), rol: aRol.value, password: pass });
+      const r = await adminUsuarios({ accion: 'crear', email, nombre: nombreNuevo, rol: aRol.value, ...(pass ? { password: pass } : {}) });
       perfiles = [...perfiles, r.perfil];
       pintar();
       aNombre.value = ''; aEmail.value = '';
-      await mostrarPassword({ titulo: `Usuario creado: ${nombreDe(r.perfil.rol)}`, email, pass });
+      if (pass) await mostrarPassword({ titulo: `Usuario creado: ${nombreDe(r.perfil.rol)}`, email, pass });
+      else toast('Creado sin acceso. Cuando le pongas un email podrá entrar.');
     } catch (ex) { toast('No se ha creado: ' + ex.message, 'error'); }
     finally { aBtn.disabled = false; }
   } },
-  h('label', { class: 'field' }, h('span', {}, 'Nombre'), aNombre), h('label', { class: 'field' }, h('span', {}, 'Email'), aEmail),
+  h('label', { class: 'field' }, h('span', {}, 'Nombre'), aNombre), h('label', { class: 'field' }, h('span', {}, 'Email (opcional)'), aEmail),
   h('label', { class: 'field' }, h('span', {}, 'Rol'), aRol), h('div'), aBtn);
 
   const panelUsuarios = h('div', {},
     h('div', { class: 'card' }, h('h3', {}, 'Dar de alta'),
-      h('p', { class: 'small muted' }, 'Se crea con una contraseña provisional que verás una sola vez para pasársela. Al entrar, la app le obliga a elegir la suya. Si es profesora, después vincúlala a su ficha.'),
+      h('p', { class: 'small muted' }, 'Con email: se crea con una contraseña provisional que verás una sola vez para pasársela; al entrar, la app le obliga a elegir la suya. Sin email: se crea solo la ficha, sin acceso (sirve para asignarle tareas o vincular a una profesora); cuando le pongas el email en la tabla y guardes, podrá entrar. Si es profesora, vincúlala a su ficha.'),
       alta),
     h('div', { class: 'table-wrap' }, h('table', { class: 'data tabla-usuarios' },
       h('thead', {}, h('tr', {}, ['Nombre', 'Email', 'Rol', 'Estado', 'Contraseña', 'Alta', ''].map((t) => h('th', { scope: 'col' }, t)))), tbody)));

@@ -108,7 +108,26 @@ export function createClient() {
   return {
     from: (t) => new Q(t),
     storage: { from: () => ({ async upload() { return { data: {}, error: null }; }, async createSignedUrl() { return { data: { signedUrl: 'about:blank' }, error: null }; } }) },
-    functions: { async invoke() { return { data: {}, error: null }; } },
+    functions: {
+      async invoke(fn, { body } = {}) {
+        window.__mock.calls.push({ fn, body });
+        const ps = db.profiles;
+        if (body?.accion === 'crear') {
+          if (body.email && ps.some((x) => x.email === body.email)) return { data: { error: 'Ya existe un usuario con ese email' }, error: null };
+          const perfil = { id: 'u-' + (ps.length + 1), email: body.email || null, nombre: body.nombre, rol: body.rol, activo: true, debe_cambiar_password: !!body.email, created_at: hoy };
+          ps.push(perfil); return { data: { perfil }, error: null };
+        }
+        if (body?.accion === 'email') {
+          const p = ps.find((x) => x.id === body.user_id);
+          if (ps.some((x) => x.id !== p.id && x.email === body.email)) return { data: { error: 'Ya existe un usuario con ese email' }, error: null };
+          const nuevo = !p.email; p.email = body.email; if (nuevo) p.debe_cambiar_password = true;
+          return { data: { perfil: p, acceso_nuevo: nuevo }, error: null };
+        }
+        if (body?.accion === 'bloquear') { const p = ps.find((x) => x.id === body.user_id); p.activo = !body.bloquear; return { data: { perfil: p }, error: null }; }
+        if (body?.accion === 'borrar') { db.profiles = ps.filter((x) => x.id !== body.user_id); return { data: { ok: true }, error: null }; }
+        return { data: {}, error: null };
+      },
+    },
     async rpc(fn, args) {
       window.__mock.calls.push({ rpc: fn, args });
       if (fn === 'ac_generar_cuotas') {

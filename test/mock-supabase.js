@@ -117,10 +117,25 @@ export function createClient() {
         const yo = session && db.profiles.find((p) => p.id === session.user.id);
         if (!(yo && yo.activo && yo.rol === 'admin')) return { data: { error: 'Solo un administrador puede gestionar usuarios' }, error: null };
         if (body.accion === 'crear') {
-          if (db.profiles.some((p) => p.email === body.email)) return { data: { error: 'Ya existe un usuario con ese email' }, error: null };
-          const perfil = { id: 'u-' + (nextId++), email: body.email, nombre: body.nombre, rol: body.rol, activo: true, debe_cambiar_password: true, created_at: new Date().toISOString() };
-          db.profiles.push(perfil); USERS[body.email] = perfil.id;
+          if (body.email && db.profiles.some((p) => p.email === body.email)) return { data: { error: 'Ya existe un usuario con ese email' }, error: null };
+          const perfil = { id: 'u-' + (nextId++), email: body.email || null, nombre: body.nombre, rol: body.rol, activo: true, debe_cambiar_password: !!body.email, created_at: new Date().toISOString() };
+          db.profiles.push(perfil); if (body.email) USERS[body.email] = perfil.id;
           return { data: { perfil }, error: null };
+        }
+        if (body.accion === 'email') {
+          const p = db.profiles.find((x) => x.id === body.user_id);
+          if (db.profiles.some((x) => x.id !== p.id && x.email === body.email)) return { data: { error: 'Ya existe un usuario con ese email' }, error: null };
+          const nuevo = !p.email; p.email = body.email; USERS[body.email] = p.id;
+          if (nuevo) p.debe_cambiar_password = true;
+          return { data: { perfil: p, acceso_nuevo: nuevo }, error: null };
+        }
+        if (body.accion === 'bloquear') {
+          const p = db.profiles.find((x) => x.id === body.user_id); p.activo = !body.bloquear;
+          return { data: { perfil: p }, error: null };
+        }
+        if (body.accion === 'borrar') {
+          db.profiles = db.profiles.filter((x) => x.id !== body.user_id);
+          return { data: { ok: true }, error: null };
         }
         if (body.accion === 'password') { const p = db.profiles.find((x) => x.id === body.user_id); p.debe_cambiar_password = true; return { data: { ok: true }, error: null }; }
         return { data: { error: 'Acción desconocida' }, error: null };

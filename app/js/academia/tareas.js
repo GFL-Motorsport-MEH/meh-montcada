@@ -60,7 +60,7 @@ async function renderLista(view, ctx, conmutador) {
   [...usuarios, yo].forEach((u) => { if (u?.siglas) SIGLAS.set(u.nombre || u.email, u.siglas.toUpperCase()); });
   const uPor = new Map([...usuarios, yo].filter(Boolean).map((u) => [u.id, u]));
   const editor = ctx.edita('ac_tareas');
-  const verDinero = yo.rol === 'admin' || (ctx.ve('ac_pagos') && !yo.sin_dinero);
+  const verDinero = yo.rol === 'admin' || ctx.ve('ac_pagos');
   const areasPropias = Object.keys(AREAS).filter((a) => verDinero || !AREAS_DINERO.includes(a));
   const recargar = () => { api.invalidar(); refrescar(); };
   const hoy = hoyISO();
