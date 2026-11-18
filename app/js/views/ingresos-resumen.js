@@ -2,7 +2,7 @@
 //  - cobros por modalidad de pago y mes (domiciliacion, transferencia, TPV, efectivo, varios)
 //  - numero de alumnos por grupo y mes
 // Las dos tablas son editables (se guarda al salir de la celda), igual que la cuadricula.
-import { h, clear, ajustarAncho, fmtEUR, fmtPct, num, MESES, MESES_CORTO, capitalizar, toast, descargarCSV } from '../ui.js';
+import { h, clear, ajustarAncho, fmtEUR, fmtPct, num, MESES, MESES_CORTO, capitalizar, toast, descargarCSV, grupoClase } from '../ui.js';
 import * as db from '../db.js';
 
 export const METODOS = ['DOMICILIACION', 'TRANSFERENCIA', 'TPV / TARJETA', 'EFECTIVO', 'VARIOS'];
@@ -82,7 +82,7 @@ function tablaEditable({ titulo, sub, clase, filas, campoFila, campoValor, enter
 
   clear(tbody, filas.map((f) => {
     const etiqueta = METODO_LABEL[f] || f;
-    return h('tr', {}, h('th', { scope: 'row', class: 'sticky-col' }, etiqueta),
+    return h('tr', { class: `gcolor ${grupoClase(f)}` }, h('th', { scope: 'row', class: 'sticky-col' }, etiqueta),
       MESES.map((m) => celda(f, m, etiqueta)), h('td', { class: 'num total-col', 'data-total': f }));
   }));
   pie();

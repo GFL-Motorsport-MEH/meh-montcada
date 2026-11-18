@@ -10,7 +10,7 @@ import { renderBalance } from './views/balance.js';
 import { renderFacturacion } from './views/facturacion.js';
 import { renderControl } from './views/control.js';
 import { renderConfig } from './views/config.js';
-import { RUTAS_ACADEMIA, TABS_ACADEMIA, TABS_COBROS } from './academia/index.js';
+import { RUTAS_ACADEMIA, TABS_ACADEMIA } from './academia/index.js';
 import { renderEscanerVista } from './views/escaner-vista.js';
 import * as historial from './deshacer.js';
 import { crearPermisos } from './permisos.js';
@@ -127,14 +127,20 @@ function puedeRuta(r) {
 }
 // primera pantalla de un módulo a la que este usuario puede entrar
 function primeraRuta(modulo) {
-  const orden = modulo === 'academia' ? TABS_ACADEMIA.map((t) => t[0]) : ['panel', 'gastos', 'escaner', 'ingresos', 'ac_resumen', 'ac_pagos', 'ac_remesas', 'balance', 'facturacion', 'control', 'config', 'usuarios'];
+  const orden = modulo === 'academia' ? TABS_ACADEMIA.map((t) => t[0]) : ['panel', 'gastos', 'escaner', 'ingresos', 'ac_pagos', 'ac_remesas', 'facturacion', 'balance', 'control', 'config', 'usuarios'];
   return orden.find(puedeRuta) || null;
 }
+// Ingresos agrupa sus pantallas hermanas como sub-pestañas: Resumen (la cuadrícula de ingresos), Pagos, Remesas y Facturación.
+// Cada una conserva su permiso; se ven solo las que el usuario puede abrir. Importar pagos cuelga de Pagos.
+const SUBTABS_INGRESOS = [['ingresos', 'Resumen'], ['ac_pagos', 'Pagos'], ['ac_remesas', 'Remesas'], ['facturacion', 'Facturación']];
+const subtabDe = (ruta) => (ruta === 'ac_pagos_importar' ? 'ac_pagos' : ruta);
+const enIngresos = (ruta) => SUBTABS_INGRESOS.some(([id]) => id === subtabDe(ruta));
 const modulosVisibles = () => MODULOS.filter((m) => primeraRuta(m.id));
 const LS_RUTA = 'meh.ruta.';
 function rutaActual() {
   let r = (window.location.hash.match(/^#\/(\w+)/) || [])[1];
   if (r === 'academia') r = 'ac_alumnos'; // enlace antiguo: el Resumen pasó a Facturación
+  if (r === 'ac_resumen') r = 'ingresos'; // el Resumen de Pagos ahora es el Resumen de Ingresos
   if (RUTAS[r] && puedeRuta(r)) return r;
   // sin permiso (o ruta que no existe): a la primera pantalla que le toca
   return (ctx.veAlgo('fact') && primeraRuta('facturacion')) || primeraRuta('academia') || primeraRuta('facturacion') || 'sin_acceso';
@@ -145,12 +151,13 @@ function irAModulo(id) {
   if (destino) window.location.hash = `#/${destino}`;
 }
 
-let viewEl, tabsEl, cursoSel, modulosEl;
+let viewEl, tabsEl, subTabsEl, cursoSel, modulosEl;
 function pintarShell() {
   const p = state.perfil;
   cursoSel = h('select', { class: 'select-inline', 'aria-label': 'Curso', onchange: () => { state.cursoId = cursoSel.value; guardarCurso(); pintarVista(); } },
     [...state.cursosVisibles].reverse().map((c) => h('option', { value: c.id, selected: c.id === state.cursoId }, `Curso ${c.nombre}`)));
   tabsEl = h('nav', { class: 'tabs', 'aria-label': 'Secciones' });
+  subTabsEl = h('nav', { class: 'subtabs', 'aria-label': 'Ingresos', hidden: true });
   modulosEl = h('nav', { class: 'modulos', 'aria-label': 'Módulos' });
   viewEl = h('main', { id: 'view', style: 'display:flex; flex-direction:column; gap:12px' });
   const inicial = (p.nombre || p.email || '?').trim().charAt(0).toUpperCase();
@@ -169,7 +176,7 @@ function pintarShell() {
           h('button', { class: 'btn ghost', onclick: () => renderNuevaPassword(root, { titulo: 'Cambiar contraseña', onDone: async () => { toast('Contraseña cambiada'); await arrancar(); }, onCancel: () => { pintarShell(); pintarVista(); } }) }, 'Contraseña'),
           botonTema(),
           h('button', { class: 'btn ghost', onclick: salir }, 'Salir')))),
-    tabsEl);
+    tabsEl, subTabsEl);
   // altura de la cabecera fija, para que las cabeceras de las tablas se queden justo debajo
   if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => document.documentElement.style.setProperty('--cab', `${cabecera.offsetHeight}px`)).observe(cabecera);
 }
@@ -285,6 +292,7 @@ function pintarTabs(actual) {
     h('span', { class: 'modulo-titulo' }, m.titulo), m.id === 'academia' ? h('span', { class: 'soon' }, 'en desarrollo') : null)));
   const tab = (id, label) => h('a', { class: 'tab', href: `#/${id}`, 'aria-current': id === actual ? 'page' : false }, label);
   const proximamente = (label) => h('span', { class: 'tab disabled', title: 'Próximamente' }, label, h('span', { class: 'soon' }, 'pronto'));
+  subTabsEl.hidden = true; clear(subTabsEl);
   if (modulo === 'academia') {
     clear(tabsEl, TABS_ACADEMIA.filter(([id]) => puedeRuta(id)).map(([id, label]) => tab(id, label)), ctx.ve('ac_alumnos') ? proximamente('Asistencia') : null);
     return;
@@ -293,9 +301,21 @@ function pintarTabs(actual) {
   const fact = ctx.veAlgo('fact');
   const badge = h('span', { class: 'tab-badge tab-badge-gastos', hidden: !state.pendientes, title: `${state.pendientes || 0} gastos pendientes de revisar` }, state.pendientes ? String(state.pendientes) : '');
   clear(tabsEl, fact ? tab('panel', 'Panel') : null, fact ? h('a', { class: 'tab', href: '#/gastos', 'aria-current': actual === 'gastos' ? 'page' : false }, 'Gastos', badge) : null, ctx.veAlgo('escaner') ? tab('escaner', 'Escáner') : null,
-    fact ? tab('ingresos', 'Ingresos') : null, TABS_COBROS.filter(([id]) => puedeRuta(id)).map(([id, label]) => tab(id, label)),
-    fact ? tab('balance', 'Balance') : null, fact ? tab('facturacion', 'Facturación') : null, fact ? tab('control', 'Control') : null, ctx.edita('fact') ? tab('config', 'Configuración') : null,
+    pestanaIngresos(actual),
+    fact ? tab('balance', 'Balance') : null, fact ? tab('control', 'Control') : null, ctx.edita('fact') ? tab('config', 'Configuración') : null,
     ctx.esAdmin() ? tab('usuarios', 'Usuarios') : null);
+}
+
+// La pestaña Ingresos abre su primera sub-pestaña accesible y, dentro de ellas, muestra la barra de sub-pestañas.
+function pestanaIngresos(actual) {
+  const subs = SUBTABS_INGRESOS.filter(([id]) => puedeRuta(id));
+  if (!subs.length) return null;
+  const dentro = enIngresos(actual);
+  if (dentro) {
+    subTabsEl.hidden = subs.length < 2;
+    clear(subTabsEl, subs.map(([id, label]) => h('a', { class: `subtab st-${id}`, href: `#/${id}`, 'aria-current': id === subtabDe(actual) ? 'page' : false }, label)));
+  }
+  return h('a', { class: 'tab', href: `#/${subs[0][0]}`, 'aria-current': dentro ? 'page' : false }, 'Ingresos');
 }
 
 // rol «Consulta»: se ve todo pero no se puede cambiar nada (la base de datos tampoco lo permite)

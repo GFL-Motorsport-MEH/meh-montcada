@@ -1,8 +1,9 @@
 // Ingresos del curso: una cuadricula grupo/level/tipo x mes, como el resumen de las
 // hojas "20xx.xx Ing" del Excel. Cada celda se edita y se guarda al salir de ella.
-import { h, clear, ajustarAncho, fmtEUR, fmtEUR2, num, MESES, MESES_CORTO, capitalizar, cargando, toast, descargarCSV } from '../ui.js';
+import { h, clear, ajustarAncho, fmtEUR, fmtEUR2, num, MESES, MESES_CORTO, capitalizar, cargando, toast, descargarCSV, grupoClase } from '../ui.js';
 import { crearIngreso, actualizarIngreso } from '../db.js';
 import { renderResumenIngresos } from './ingresos-resumen.js';
+import { renderPagosVsIngresos } from './ingresos-pagos.js';
 
 const ORDEN_GRUPOS = ['Babies', 'Kids', 'Teens', 'Adultos', '1 to 1', 'Empresas', 'Activities'];
 const esWP = (tipo) => /welcome/i.test(tipo || '');
@@ -56,7 +57,7 @@ export async function renderIngresos(view, ctx) {
   const kpiVals = {};
   const kpi = (id, label) => {
     kpiVals[id] = h('div', { class: 'value' });
-    return h('div', { class: 'card kpi' }, h('div', { class: 'label' }, label), kpiVals[id]);
+    return h('div', { class: `card kpi kpi-c-${id}` }, h('div', { class: 'label' }, label), kpiVals[id]);
   };
   const totalesMes = {}; let totalWP; let totalGeneral;
   const tbody = h('tbody');
@@ -84,12 +85,17 @@ export async function renderIngresos(view, ctx) {
     kpiVals.wp.textContent = fmtEUR(wp);
     kpiVals.extras.textContent = fmtEUR(extras);
     if (resumen) resumen.refrescar();
+    if (vinculo) vinculo.refrescar();
   }
+  // mensualidades (sin extras ni welcome pack) por mes y welcome pack: es lo que se compara con Pagos
+  const mensualidadesPorMes = () => MESES.map((m) => filas.filter((f) => !/extra/i.test(f.tipo)).reduce((s, f) => s + num(f.celdas[m]?.cantidad), 0));
+  const welcomePack = () => filas.reduce((s, f) => s + num(f.wp?.cantidad), 0);
   function totalesPorMes() {
     return MESES.map((m) => filas.reduce((s, f) => s + num(f.celdas[m]?.cantidad), 0));
   }
-  let resumen = null;
+  let resumen = null, vinculo = null;
   const resumenCont = h('div', { class: 'resumen-cont' });
+  const vinculoCont = h('div', { class: 'resumen-cont' });
 
   async function guardar(f, mes, input) {
     const valor = leerImporte(input.value);
@@ -142,7 +148,7 @@ export async function renderIngresos(view, ctx) {
     clear(tbody, filas.map((f) => {
       f._celdaTotal = h('td', { class: 'num total-col' });
       const nuevoGrupo = f.grupo !== grupoAnterior; grupoAnterior = f.grupo;
-      return h('tr', { class: nuevoGrupo ? 'grupo-inicio' : '' },
+      return h('tr', { class: `gcolor ${grupoClase(f.grupo)}${nuevoGrupo ? ' grupo-inicio' : ''}` },
         h('th', { scope: 'row', class: 'sticky-col' }, h('span', { class: 'grupo' }, f.grupo), h('span', { class: 'line2' }, [f.level, f.tipo].filter(Boolean).join(' · '))),
         celda(f, null),
         MESES.map((m) => celda(f, m)),
@@ -213,7 +219,10 @@ export async function renderIngresos(view, ctx) {
           h('th', { scope: 'col', class: 'num' }, 'Total'))),
         tbody,
         h('tfoot', {}, h('tr', {}, h('th', { scope: 'row', class: 'sticky-col' }, 'Total'), totalWP, MESES.map((m) => totalesMes[m]), totalGeneral))))),
+    vinculoCont,
     resumenCont);
   pintarFilas();
   resumen = await renderResumenIngresos(resumenCont, ctx, curso, totalesPorMes);
+  vinculo = await renderPagosVsIngresos(vinculoCont, ctx, curso, mensualidadesPorMes, welcomePack);
+  recalcular();
 }

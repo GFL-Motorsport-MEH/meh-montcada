@@ -64,6 +64,8 @@ export function hoyISO() {
 export function normalizar(s) {
   return (s || '').toString().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
+// Clase de color de un grupo de alumnos (Babies, Kids, Teens, Adultos, 1 to 1, Empresas, Activities); ver app.css
+export const grupoClase = (g) => 'g-' + normalizar(g).trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 // ---------- toasts ----------
 let zone;

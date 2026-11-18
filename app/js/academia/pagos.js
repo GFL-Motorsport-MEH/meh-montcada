@@ -76,7 +76,7 @@ export async function renderPagos(view, ctx) {
     h('thead', {}, h('tr', {}, h('th', {}, 'Alumno'), h('th', { class: 'num' }, 'Cuota'), h('th', { class: 'num' }, 'WP'), h('th', {}, 'WP'), MESES_CORTO.map((m) => h('th', {}, m)))), cuerpo, pie);
   pintar(); pintarPie();
   clear(view,
-    cabecera(`Pagos · ${curso.nombre}`, 'Cuota pactada por alumno y cobro de cada mensualidad', mesSel, btnGen, btnWp, h('a', { class: 'btn small', href: '#/ac_pagos_importar' }, 'Importar del CRM')),
+    cabecera(`Pagos · ${curso.nombre}`, 'Cuota pactada por alumno y cobro de cada mensualidad', mesSel, btnGen, btnWp, h('a', { class: 'btn small', href: '#/ac_pagos_importar' }, 'Importar del CRM'), ctx.veAlgo('fact') ? h('a', { class: 'btn small', href: '#/ingresos', title: 'Compara lo cobrado aquí con la cuadrícula de Ingresos' }, 'Ver en Ingresos →') : null),
     sinInsc ? h('div', { class: 'banner warn' }, `${sinInsc} alumnos inscritos todavía no tienen cuota fijada en este curso: escribe su cuota en la fila (si no aparecen aquí, ábrelos desde Alumnos).`) : null,
     h('div', { class: 'kpi-row' }, kpi('Cobrado', fmtEUR2(kpis.pagado)), kpi('Pendiente', fmtEUR2(kpis.total - kpis.pagado), 'Cuotas generadas aún sin cobrar'), kpi('Alumnos', String(filasBase.length))),
     h('div', { class: 'filters filters-2' }, h('input', { type: 'search', placeholder: 'Buscar alumno…', oninput: (e) => { f.q = e.target.value; pintar(); } }),

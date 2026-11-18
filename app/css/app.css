@@ -307,7 +307,7 @@ table.balance td.neg { color: var(--critical); }
 @media print {
   @page { size: A4 landscape; margin: 10mm; }
   body { background: #fff; color: #000; padding: 0; font-size: 10px; }
-  .topbar, .tabs, .no-print, .banner, .toast-zone, .btn { display: none !important; }
+  .topbar, .tabs, .subtabs, .no-print, .banner, .toast-zone, .btn { display: none !important; }
   .page { max-width: none; padding: 0; }
   .card { border: none; box-shadow: none; padding: 0; }
   .table-wrap { overflow: visible !important; }
@@ -704,3 +704,55 @@ td.nfac-vacio input::placeholder { color: var(--text-primary); opacity: .75; fon
 .combo-lista[hidden] { display: none; }
 .combo-lista li { padding: 5px 8px; border-radius: 4px; cursor: pointer; }
 .combo-lista li:hover, .combo-lista li.activo { background: var(--surface-2); }
+/* ---------- Ingresos: sub-pestañas, colores por grupo y vínculo con Pagos ---------- */
+.subtabs { display: flex; gap: 6px; padding: 2px 2px 6px; overflow-x: auto; scrollbar-width: none; }
+.subtabs[hidden] { display: none; }
+.subtab {
+  --sc: var(--accent); display: inline-flex; align-items: center; font: 600 12.5px var(--font-body); padding: 5px 14px; border-radius: 999px;
+  text-decoration: none; color: var(--text-secondary); border: 1px solid var(--border); background: var(--surface); white-space: nowrap;
+}
+.subtab::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--sc); margin-right: 7px; }
+.subtab:hover { background: color-mix(in oklab, var(--sc) 10%, var(--surface)); }
+.subtab[aria-current="page"] { background: var(--sc); border-color: var(--sc); color: #fff; }
+.subtab[aria-current="page"]::before { background: #fff; }
+.st-ingresos { --sc: #1f5fa8; } .st-ac_pagos { --sc: #1a7f37; } .st-ac_remesas { --sc: #6d4bc4; } .st-facturacion { --sc: #c2571a; }
+
+:root {
+  --g-babies: #d6538c; --g-kids: #e8742c; --g-teens: #7c5ad8; --g-adultos: #2a6fc0; --g-1-to-1: #0f8f8f; --g-empresas: #5f6b7a; --g-activities: #2f9e44;
+  --g-domiciliacion: #2a6fc0; --g-transferencia: #7c5ad8; --g-tpv-tarjeta: #0f8f8f; --g-efectivo: #2f9e44; --g-varios: #5f6b7a;
+}
+.gcolor { --gc: var(--text-muted); }
+.g-babies { --gc: var(--g-babies); } .g-kids { --gc: var(--g-kids); } .g-teens { --gc: var(--g-teens); } .g-adultos { --gc: var(--g-adultos); }
+.g-1-to-1 { --gc: var(--g-1-to-1); } .g-empresas { --gc: var(--g-empresas); } .g-activities { --gc: var(--g-activities); }
+.g-domiciliacion { --gc: var(--g-domiciliacion); } .g-transferencia { --gc: var(--g-transferencia); } .g-tpv-tarjeta { --gc: var(--g-tpv-tarjeta); }
+.g-efectivo { --gc: var(--g-efectivo); } .g-varios { --gc: var(--g-varios); }
+table.grid-ing tbody tr.gcolor > th.sticky-col { background: color-mix(in oklab, var(--gc) 14%, var(--surface)); box-shadow: inset 5px 0 0 var(--gc), 1px 0 0 var(--border); padding-left: 14px; }
+table.grid-ing tbody tr.gcolor .grupo { color: color-mix(in oklab, var(--gc) 70%, var(--text-primary)); }
+table.grid-ing tbody tr.gcolor > td.cell-td { background: color-mix(in oklab, var(--gc) 4%, transparent); }
+table.grid-ing tbody tr.gcolor > td.total-col { background: color-mix(in oklab, var(--gc) 10%, var(--surface-2)); }
+table.grid-ing tbody tr.gcolor.grupo-inicio > * { border-top-color: color-mix(in oklab, var(--gc) 60%, var(--border-strong)); }
+table.grid-ing tbody tr.gcolor:hover > td.cell-td { background: color-mix(in oklab, var(--gc) 10%, var(--surface)); }
+table.grid-ing tfoot > tr > * { background: color-mix(in oklab, var(--accent) 9%, var(--surface-2)); }
+table.grid-ing tfoot > tr > td.total-col { color: var(--accent); }
+
+.card.kpi[class*="kpi-c-"] { border-top: 3px solid var(--kc); background: color-mix(in oklab, var(--kc) 6%, var(--surface)); }
+.card.kpi[class*="kpi-c-"] .value { color: color-mix(in oklab, var(--kc) 80%, var(--text-primary)); }
+.kpi-c-total { --kc: var(--accent); } .kpi-c-mensualidades { --kc: var(--good); } .kpi-c-wp { --kc: #7c5ad8; } .kpi-c-extras { --kc: var(--accent-gas); }
+
+.vinculo-kpis { display: flex; gap: 8px; flex-wrap: wrap; }
+.vk { --vc: var(--text-muted); padding: 4px 12px; border-radius: 999px; font-size: 12.5px; color: var(--text-secondary);
+  background: color-mix(in oklab, var(--vc) 12%, var(--surface)); border: 1px solid color-mix(in oklab, var(--vc) 40%, var(--border)); }
+.vk b { font-variant-numeric: tabular-nums; color: color-mix(in oklab, var(--vc) 75%, var(--text-primary)); }
+.vk-ing { --vc: var(--accent); } .vk-cob, .vk-ok { --vc: var(--good); } .vk-mas, .vk-pen { --vc: var(--warning); } .vk-menos { --vc: var(--critical); }
+table.grid-vinculo td { padding: 7px 10px; text-align: right; font: 13px var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.grid-vinculo td.total-col { font-weight: 600; }
+table.grid-vinculo tbody th.sticky-col { --vc: var(--text-muted); background: color-mix(in oklab, var(--vc) 14%, var(--surface)); box-shadow: inset 5px 0 0 var(--vc), 1px 0 0 var(--border); padding-left: 14px; }
+table.grid-vinculo tr.v-ing { --vc: var(--accent); } table.grid-vinculo tr.v-cob { --vc: var(--good); } table.grid-vinculo tr.v-dif { --vc: var(--text-secondary); }
+table.grid-vinculo tr.v-pen { --vc: var(--warning); } table.grid-vinculo tr.v-dev { --vc: var(--critical); }
+table.grid-vinculo tbody tr > td { background: color-mix(in oklab, var(--vc) 6%, transparent); }
+table.grid-vinculo tbody tr + tr > * { border-top: 1px solid var(--border); }
+table.grid-vinculo td.avisa { color: var(--warning); } table.grid-vinculo td.malo { color: var(--critical); }
+table.grid-vinculo td.dif-ok { color: var(--good); font-weight: 700; background: color-mix(in oklab, var(--good) 14%, transparent); text-align: center; }
+table.grid-vinculo td.dif-mas { color: var(--warning); font-weight: 600; background: color-mix(in oklab, var(--warning) 16%, transparent); }
+table.grid-vinculo td.dif-menos { color: var(--critical); font-weight: 600; background: color-mix(in oklab, var(--critical) 14%, transparent); }
+table.grid-vinculo td.dif-vacio { color: var(--text-muted); }

@@ -26,7 +26,7 @@ def abrir(b, rol, ruta="academia"):
     page.goto(URL + "#/" + ruta)
     page.wait_for_timeout(1500)
     return page
-def tabs(page): return [t.strip() for t in page.locator(".tabs .tab").all_inner_texts()]
+def tabs(page): return [t.strip() for t in page.locator(".tabs .tab, .subtabs .subtab").all_inner_texts()]  # pestañas y sub-pestañas de Ingresos
 
 try:
     with sync_playwright() as p:
