@@ -37,7 +37,7 @@ export async function renderAlumnos(view, ctx) {
       { t: 'Grupos', v: (a) => (gruposAl.get(a.id) || []).map((g) => g.nombre).join(', ') },
       ...(ctx.ve('ac_pagos') ? [{ t: 'Cuota', num: true, v: (a) => (inscPor.get(a.id)?.cuota_mensual ? fmtEUR2(inscPor.get(a.id).cuota_mensual) : '') }] : []),
       { t: 'Estado', v: (a) => pillEstado(a.estado) },
-    ], filas.slice(0, 400), { onClick: (a) => abrirFicha(a, ctx, recargar), vacio: alumnos.length ? 'Ningún alumno coincide con el filtro.' : 'Todavía no hay alumnos. Usa «Importar del Excel» o «Nuevo alumno».' }));
+    ], filas.slice(0, 3000), { onClick: (a) => abrirFicha(a, ctx, recargar), vacio: alumnos.length ? 'Ningún alumno coincide con el filtro.' : 'Todavía no hay alumnos. Usa «Importar del Excel» o «Nuevo alumno».' }));
     if (filas.length > 400) contenedor.append(h('div', { class: 'small muted', style: 'padding:6px' }, `Mostrando 400 de ${filas.length}: afina el filtro.`));
   }
   const recargar = () => { api.invalidar(); refrescar(); };

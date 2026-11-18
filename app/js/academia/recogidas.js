@@ -36,7 +36,7 @@ export async function renderRecogidas(view, ctx) {
       { t: 'Alergias / notas', v: (r) => [r.alumno?.intolerancias, r.observaciones].filter(Boolean).join(' · ') },
       { t: 'Firma', v: (r) => (r.autorizacion_firmada ? pill('firmada', 'ok') : pill('falta', 'bad')) },
     ];
-    clear(cont, tabla(cols, filas.slice(0, 600), { onClick: (r) => abrir(r, { alumnos, autDe, centros, curso, ctx, recargar }), vacio: recs.length ? 'No hay recogidas con este filtro.' : 'Todavía no hay recogidas. Usa «Importar del Excel» o «+ Nueva recogida».' }));
+    clear(cont, tabla(cols, filas.slice(0, 3000), { onClick: (r) => abrir(r, { alumnos, autDe, centros, curso, ctx, recargar }), vacio: recs.length ? 'No hay recogidas con este filtro.' : 'Todavía no hay recogidas. Usa «Importar del Excel» o «+ Nueva recogida».' }));
   }
   const seg = h('div', { class: 'segmented', role: 'tablist' }, [['dia', 'Hoja del día'], ['todas', 'Todas']].map(([k, l]) => h('button', { class: 'seg-btn', role: 'tab', type: 'button', 'aria-selected': String(vista === k), onclick: () => { vista = k; seg.querySelectorAll('.seg-btn').forEach((b) => b.setAttribute('aria-selected', String(b.textContent === l))); selDia.hidden = k !== 'dia'; pintar(); } }, l)));
   const selDia = sel(DIAS.slice(1, 6).map((n, i) => [String(i + 1), n]), f.dia, { onchange: (e) => { f.dia = e.target.value; pintar(); } }); selDia.hidden = vista !== 'dia';

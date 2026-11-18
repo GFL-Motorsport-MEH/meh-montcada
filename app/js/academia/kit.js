@@ -55,13 +55,68 @@ export function cabecera(titulo, sub, ...acciones) {
   return h('div', { class: 'section-head' }, h('div', {}, h('h2', {}, titulo), sub ? h('div', { class: 'count' }, sub) : null), h('div', { class: 'section-actions' }, ...acciones));
 }
 
-// tabla de solo lectura con columnas [{t:'Título', v:(fila)=>nodo|texto, num?:bool}]
-export function tabla(cols, filas, { onClick, vacio = 'Sin datos todavía.', clase = '' } = {}) {
+// tabla con columnas [{t:'Título', v:(fila)=>nodo|texto, num?:bool, s?:(fila)=>valor para ordenar/filtrar, sin?:true para no ordenar ni filtrar}].
+// Pulsar un título ordena (A→Z, Z→A, sin orden); bajo los títulos hay un filtro por columna (lista si tiene pocos valores distintos).
+// El orden y los filtros se recuerdan mientras no se recargue la página (por tabla, según sus títulos).
+const ESTADO_TABLAS = new Map();
+const textoCelda = (c, f) => {
+  const v = c.s ? c.s(f) : c.v(f);
+  if (v === null || v === undefined || v === false) return '';
+  if (Array.isArray(v)) return v.map((x) => (x && x.textContent !== undefined ? x.textContent : String(x ?? ''))).join(' ').trim();
+  return (v.textContent !== undefined ? v.textContent : String(v)).replace(/\s+/g, ' ').trim();
+};
+const comoNumero = (t) => { const m = /^-?\s*\d[\d.,]*/.exec(t.replace(/[€%\s]/g, '')); return m && /^-?[\d.,]+$/.test(t.replace(/[€%\s]/g, '')) ? parseFloat(m[0].replace(/\./g, (x, i, str) => (str.includes(',') ? '' : x)).replace(',', '.')) : null; };
+const comparar = (a, b) => {
+  if (a === b) return 0;
+  if (a === '') return 1; // los vacíos siempre al final
+  if (b === '') return -1;
+  const na = comoNumero(a); const nb = comoNumero(b);
+  if (na !== null && nb !== null) return na - nb;
+  return a.localeCompare(b, 'es', { numeric: true, sensitivity: 'base' });
+};
+
+export function tabla(cols, filas, { onClick, vacio = 'Sin datos todavía.', clase = '', ordenable = true } = {}) {
   if (!filas.length) return h('div', { class: 'card empty' }, vacio);
-  return h('div', { class: 'table-wrap card-tabla' }, h('table', { class: 'data ac-tabla ' + clase },
-    h('thead', {}, h('tr', {}, cols.map((c) => h('th', { class: c.num ? 'num' : '' }, c.t)))),
-    h('tbody', {}, filas.map((f) => h('tr', { class: onClick ? 'clickable' : '', onclick: onClick ? () => onClick(f) : null },
-      cols.map((c) => h('td', { class: c.num ? 'num' : '' }, c.v(f))))))));
+  const clave = cols.map((c) => c.t).join('|');
+  const est = ESTADO_TABLAS.get(clave) || { col: -1, dir: 1, filtros: {} };
+  ESTADO_TABLAS.set(clave, est);
+  const util = ordenable && filas.length > 1;
+  const textos = util ? filas.map((f) => cols.map((c) => (c.sin || !c.t ? '' : textoCelda(c, f)))) : [];
+  const filtrable = cols.map((c, j) => util && !c.sin && !!c.t && textos.some((t) => t[j] !== ''));
+  const distintos = cols.map((c, j) => (filtrable[j] ? [...new Set(textos.map((t) => t[j]).filter(Boolean))] : []));
+  const nota = h('div', { class: 'ac-tabla-nota count' });
+  const tbody = h('tbody');
+  const ths = cols.map((c, j) => {
+    const th = h('th', { class: (c.num ? 'num ' : '') + (filtrable[j] ? 'sortable' : ''), title: filtrable[j] ? 'Pulsa para ordenar' : null }, c.t, ' ', h('span', { class: 'ac-orden' }));
+    if (filtrable[j]) th.addEventListener('click', () => { if (est.col !== j) { est.col = j; est.dir = 1; } else if (est.dir === 1) est.dir = -1; else { est.col = -1; est.dir = 1; } pinta(); });
+    return th;
+  });
+  const controles = cols.map((c, j) => {
+    if (!filtrable[j]) return h('th', {});
+    const lista = distintos[j].length > 1 && distintos[j].length <= 14 && filas.length > 12;
+    const el = lista
+      ? h('select', { 'aria-label': 'Filtrar ' + c.t }, h('option', { value: '' }, 'Todos'), distintos[j].sort((a, b) => a.localeCompare(b, 'es', { numeric: true })).map((v) => h('option', { value: v }, v)))
+      : h('input', { type: 'search', placeholder: 'Filtrar', 'aria-label': 'Filtrar ' + c.t });
+    el.value = est.filtros[j] || '';
+    el.addEventListener(lista ? 'change' : 'input', () => { est.filtros[j] = el.value; pinta(); });
+    return h('th', { class: 'ac-filtro' }, el);
+  });
+  function pinta() {
+    let idx = filas.map((_, i) => i);
+    const activos = Object.entries(est.filtros).filter(([, v]) => v);
+    for (const [j, v] of activos) {
+      const q = normalizar(v); const exacto = distintos[j].length > 1 && distintos[j].length <= 14 && filas.length > 12;
+      idx = idx.filter((i) => (exacto ? textos[i][j] === v : normalizar(textos[i][j]).includes(q)));
+    }
+    if (est.col >= 0) idx.sort((x, y) => est.dir * comparar(textos[x][est.col], textos[y][est.col]));
+    ths.forEach((th, j) => { th.querySelector('.ac-orden').textContent = est.col === j ? (est.dir === 1 ? '▲' : '▼') : ''; });
+    nota.textContent = util && (activos.length || est.col >= 0) ? `${idx.length} de ${filas.length} filas${activos.length ? ' · filtradas' : ''}` : '';
+    clear(tbody, idx.length ? idx.map((i) => { const f = filas[i]; return h('tr', { class: onClick ? 'clickable' : '', onclick: onClick ? () => onClick(f) : null }, cols.map((c) => h('td', { class: c.num ? 'num' : '' }, c.v(f)))); })
+      : h('tr', {}, h('td', { colspan: cols.length, class: 'empty' }, 'Ningún dato coincide con los filtros de la tabla.')));
+  }
+  pinta();
+  return h('div', { class: 'table-wrap card-tabla' }, nota, h('table', { class: 'data ac-tabla ' + clase },
+    h('thead', {}, h('tr', {}, ths), util && filtrable.some(Boolean) ? h('tr', { class: 'ac-filtros' }, controles) : null), tbody));
 }
 
 export const pill = (texto, tipo = 'off') => h('span', { class: `pill ${tipo}` }, texto);

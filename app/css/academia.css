@@ -209,3 +209,11 @@ table.ac-parrilla td { vertical-align: top; }
 .ac-com-ico b { font-size: 11px; font-weight: 600; }
 .ac-ver { border: 1px solid var(--border); background: var(--surface); border-radius: 4px; font: inherit; font-size: 12px; padding: 1px 8px; cursor: pointer; color: var(--text-secondary); }
 .ac-ver:hover { color: var(--text-primary); border-color: var(--border-strong); }
+
+/* tablas ordenables y filtrables */
+.ac-orden { font-size: 9px; color: var(--text-secondary); }
+.ac-tabla-nota { padding: 4px 8px; }
+.ac-tabla-nota:empty { display: none; }
+.ac-tabla tr.ac-filtros th { padding: 2px 4px; background: var(--surface); position: static; }
+.ac-tabla .ac-filtro input, .ac-tabla .ac-filtro select { width: 100%; min-width: 64px; font: inherit; font-size: 11.5px; padding: 2px 4px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); }
+.ac-tabla td.empty { text-align: center; color: var(--text-secondary); padding: 14px; }
