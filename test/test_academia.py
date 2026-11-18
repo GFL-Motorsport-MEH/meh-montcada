@@ -50,7 +50,7 @@ try:
         check(page.evaluate("document.body.dataset.modulo") == "academia", "#/academia abre el módulo Academia")
 
         print("2. todas las pestañas cargan sin error")
-        for r in ["ac_resumen", "ac_alumnos", "ac_pagos", "ac_pagos_importar", "ac_remesas", "ac_seguimiento", "ac_tutorias", "ac_bajas", "ac_grupos", "ac_calendario", "ac_recogidas", "ac_tareas", "ac_biblioteca", "ac_documentos", "ac_importar"]:
+        for r in ["ac_resumen", "ac_alumnos", "ac_pagos", "ac_pagos_importar", "ac_remesas", "ac_seguimiento", "ac_tutorias", "ac_bajas", "ac_grupos", "ac_horarios", "ac_calendario", "ac_recogidas", "ac_tareas", "ac_biblioteca", "ac_documentos", "ac_importar"]:
             ir(page, r)
             check(page.locator(".banner.error").count() == 0, f"{r} sin errores")
         ir(page, "ac_biblioteca")
@@ -147,11 +147,12 @@ try:
         page.keyboard.press("Escape")
 
         print("9. calendario sin solapes y con solape")
-        ir(page, "ac_calendario")
+        ir(page, "ac_horarios")
+        page.get_by_role("tab", name="Por profesora").click()
         check(page.locator(".ac-cal-ses").count() == 2 and page.locator(".ac-cal-ses.choque").count() == 0, "2 sesiones, sin solapes")
         page.evaluate("() => { const m = window.__mock.db; const g = { curso_id: m.ac_grupos[0].curso_id }; m.ac_grupos.push({ id: 'g2', curso_id: g.curso_id, nombre: 'KIDS 2', profesora_id: m.ac_profesoras[0].id, aula_id: null, activo: true, capacidad: 8 }); m.ac_sesiones.push({ id: 's9', grupo_id: 'g2', dia: 1, hora_inicio: '17:30', hora_fin: '18:30' }); }")
         page.evaluate("import('/js/academia/api.js').then(m => m.invalidar())")   # vaciar la caché de 60 s
-        ir(page, "ac_alumnos"); ir(page, "ac_calendario"); page.wait_for_timeout(300)
+        ir(page, "ac_alumnos"); ir(page, "ac_horarios"); page.get_by_role("tab", name="Por profesora").click(); page.wait_for_timeout(300)
         check(page.locator(".ac-cal-ses.choque").count() >= 2 or page.locator(".banner.warn").count() >= 1, "detecta solape de profesora")
         page.screenshot(path=str(SHOTS / "ac_calendario.png"))
         n0 = len(db(page, "ac_sesiones"))
@@ -167,6 +168,41 @@ try:
         ses = db(page, "ac_sesiones")[-1]; dia0 = ses["dia"]
         page.locator(f".ac-cal-ses").last.drag_to(page.locator(".ac-cal-vacio.ed[data-dia='5'][data-min='990']").first); page.wait_for_timeout(700)
         check(any(x["id"] == ses["id"] and x["dia"] == 5 for x in db(page, "ac_sesiones")), "arrastrar mueve la sesión al viernes")
+
+        print("9b. horarios por franjas, parrilla con ficha y calendario anual")
+        page.evaluate("() => { const m = window.__mock.db; const g = m.ac_grupos[0]; const a = m.ac_alumnos[0]; if (a && !m.ac_alumno_grupo.some((x) => x.grupo_id === g.id)) m.ac_alumno_grupo.push({ id: 'ag-t', alumno_id: a.id, grupo_id: g.id, fecha_baja: null }); }")
+        page.evaluate("import('/js/academia/api.js').then(m => m.invalidar())")
+        ir(page, "ac_alumnos"); ir(page, "ac_horarios"); page.get_by_role("tab", name="Por franjas").click(); page.wait_for_timeout(200)
+        check(page.locator(".ac-fr-bloque").count() >= 1 and page.locator(".ac-fr-card").count() >= 1, "franjas: bloques con tarjetas de grupo")
+        check(page.locator(".ac-fr-card .ac-fr-alu").count() >= 1, "franjas: cada grupo lista sus alumnos")
+        page.screenshot(path=str(SHOTS / "ac_horarios_franjas.png"))
+        page.get_by_role("tab", name="Parrilla semanal").click(); page.wait_for_timeout(200)
+        chip = page.locator(".ac-chip").first
+        chip.hover(); page.wait_for_timeout(500)
+        check(page.locator(".ac-pop").count() == 1 and "alumnos" in page.locator(".ac-pop").inner_text(), "parrilla: al pasar el ratón sale la ficha con alumnos")
+        page.mouse.move(5, 5); page.wait_for_timeout(200)
+        check(page.locator(".ac-pop").count() == 0, "la ficha se oculta al salir")
+        sid = db(page, "ac_sesiones")[0]["id"]
+        page.get_by_label("Mostrar todas las horas", exact=False).check(); page.wait_for_timeout(200)
+        page.locator(".ac-chip").first.drag_to(page.locator("td.ac-pcelda[data-dia='4'][data-min='600']")); page.wait_for_timeout(700)
+        check(any(x["dia"] == 4 and x["hora_inicio"].startswith("10:00") for x in db(page, "ac_sesiones")), "parrilla: arrastrar un chip a otro día y hora")
+        page.screenshot(path=str(SHOTS / "ac_horarios_parrilla.png"))
+        ir(page, "ac_calendario")
+        check(page.locator(".ac-ano-mes").count() == 12 and page.locator(".ac-ano-d:not(.fuera)").count() >= 365, "calendario anual: 12 meses y todos los días del curso")
+        page.locator(".ac-ano-d[data-fecha$='-12-25']").first.click()
+        page.locator(".drawer select").first.select_option("festivo")
+        page.locator(".drawer input[type=text]").first.fill("Navidad")
+        page.get_by_role("button", name="Guardar").click(); page.wait_for_timeout(600)
+        check(any(x["fecha"].endswith("-12-25") and x["tipo"] == "festivo" for x in db(page, "ac_calendario_dias")), "marcar un festivo")
+        page.get_by_role("button", name="Añadir festivos habituales").click()
+        page.get_by_role("button", name="Añadir", exact=True).click(); page.wait_for_timeout(700)
+        check(len(db(page, "ac_calendario_dias")) >= 10, "festivos habituales añadidos sin repetir los ya marcados")
+        d1 = page.locator(".ac-ano-d[data-fecha$='-12-23']").first
+        d1.click(); page.locator(".drawer select").first.select_option("vacaciones")
+        page.locator(".drawer input[type=date]").nth(1).fill(db(page, "ac_calendario_dias")[0]["fecha"][:4] + "-12-24")
+        page.get_by_role("button", name="Guardar").click(); page.wait_for_timeout(600)
+        check(len([x for x in db(page, "ac_calendario_dias") if x["tipo"] == "vacaciones"]) == 2, "rango de vacaciones (2 días)")
+        page.screenshot(path=str(SHOTS / "ac_calendario_anual.png"), full_page=True)
 
         print("10. tutoría hecha deja anotación; baja")
         ir(page, "ac_tutorias")

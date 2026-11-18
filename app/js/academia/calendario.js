@@ -1,141 +1,122 @@
-// Calendario de profesoras y uso de aulas: parrilla semanal editable (clic en hueco = nueva sesión, clic en sesión = editar,
-// arrastrar = mover de hora/día o pasar a otra profesora/aula). Colores por modalidad, horas semanales por profesora y avisos de solape.
+// Calendario anual del curso: los 365 días de septiembre a agosto, con festivos, vacaciones, días sin clase y eventos editables.
+// Clic en un día = marcarlo/editarlo; Mayús + clic en otro día = marcar todo el rango. Es el calendario de DÍAS; el horario semanal está en «Horarios».
 import { h, clear, cargando, toast, confirmar } from '../ui.js';
 import * as api from './api.js';
-import { campo, sel, drawer, cabecera, hhmm, DIAS, colorGrupo, COLORES_MODALIDAD, guardarBoton, refrescar } from './kit.js';
+import { campo, sel, txt, fecha, drawer, cabecera, guardarBoton, refrescar } from './kit.js';
 
-const aMin = (t) => { const [a, b] = hhmm(t).split(':').map(Number); return a * 60 + b; };
-const aHora = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-const horasTxt = (min) => `${(min / 60).toLocaleString('es-ES', { maximumFractionDigits: 1 })} h`;
-let modo = 'profesora';
-let color = 'modalidad';
+export const TIPOS = [
+  ['festivo', 'Festivo', '#d64545'],
+  ['vacaciones', 'Vacaciones', '#3f7ad9'],
+  ['sin_clase', 'Sin clase (puente, jornada…)', '#e08a3c'],
+  ['evento', 'Evento / reunión', '#8c6bc8'],
+];
+const COLOR = Object.fromEntries(TIPOS.map(([k, , c]) => [k, c]));
+const NOMBRE = Object.fromEntries(TIPOS.map(([k, n]) => [k, n]));
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const DIAS_SEM = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+const iso = (d) => d.toISOString().slice(0, 10);
+const aFecha = (s) => new Date(`${s}T00:00:00Z`);
+const sumar = (s, n) => { const d = aFecha(s); d.setUTCDate(d.getUTCDate() + n); return iso(d); };
+const rango = (a, b) => { const out = []; for (let d = a; d <= b; d = sumar(d, 1)) out.push(d); return out; };
+const largo = (s) => aFecha(s).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+const corto = (s) => aFecha(s).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+
+// Domingo de Pascua (algoritmo anónimo gregoriano)
+function pascua(y) {
+  const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+  const hh = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - hh - k) % 7, m = Math.floor((a + 11 * hh + 22 * l) / 451);
+  const mes = Math.floor((hh + l - 7 * m + 114) / 31), dia = ((hh + l - 7 * m + 114) % 31) + 1;
+  return `${y}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+}
+// Festivos habituales en Cataluña dentro del curso (los locales de cada municipio no se incluyen: se añaden a mano)
+export function festivosHabituales(ini, fin) {
+  const y1 = Number(ini.slice(0, 4)); const y2 = y1 + 1;
+  const p = pascua(y2);
+  const lista = [[`${y1}-09-11`, 'Diada de Catalunya'], [`${y1}-10-12`, 'Fiesta Nacional'], [`${y1}-11-01`, 'Todos los Santos'], [`${y1}-12-06`, 'Día de la Constitución'], [`${y1}-12-08`, 'Inmaculada'], [`${y1}-12-25`, 'Navidad'], [`${y1}-12-26`, 'Sant Esteve'],
+    [`${y2}-01-01`, 'Año Nuevo'], [`${y2}-01-06`, 'Reyes'], [sumar(p, -2), 'Viernes Santo'], [sumar(p, 1), 'Lunes de Pascua'], [`${y2}-05-01`, 'Fiesta del Trabajo'], [`${y2}-06-24`, 'Sant Joan'], [`${y2}-08-15`, 'Asunción']];
+  return lista.filter(([f]) => f >= ini && f <= fin);
+}
+// rango de fechas del curso: las de la tabla de cursos o, si faltan, de septiembre a agosto según el nombre («2026.27»)
+export function rangoCurso(curso) {
+  if (curso.fecha_inicio && curso.fecha_fin) return [curso.fecha_inicio, curso.fecha_fin];
+  const y = Number((curso.nombre || '').slice(0, 4)) || new Date().getFullYear();
+  return [`${y}-09-01`, `${y + 1}-08-31`];
+}
 
 export async function renderCalendario(view, ctx) {
   clear(view, cargando());
   const curso = ctx.cursoActual();
   const editor = ctx.edita('ac_calendario');
-  const [grupos, profes, aulas] = await Promise.all([api.grupos(curso.id), api.profesoras(), api.aulas()]);
-  const pPor = new Map(profes.map((p) => [p.id, p])); const aPor = new Map(aulas.map((a) => [a.id, a]));
-  const sesiones = grupos.filter((g) => g.activo).flatMap((g) => g.sesiones.map((s) => ({ g, s, prof: s.profesora_id || g.profesora_id || null, aula: s.aula_id || g.aula_id || null, ini: aMin(s.hora_inicio), fin: aMin(s.hora_fin) })));
-  const cont = h('div', { class: 'ac-cal-cont' });
-  const aviso = h('div');
+  const [ini, fin] = rangoCurso(curso);
+  const dias = await api.calendarioDias(curso.id);
+  const marca = new Map(dias.map((d) => [d.fecha, d]));
   const recargar = () => { api.invalidar(); refrescar(); };
-  const selModo = sel([['profesora', 'Por profesora'], ['aula', 'Uso de aulas']], modo, { onchange: (e) => { modo = e.target.value; pintar(); } });
-  const selColor = sel([['modalidad', 'Color: modalidad'], ['profesora', 'Color: profesora']], color, { onchange: (e) => { color = e.target.value; pintar(); } });
-  const leyenda = h('div', { class: 'ac-leyenda small muted' }, [['Babies', '#5aa469'], ['Kids', '#d9b72e'], ['Teens', '#e08a3c'], ['Adults', '#d76f9a'], ['1 to 1', '#4f7cff']].map(([n, c]) => h('span', {}, h('span', { class: 'ac-punto', style: `background:${c}` }), n)));
+  let ultimo = null; // último día pulsado (para marcar un rango con Mayús)
 
-  function solapes(lista) {
-    const out = new Set();
-    for (let i = 0; i < lista.length; i++) for (let j = i + 1; j < lista.length; j++) { const a = lista[i], b = lista[j]; if (a.s.dia === b.s.dia && a.ini < b.fin && b.ini < a.fin) { out.add(a); out.add(b); } }
-    return out;
-  }
-  // sesiones que se pisan el mismo día: se colocan una al lado de otra
-  function carriles(lista) {
-    const info = new Map(); const porDia = {};
-    lista.forEach((x) => (porDia[x.s.dia] ||= []).push(x));
-    for (const l of Object.values(porDia)) {
-      l.sort((a, b) => a.ini - b.ini || a.fin - b.fin);
-      let grupo = []; let finMax = -1;
-      const cerrar = () => { const fines = []; for (const x of grupo) { let k = fines.findIndex((f) => f <= x.ini); if (k < 0) { k = fines.length; fines.push(0); } fines[k] = x.fin; info.set(x, { lane: k }); } grupo.forEach((x) => { info.get(x).n = fines.length; }); grupo = []; finMax = -1; };
-      for (const x of l) { if (grupo.length && x.ini >= finMax) cerrar(); grupo.push(x); finMax = Math.max(finMax, x.fin); }
-      if (grupo.length) cerrar();
-    }
-    return info;
-  }
-  const colorDe = (x) => (color === 'profesora' ? pPor.get(x.prof)?.color || '#8c8a81' : colorGrupo(x.g));
+  // días con clase = lunes a viernes sin marcar
+  const conClase = (f) => { const dsem = (aFecha(f).getUTCDay() + 6) % 7; return dsem < 5 && !marca.has(f); };
+  const todos = rango(ini, fin);
+  const cuentaTipo = (t) => dias.filter((d) => d.tipo === t && d.fecha >= ini && d.fecha <= fin).length;
 
-  // mueve una sesión a otro día/hora (y, si se suelta en otra tarjeta, a otra profesora o aula)
-  async function mover(id, dia, ini, recurso) {
-    const x = sesiones.find((q) => q.s.id === id); if (!x) return;
-    const dur = x.fin - x.ini;
-    const parche = { dia, hora_inicio: aHora(ini), hora_fin: aHora(ini + dur) };
-    if (recurso !== undefined && recurso !== null) {
-      if (modo === 'profesora') parche.profesora_id = recurso === (x.g.profesora_id || null) ? null : recurso;
-      else parche.aula_id = recurso === (x.g.aula_id || null) ? null : recurso;
+  function mes(y, m) {
+    const primero = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+    const nDias = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    const offset = (aFecha(primero).getUTCDay() + 6) % 7;
+    const celdas = [];
+    for (let i = 0; i < offset; i++) celdas.push(h('span', { class: 'ac-ano-v' }));
+    let lectivos = 0;
+    for (let d = 1; d <= nDias; d++) {
+      const f = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const fuera = f < ini || f > fin; const mk = marca.get(f); const dsem = (aFecha(f).getUTCDay() + 6) % 7;
+      if (!fuera && conClase(f)) lectivos++;
+      const el = h('button', { type: 'button', class: 'ac-ano-d' + (dsem >= 5 ? ' fin' : '') + (mk ? ' marcado' : '') + (fuera ? ' fuera' : ''), 'data-fecha': f, disabled: fuera || null,
+        style: mk ? `--c:${COLOR[mk.tipo] || '#888'}` : null, title: mk ? `${largo(f)} · ${NOMBRE[mk.tipo] || mk.tipo}${mk.nombre ? ': ' + mk.nombre : ''}` : largo(f),
+        onclick: (e) => { if (e.shiftKey && ultimo && ultimo !== f) abrirDia(ultimo < f ? ultimo : f, ultimo < f ? f : ultimo); else { ultimo = f; abrirDia(f, f); } } }, String(d));
+      celdas.push(el);
     }
-    try { await api.upd('ac_sesiones', id, parche); toast('Sesión movida'); recargar(); } catch (ex) { toast('No se ha movido: ' + ex.message, 'error'); }
+    return h('div', { class: 'ac-ano-mes card' }, h('h3', {}, `${MESES[m]} ${y}`, h('span', { class: 'small muted' }, `${lectivos} días con clase`)),
+      h('div', { class: 'ac-ano-sem' }, DIAS_SEM.map((x) => h('span', {}, x))), h('div', { class: 'ac-ano-dias' }, celdas));
   }
 
-  function rejilla(titulo, lista, recurso, extra) {
-    const todas = lista.length ? lista : [];
-    if (!todas.length && !(editor && recurso)) return null;
-    const min = Math.min(14 * 60, ...todas.map((x) => Math.floor(x.ini / 30) * 30)); const max = Math.max(21 * 60, ...todas.map((x) => Math.ceil(x.fin / 30) * 30));
-    const filas = (max - min) / 30; const choque = solapes(lista); const car = carriles(lista);
-    const dias = lista.some((x) => x.s.dia === 6) ? [1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5];
-    const g = h('div', { class: 'ac-cal', style: `grid-template-columns: 42px repeat(${dias.length}, minmax(0, 1fr)); grid-template-rows: 24px repeat(${filas}, 20px)` }, h('div', { class: 'ac-cal-h' }),
-      dias.map((d, i) => h('div', { class: 'ac-cal-h', style: `grid-column:${i + 2}` }, DIAS[d])));
-    for (let r = 0; r < filas; r++) {
-      const m = min + r * 30;
-      g.append(h('div', { class: 'ac-cal-hora', style: `grid-row:${r + 2}` }, m % 60 === 0 ? aHora(m) : ''));
-      if (recurso === undefined) continue;
-      dias.forEach((d, i) => {
-        const c = h('div', { class: 'ac-cal-vacio' + (editor ? ' ed' : ''), style: `grid-column:${i + 2}; grid-row:${r + 2}`, 'data-dia': d, 'data-min': m,
-          onclick: editor ? () => abrirSesion(null, { dia: d, ini: m, recurso }) : null });
-        if (editor && recurso !== null) {
-          c.addEventListener('dragover', (e) => { e.preventDefault(); c.classList.add('drop'); });
-          c.addEventListener('dragleave', () => c.classList.remove('drop'));
-          c.addEventListener('drop', (e) => { e.preventDefault(); c.classList.remove('drop'); const id = e.dataTransfer.getData('text/plain'); if (id) mover(id, d, m, recurso); });
-        }
-        g.append(c);
-      });
-    }
-    for (const x of lista) {
-      const i = dias.indexOf(x.s.dia); if (i < 0) continue;
-      const el = h('div', { class: 'ac-cal-ses' + (choque.has(x) ? ' choque' : '') + (editor ? ' ed' : ''), draggable: editor ? 'true' : null,
-        style: `grid-column:${i + 2}; grid-row:${(x.ini - min) / 30 + 2} / ${(x.fin - min) / 30 + 2}; --c:${colorDe(x)}; justify-self:start; width:calc(${100 / car.get(x).n}% - 2px); margin-left:${(100 / car.get(x).n) * car.get(x).lane}%`,
-        title: `${x.g.nombre} ${hhmm(x.s.hora_inicio)}-${hhmm(x.s.hora_fin)} · ${pPor.get(x.prof)?.nombre || 'sin profesora'} · ${aPor.get(x.aula)?.nombre || 'sin aula'}`,
-        onclick: (e) => { e.stopPropagation(); abrirSesion(x, { recurso }); } },
-      h('strong', {}, x.g.nombre), h('span', {}, modo === 'profesora' ? (aPor.get(x.aula)?.nombre || '') : (pPor.get(x.prof)?.nombre || '')));
-      el.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', x.s.id); e.dataTransfer.effectAllowed = 'move'; });
-      g.append(el);
-    }
-    const min_ = lista.reduce((a, x) => a + (x.fin - x.ini), 0);
-    return h('div', { class: 'card ac-cal-card' }, h('h3', { class: 'sub-titulo' }, titulo, h('span', { class: 'ac-horas small' }, extra ? extra(min_) : horasTxt(min_)),
-      choque.size ? h('span', { class: 'pill warn', style: 'margin-left:8px' }, `${Math.max(1, choque.size / 2 | 0)} solape(s)`) : null), g);
-  }
+  const meses = [];
+  for (let y = Number(ini.slice(0, 4)), m = Number(ini.slice(5, 7)) - 1; `${y}-${String(m + 1).padStart(2, '0')}` <= fin.slice(0, 7); m++) { if (m > 11) { m = 0; y++; } meses.push(mes(y, m)); if (meses.length > 14) break; }
 
-  function pintar() {
-    const tarjetas = []; let hayChoque = false;
-    if (modo === 'profesora') {
-      for (const p of profes.filter((x) => x.activa)) {
-        const l = sesiones.filter((x) => x.prof === p.id);
-        const r = rejilla(p.nombre, l, p.id, (m) => (p.horas_semana ? `${horasTxt(m)} / ${p.horas_semana.toLocaleString?.('es-ES') ?? p.horas_semana} h` : horasTxt(m)));
-        if (r) tarjetas.push(r); if (solapes(l).size) hayChoque = true;
-      }
-      const sin = sesiones.filter((x) => !x.prof); const r = rejilla('Sin profesora asignada', sin, null); if (r) tarjetas.push(r);
-    } else {
-      for (const a of aulas.filter((x) => x.activa)) { const l = sesiones.filter((x) => x.aula === a.id); const r = rejilla(a.nombre, l, a.id); if (r) tarjetas.push(r); if (solapes(l).size) hayChoque = true; }
-      const sin = sesiones.filter((x) => !x.aula); const r = rejilla('Sin aula asignada', sin, null); if (r) tarjetas.push(r);
-    }
-    clear(aviso, hayChoque ? h('div', { class: 'banner warn' }, `Hay sesiones solapadas (marcadas en rojo): ${modo === 'profesora' ? 'una profesora con dos clases a la vez' : 'dos grupos en la misma aula a la vez'}.`) : null);
-    clear(cont, tarjetas.length ? tarjetas : h('div', { class: 'card empty' }, 'Todavía no hay profesoras, aulas ni sesiones. Créalas en «Grupos y horarios».'));
-  }
+  // lista de días marcados (los consecutivos del mismo tipo y nombre se juntan)
+  const marcados = dias.filter((d) => d.fecha >= ini && d.fecha <= fin).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const tramos = [];
+  for (const d of marcados) { const t = tramos[tramos.length - 1]; if (t && t.tipo === d.tipo && (t.nombre || '') === (d.nombre || '') && sumar(t.hasta, 1) === d.fecha) t.hasta = d.fecha; else tramos.push({ desde: d.fecha, hasta: d.fecha, tipo: d.tipo, nombre: d.nombre }); }
 
-  // ---- ficha de una sesión ----
-  function abrirSesion(x, { dia, ini, recurso } = {}) {
-    if (!editor && !x) return;
-    if (!grupos.length) { toast('Primero crea algún grupo en «Grupos y horarios».', 'error'); return; }
-    const d = drawer({ titulo: x ? `Sesión · ${x.g.nombre}` : 'Nueva sesión', ancho: 500 });
-    const prof0 = x ? x.prof : modo === 'profesora' ? recurso : null; const aula0 = x ? x.aula : modo === 'aula' ? recurso : null;
-    const F = {
-      grupo: sel(grupos.filter((g) => g.activo || g.id === x?.g.id).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { numeric: true })).map((g) => [g.id, g.nombre]), x?.g.id, { vacio: x ? undefined : 'Elige grupo…', disabled: !!x }),
-      dia: sel(DIAS.slice(1, 7).map((n, k) => [String(k + 1), n]), String(x ? x.s.dia : dia)), ini: h('input', { type: 'time', value: x ? hhmm(x.s.hora_inicio) : aHora(ini) }), fin: h('input', { type: 'time', value: x ? hhmm(x.s.hora_fin) : aHora((ini || 0) + 60) }),
-      prof: sel(profes.filter((p) => p.activa || p.id === prof0).map((p) => [p.id, p.nombre]), prof0, { vacio: 'Sin asignar' }), aula: sel(aulas.filter((a) => a.activa || a.id === aula0).map((a) => [a.id, a.nombre]), aula0, { vacio: 'Sin asignar' }),
-    };
-    d.cuerpo.append(h('div', { class: 'form-section' }, campo('Grupo', F.grupo, { full: true, req: true }), campo('Día', F.dia), campo('Inicio', F.ini), campo('Fin', F.fin), campo('Profesora', F.prof), campo('Aula', F.aula)),
-      h('div', { class: 'small muted' }, 'Si eliges la profesora o el aula del grupo, la sesión las hereda; si eliges otra, solo esta sesión cambia. También puedes arrastrar la sesión a otra hora, día o tarjeta.'));
+  function abrirDia(desde, hasta) {
+    if (!editor) return;
+    const d = drawer({ titulo: desde === hasta ? largo(desde) : `${corto(desde)} → ${corto(hasta)}`, ancho: 460 });
+    const m0 = marca.get(desde);
+    const F = { tipo: sel([['', 'Día normal (con clase)'], ...TIPOS.map(([k, n]) => [k, n])], m0?.tipo || '', {}), nombre: txt(m0?.nombre || '', { placeholder: 'Navidad, puente, Open day…' }), desde: fecha(desde), hasta: fecha(hasta) };
+    d.cuerpo.append(h('div', { class: 'form-section' }, campo('Qué es', F.tipo, { full: true }), campo('Nombre', F.nombre, { full: true }), campo('Desde', F.desde), campo('Hasta', F.hasta)),
+      h('div', { class: 'small muted' }, 'Elige «Día normal» para quitar la marca. Para varios días seguidos cambia «Hasta» o usa Mayús + clic en el calendario.'));
     const guardar = guardarBoton('Guardar', async () => {
-      const g = grupos.find((q) => q.id === (x ? x.g.id : F.grupo.value));
-      if (!g) { toast('Elige un grupo.', 'error'); return; }
-      if (!F.ini.value || !F.fin.value || F.fin.value <= F.ini.value) { toast('El fin debe ser posterior al inicio.', 'error'); return; }
-      const fila = { dia: Number(F.dia.value), hora_inicio: F.ini.value, hora_fin: F.fin.value, profesora_id: (F.prof.value || null) === (g.profesora_id || null) ? null : F.prof.value || null, aula_id: (F.aula.value || null) === (g.aula_id || null) ? null : F.aula.value || null };
-      try { x ? await api.upd('ac_sesiones', x.s.id, fila) : await api.ins('ac_sesiones', { grupo_id: g.id, ...fila }); toast('Sesión guardada'); d.cerrar(); recargar(); } catch (ex) { toast('No se ha guardado: ' + ex.message, 'error'); }
+      const a = F.desde.value; const b = F.hasta.value || a;
+      if (!a || b < a) { toast('Revisa las fechas: «Hasta» no puede ser anterior a «Desde».', 'error'); return; }
+      const fs = rango(a, b); if (fs.length > 400) { toast('Demasiados días de golpe.', 'error'); return; }
+      try {
+        if (!F.tipo.value) { const ids = fs.map((f) => marca.get(f)?.id).filter(Boolean); if (ids.length) await api.delMany('ac_calendario_dias', ids); }
+        else await api.insMany('ac_calendario_dias', fs.map((f) => ({ curso_id: curso.id, fecha: f, tipo: F.tipo.value, nombre: F.nombre.value.trim() || null })), { onConflict: 'curso_id,fecha' });
+        toast('Calendario guardado'); d.cerrar(); recargar();
+      } catch (ex) { toast('No se ha guardado: ' + ex.message, 'error'); }
     });
-    guardar.disabled = !editor;
-    const borrar = x && editor ? h('button', { class: 'btn danger', type: 'button', onclick: async () => { if (await confirmar({ titulo: 'Quitar sesión', texto: `${x.g.nombre} · ${DIAS[x.s.dia]} ${hhmm(x.s.hora_inicio)}`, ok: 'Quitar', peligro: true })) { try { await api.del('ac_sesiones', x.s.id); d.cerrar(); recargar(); } catch (ex) { toast(ex.message, 'error'); } } } }, 'Quitar sesión') : h('span');
-    d.pie.append(borrar, guardar);
+    d.pie.append(h('span'), guardar);
   }
 
-  clear(view, cabecera(`Calendario · ${curso.nombre}`, editor ? 'Clic en un hueco para crear una sesión, clic en una sesión para editarla, arrastra para moverla' : 'Horario semanal de las profesoras y uso de las aulas', selModo, selColor), leyenda, aviso, cont);
-  pintar();
+  async function anadirHabituales() {
+    const nuevos = festivosHabituales(ini, fin).filter(([f]) => !marca.has(f));
+    if (!nuevos.length) { toast('Los festivos habituales ya están marcados.'); return; }
+    if (!await confirmar({ titulo: 'Añadir festivos habituales', texto: `Se marcarán ${nuevos.length} festivos de Cataluña (${nuevos.map(([f]) => corto(f)).join(', ')}). No se tocan los días que ya tienes marcados. Los festivos locales de tu municipio añádelos a mano. Revisa las fechas del curso.`, ok: 'Añadir' })) return;
+    try { await api.insMany('ac_calendario_dias', nuevos.map(([f, n]) => ({ curso_id: curso.id, fecha: f, tipo: 'festivo', nombre: n })), { onConflict: 'curso_id,fecha', ignorar: true }); toast('Festivos añadidos'); recargar(); } catch (ex) { toast(ex.message, 'error'); }
+  }
+
+  const leyenda = h('div', { class: 'ac-leyenda small' }, TIPOS.map(([k, n, c]) => h('span', {}, h('span', { class: 'ac-punto', style: `background:${c}` }), `${n} (${cuentaTipo(k)})`)), h('span', { class: 'muted' }, `Días con clase (L–V): ${todos.filter(conClase).length}`));
+  const lista = h('div', { class: 'card ac-ano-lista' }, h('h3', { class: 'sub-titulo' }, 'Días marcados'),
+    tramos.length ? tramos.map((t) => h('div', { class: 'ac-fila ac-ano-tramo', onclick: editor ? () => abrirDia(t.desde, t.hasta) : null },
+      h('span', { class: 'ac-punto', style: `background:${COLOR[t.tipo] || '#888'}` }), h('strong', {}, t.desde === t.hasta ? corto(t.desde) : `${corto(t.desde)} → ${corto(t.hasta)}`), h('span', {}, t.nombre || NOMBRE[t.tipo] || t.tipo), h('span', { class: 'small muted' }, NOMBRE[t.tipo] || ''))) : h('div', { class: 'muted small' }, 'Todavía no hay días marcados. Pulsa un día del calendario para marcarlo.'));
+  clear(view, cabecera(`Calendario · ${curso.nombre}`, `${corto(ini)} ${ini.slice(0, 4)} – ${corto(fin)} ${fin.slice(0, 4)}`, editor ? h('button', { class: 'btn small', type: 'button', onclick: anadirHabituales }, 'Añadir festivos habituales') : null),
+    editor ? h('div', { class: 'small muted' }, 'Clic en un día para marcarlo (festivo, vacaciones, sin clase, evento); Mayús + clic en otro día marca el rango.') : null, leyenda, h('div', { class: 'ac-ano' }, meses), lista);
 }

@@ -6,6 +6,7 @@ import { renderRemesas } from './remesas.js';
 import { renderSeguimiento } from './seguimiento.js';
 import { renderTutorias } from './tutorias.js';
 import { renderBajas } from './bajas.js';
+import { renderGrupos } from './grupos.js';
 import { renderHorarios } from './horarios.js';
 import { renderCalendario } from './calendario.js';
 import { renderTareas } from './tareas.js';
@@ -42,7 +43,8 @@ export const RUTAS_ACADEMIA = {
   ac_seguimiento: R('Seguimiento', renderSeguimiento, 'ac_seguimiento'),
   ac_tutorias: R('Tutorías', renderTutorias, 'ac_tutorias'),
   ac_bajas: R('Bajas', renderBajas, 'ac_bajas'),
-  ac_grupos: R('Grupos y horarios', renderHorarios, 'ac_grupos'),
+  ac_grupos: R('Grupos', renderGrupos, 'ac_grupos'),
+  ac_horarios: R('Horarios', renderHorarios, 'ac_calendario'),
   ac_calendario: R('Calendario', renderCalendario, 'ac_calendario'),
   ac_horarios_importar: R('Importar horarios', renderImportarHorarios, 'ac_grupos', true),
   ac_tareas: R('Tareas', renderTareas, 'ac_tareas'),
@@ -56,7 +58,7 @@ export const RUTAS_ACADEMIA = {
 // pestañas visibles (ac_importar se abre desde el botón de Alumnos)
 export const TABS_ACADEMIA = [
   ['ac_alumnos', 'Alumnos'], ['ac_seguimiento', 'Seguimiento'], ['ac_tutorias', 'Tutorías'],
-  ['ac_bajas', 'Bajas'], ['ac_grupos', 'Grupos y horarios'], ['ac_calendario', 'Calendario'], ['ac_recogidas', 'Recogidas'], ['ac_tareas', 'Tareas'], ['ac_biblioteca', 'Biblioteca'], ['ac_documentos', 'Protocolos'],
+  ['ac_bajas', 'Bajas'], ['ac_grupos', 'Grupos'], ['ac_horarios', 'Horarios'], ['ac_calendario', 'Calendario'], ['ac_recogidas', 'Recogidas'], ['ac_tareas', 'Tareas'], ['ac_biblioteca', 'Biblioteca'], ['ac_documentos', 'Protocolos'],
 ];
 // pestañas de Academia que se muestran dentro de Facturación
 export const TABS_COBROS = [['ac_resumen', 'Resumen'], ['ac_pagos', 'Pagos'], ['ac_remesas', 'Remesas']];

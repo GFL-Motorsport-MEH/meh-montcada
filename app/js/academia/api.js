@@ -44,6 +44,7 @@ export const gruposDeAlumnos = (curso) => memo('ag' + curso, async () => {
   for (const g of gs) for (const x of g.miembros) if (!x.fecha_baja) (m.get(x.alumno_id) || m.set(x.alumno_id, []).get(x.alumno_id)).push(g);
   return m;
 });
+export const calendarioDias = (curso) => memo('cal' + curso, () => all('ac_calendario_dias', '*', (q) => q.eq('curso_id', curso)));
 export const inscripciones = (curso) => memo('ins' + curso, () => all('ac_inscripciones', '*', (q) => q.eq('curso_id', curso)));
 export const cuotas = (curso) => memo('cuo' + curso, () => all('ac_cuotas', '*', (q) => q.eq('curso_id', curso)));
 export const remesas = (curso) => memo('rem' + curso, () => all('ac_remesas', '*', (q) => q.eq('curso_id', curso)).then((l) => l.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))));
@@ -79,6 +80,7 @@ export async function insMany(tabla, filas, { lote = 200, onConflict, ignorar = 
 }
 export async function upd(tabla, id, parche) { const r = chk(await supabase.from(tabla).update(parche).eq('id', id).select().single()); invalidar(); return r; }
 export async function del(tabla, id) { chk(await supabase.from(tabla).delete().eq('id', id)); invalidar(); }
+export async function delMany(tabla, ids, lote = 100) { for (let i = 0; i < ids.length; i += lote) chk(await supabase.from(tabla).delete().in('id', ids.slice(i, i + lote))); invalidar(); }
 export async function delWhere(tabla, col, valor) { chk(await supabase.from(tabla).delete().eq(col, valor)); invalidar(); }
 export async function guardarPrivados(responsable_id, datos) {
   chk(await supabase.from('ac_responsables_priv').upsert({ responsable_id, ...datos }, { onConflict: 'responsable_id' }));

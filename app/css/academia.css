@@ -231,3 +231,56 @@ table.ac-parrilla td { vertical-align: top; }
 .ac-motivos { display: flex; flex-wrap: wrap; gap: 8px; }
 table.ac-tabla-bajas td:first-child { width: 48px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .ac-baja-ficha { border-left: 4px solid var(--c); padding-left: 10px; }
+/* ---- horarios: vista por franjas (como el Excel) ---- */
+.ac-barra { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin: 4px 0 10px; }
+.ac-barra select, .ac-barra input[type=search] { width: auto; min-width: 170px; }
+.ac-fr { display: flex; flex-direction: column; gap: 14px; }
+.ac-fr-dia-t { margin: 0 0 6px; font-size: 15px; padding-bottom: 3px; border-bottom: 2px solid var(--border-strong); }
+.ac-fr-bloque { display: grid; grid-template-columns: 112px 1fr; gap: 10px; padding: 8px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.ac-fr-bloque.drop { background: color-mix(in oklab, var(--good) 14%, var(--surface)); border-color: var(--good); }
+.ac-fr-hora { display: flex; flex-direction: column; gap: 2px; font-size: 14px; position: sticky; top: 8px; align-self: start; }
+.ac-fr-grupos { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 8px; align-items: start; }
+.ac-fr-card { border: 1px solid var(--border); border-top: 4px solid var(--c); border-radius: 6px; background: color-mix(in oklab, var(--c) 6%, var(--surface)); padding: 6px 8px; font-size: 12.5px; cursor: grab; }
+.ac-fr-card.arrastrando { opacity: .45; }
+.ac-fr-cab { display: flex; align-items: center; gap: 6px; }
+.ac-fr-nombre { flex: 1; font-size: 13.5px; cursor: pointer; }
+.ac-fr-nombre:hover { text-decoration: underline; }
+.ac-fr-ed { padding: 0 6px; }
+.ac-fr-meta { display: flex; flex-wrap: wrap; gap: 2px 10px; color: var(--text-secondary); margin: 2px 0 4px; padding-bottom: 4px; border-bottom: 1px dashed var(--border); }
+.ac-fr-alu { margin: 0; padding-left: 20px; }
+.ac-fr-alu li { line-height: 1.35; }
+.ac-fr-alu li.hit { background: color-mix(in oklab, var(--warning) 30%, transparent); border-radius: 3px; font-weight: 600; }
+.ac-fr-alu li.vacio { list-style: none; margin-left: -20px; }
+@media (max-width: 700px) { .ac-fr-bloque { grid-template-columns: 1fr; } .ac-fr-hora { position: static; flex-direction: row; gap: 8px; } }
+/* parrilla semanal con arrastrar */
+.ac-chip.ed { cursor: grab; }
+.ac-chip.arrastrando { opacity: .4; }
+.ac-chip small { color: var(--text-muted); }
+td.ac-pcelda { min-height: 28px; }
+td.ac-pcelda.drop, .ac-cal-ses.arrastrando { background: color-mix(in oklab, var(--good) 20%, var(--surface)); }
+.ac-cal-ses.arrastrando { opacity: .5; }
+/* ventana flotante con la ficha del grupo */
+.ac-pop { position: fixed; z-index: 1200; max-width: 380px; padding: 8px 10px; background: var(--surface); color: var(--text-primary); border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, .22); font-size: 12.5px; pointer-events: none; }
+.ac-pop-cab { display: flex; align-items: baseline; gap: 8px; border-left: 4px solid var(--c); padding-left: 6px; margin-bottom: 4px; font-size: 14px; }
+.ac-pop-meta { margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px dashed var(--border); }
+.ac-pop-al ol { margin: 2px 0 0; padding-left: 20px; }
+.ac-pop-al ol.dos { columns: 2; column-gap: 18px; }
+.ac-pop-al li { break-inside: avoid; line-height: 1.35; }
+/* grupos: alumnos en la lista */
+.ac-alu-lista { display: flex; flex-wrap: wrap; gap: 0 10px; font-size: 11.5px; color: var(--text-secondary); max-width: 520px; }
+.ac-alu-lista span { white-space: nowrap; }
+/* calendario anual */
+.ac-ano { display: grid; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); gap: 10px; margin: 8px 0 12px; }
+.ac-ano-mes { padding: 8px 10px; }
+.ac-ano-mes h3 span { text-transform: none; font-weight: 400; white-space: nowrap; }
+.ac-ano-mes h3 { margin: 0 0 4px; font-size: 14px; display: flex; justify-content: space-between; align-items: baseline; text-transform: capitalize; }
+.ac-ano-sem, .ac-ano-dias { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+.ac-ano-sem { font-size: 10.5px; color: var(--text-muted); font-weight: 600; margin-bottom: 2px; }
+.ac-ano-d { border: 0; background: transparent; font: inherit; font-size: 12px; padding: 4px 0; border-radius: 4px; cursor: pointer; color: var(--text-primary); }
+.ac-ano-d:hover:not(:disabled) { background: color-mix(in oklab, var(--accent, #4f7cff) 16%, var(--surface)); }
+.ac-ano-d.fin { color: var(--text-muted); background: color-mix(in oklab, var(--text-muted) 9%, transparent); }
+.ac-ano-d.marcado { background: var(--c); color: #fff; font-weight: 700; }
+.ac-ano-d.fuera { visibility: hidden; }
+.ac-ano-lista .ac-fila { gap: 10px; padding: 3px 0; border-bottom: 1px solid var(--border); }
+.ac-ano-tramo { cursor: pointer; }
+.ac-ano-tramo:hover { background: var(--surface-2); }
