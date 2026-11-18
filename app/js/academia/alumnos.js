@@ -3,6 +3,8 @@ import { h, clear, cargando, toast, confirmar, fmtFecha, fmtEUR2, hoyISO, normal
 import * as api from './api.js';
 import { campo, txt, area, fecha, numero, sel, drawer, cabecera, tabla, pill, edad, nombreAlumno, hhmm, DIAS_CORTO, guardarBoton, buscadorAlumno, refrescar } from './kit.js';
 
+import { pillMotivo, permanencia, colorMotivo as colorMotivoFicha } from './bajas.js';
+
 const ESTADOS = [['inscrito', 'Inscrito'], ['prematricula', 'Pre-matrícula'], ['baja', 'Baja'], ['antiguo', 'Antiguo']];
 const pillEstado = (e) => pill((ESTADOS.find((x) => x[0] === e) || [0, e])[1], e === 'inscrito' ? 'ok' : e === 'prematricula' ? 'warn' : 'off');
 export const resumenSesiones = (g) => (g?.sesiones || []).slice().sort((a, b) => a.dia - b.dia).map((s) => `${DIAS_CORTO[s.dia]} ${hhmm(s.hora_inicio)}`).join(' · ');
@@ -130,9 +132,9 @@ export async function abrirFicha(alumno, ctx, onCambio) {
   d.cuerpo.append(...[secDatos, secResp, secInsc].filter(Boolean));
   if (!nuevo) {
     const sec = (t, ...c) => h('div', { class: 'form-section ac-sec-completa' }, h('h3', {}, t), h('div', { class: 'full' }, ...c));
-    const cont = { grupos: h('div'), cuotas: h('div'), notas: h('div'), tut: h('div') };
-    d.cuerpo.append(...[sec('Grupos del curso', cont.grupos), verPagos ? sec('Cuotas del curso', cont.cuotas) : null, sec('Anotaciones de seguimiento', cont.notas), sec('Tutorías', cont.tut)].filter(Boolean));
-    pintarGrupos(cont.grupos); if (verPagos) pintarCuotas(cont.cuotas); pintarNotas(cont.notas); pintarTutorias(cont.tut);
+    const cont = { grupos: h('div'), cuotas: h('div'), notas: h('div'), tut: h('div'), baja: h('div') };
+    d.cuerpo.append(...[sec('Baja', cont.baja), sec('Grupos del curso', cont.grupos), verPagos ? sec('Cuotas del curso', cont.cuotas) : null, sec('Anotaciones de seguimiento', cont.notas), sec('Tutorías', cont.tut)].filter(Boolean));
+    pintarBajas(cont.baja); pintarGrupos(cont.grupos); if (verPagos) pintarCuotas(cont.cuotas); pintarNotas(cont.notas); pintarTutorias(cont.tut);
   }
 
   function pintarGrupos(el) {
@@ -148,6 +150,13 @@ export async function abrirFicha(alumno, ctx, onCambio) {
         const m = g.miembros.find((x) => x.alumno_id === alumno.id && !x.fecha_baja);
         try { await api.upd('ac_alumno_grupo', m.id, { fecha_baja: hoyISO() }); toast('Quitado del grupo'); cambio(); d.cerrar(); } catch (ex) { toast(ex.message, 'error'); }
       } }, 'Quitar') : null)) : h('div', { class: 'muted small' }, 'Sin grupo este curso.'), editaAl ? s : null);
+  }
+
+  async function pintarBajas(el) {
+    const bs = (await api.bajas()).filter((b) => b.alumno_id === alumno.id).sort((x, y) => (y.fecha_baja || '').localeCompare(x.fecha_baja || ''));
+    clear(el, bs.length ? bs.map((b) => h('div', { class: 'ac-nota ac-baja-ficha', style: `--c:${colorMotivoFicha(b.motivo)}` },
+      h('div', { class: 'ac-fila' }, pillMotivo(b.motivo), h('strong', {}, `Baja el ${fmtFecha(b.fecha_baja)}`), h('span', { class: 'small muted' }, `Alta ${fmtFecha(b.fecha_alta)} · ${permanencia(b.fecha_alta, b.fecha_baja)}`)),
+      b.comentarios ? h('div', { class: 'small' }, b.comentarios) : null)) : h('div', { class: 'muted small' }, 'Sin bajas registradas.'));
   }
 
   async function pintarCuotas(el) {
