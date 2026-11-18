@@ -277,6 +277,7 @@ ctx.repintarCabecera = () => { pintarShell(); pintarVista(); };
 
 function pintarTabs(actual) {
   const modulo = RUTAS[actual].modulo;
+  resumenEl.hidden = modulo !== 'facturacion'; // los chips de gastos solo en el módulo Facturación
   try { localStorage.setItem(LS_RUTA + modulo, actual); } catch { /* */ }
   const mods = modulosVisibles();
   modulosEl.hidden = mods.length < 2;
