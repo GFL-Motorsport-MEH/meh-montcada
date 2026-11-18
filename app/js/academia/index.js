@@ -64,9 +64,5 @@ export const RUTAS_ACADEMIA = {
 // pestañas visibles (ac_importar se abre desde el botón de Alumnos)
 export const TABS_ACADEMIA = [
   ['ac_alumnos', 'Alumnos'], ['ac_seguimiento', 'Seguimiento'], ['ac_tutorias', 'Tutorías'],
-<<<<<<< HEAD
-  ['ac_bajas', 'Bajas'], ['ac_grupos', 'Grupos'], ['ac_horarios', 'Horarios'], ['ac_calendario', 'Calendario'], ['ac_recogidas', 'Recogidas'], ['ac_tareas', 'Tareas'], ['ac_biblioteca', 'Biblioteca y Mascotas'], ['ac_documentos', 'Protocolos'],
-=======
-  ['ac_bajas', 'Bajas'], ['ac_grupos', 'Grupos'], ['ac_horarios', 'Horarios'], ['ac_calendario', 'Calendario'], ['ac_recogidas', 'Recogidas'], ['ac_tareas', 'Tareas'], ['ac_biblioteca', 'Biblioteca'], ['ac_documentos', 'Protocolos'], ['ac_programaciones', 'Programaciones'], ['ac_portal', 'Mi portal'],
->>>>>>> a7ef9aa (Calendario con tipos del PDF y pestaña Google Calendar, colores por nivel, Programaciones, cuotas y descuentos, cambio de curso, avisos de nivel/horario y portal del trabajador)
+  ['ac_bajas', 'Bajas'], ['ac_grupos', 'Grupos'], ['ac_horarios', 'Horarios'], ['ac_calendario', 'Calendario'], ['ac_recogidas', 'Recogidas'], ['ac_tareas', 'Tareas'], ['ac_biblioteca', 'Biblioteca y Mascotas'], ['ac_documentos', 'Protocolos'], ['ac_programaciones', 'Programaciones'], ['ac_portal', 'Mi portal'],
 ];
