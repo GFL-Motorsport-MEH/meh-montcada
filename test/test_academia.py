@@ -113,7 +113,7 @@ try:
 
         print("7. pagos: generar mensualidad y cobrar")
         ir(page, "ac_pagos")
-        page.locator(".section-actions select").select_option("noviembre")
+        page.locator(".section-actions select").first.select_option("noviembre")
         page.get_by_role("button", name="Generar mensualidad").click(); page.wait_for_timeout(500)
         check(len([c for c in db(page, "ac_cuotas") if c["mes"] == "noviembre"]) == 1, "mensualidad de noviembre creada (65 €)")
         page.get_by_role("button", name="Generar welcome pack").click(); page.wait_for_timeout(500)
@@ -126,7 +126,7 @@ try:
 
         print("8. remesa")
         ir(page, "ac_remesas")
-        page.locator(".section-actions select").select_option("noviembre")
+        page.locator(".section-actions select").first.select_option("noviembre")
         page.get_by_role("button", name="Crear remesa del mes").click()
         # la cuota de noviembre ya está pagada → no hay pendientes que domiciliar
         page.wait_for_timeout(400)
@@ -134,10 +134,15 @@ try:
         ir(page, "ac_pagos")
         page.locator("button.ac-pago.pagado").first.click(); page.wait_for_timeout(400)   # vuelve a pendiente
         ir(page, "ac_remesas")
-        page.locator(".section-actions select").select_option("noviembre")
+        page.locator(".section-actions select").first.select_option("noviembre")
         page.get_by_role("button", name="Crear remesa del mes").click(); page.wait_for_timeout(300)
         page.locator(".dialog-actions .btn.primary").click(); page.wait_for_timeout(600)
         check(len(db(page, "ac_remesas")) == 1 and [c for c in db(page, "ac_cuotas") if c["mes"] == "noviembre"][0]["remesa_id"], "remesa creada con la cuota dentro")
+        check(db(page, "ac_remesas")[0].get("banco") == "BBVA", "la remesa se crea con banco (BBVA por defecto)")
+        expect(page.locator("table.ac-tabla tbody tr").first).to_contain_text("BBVA")
+        page.locator(".ac-busca-cargo").fill("Foz"); page.wait_for_timeout(300)
+        expect(page.locator(".card table").first).to_contain_text("Remesa Noviembre")
+        page.locator(".ac-busca-cargo").fill(""); page.wait_for_timeout(200)
         page.locator("table.ac-tabla tbody tr").first.click()
         expect(page.locator(".drawer")).to_contain_text("Foz, Anna")
         expect(page.locator(".drawer")).to_contain_text("ES00")

@@ -284,3 +284,6 @@ td.ac-pcelda.drop, .ac-cal-ses.arrastrando { background: color-mix(in oklab, var
 .ac-ano-lista .ac-fila { gap: 10px; padding: 3px 0; border-bottom: 1px solid var(--border); }
 .ac-ano-tramo { cursor: pointer; }
 .ac-ano-tramo:hover { background: var(--surface-2); }
+
+.ac-pago.cambio { outline: 2px solid var(--warning); outline-offset: -2px; }
+.ac-busca-cargo { width: 100%; max-width: 420px; }

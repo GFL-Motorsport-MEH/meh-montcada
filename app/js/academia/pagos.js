@@ -8,7 +8,9 @@ const mesActual = () => ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 
 export async function renderPagos(view, ctx) {
   clear(view, cargando());
   const curso = ctx.cursoActual();
-  const [alumnos, insc, cuotas] = await Promise.all([api.alumnos(), api.inscripciones(curso.id), api.cuotas(curso.id)]);
+  const [alumnos, insc, cuotas, remesas] = await Promise.all([api.alumnos(), api.inscripciones(curso.id), api.cuotas(curso.id), api.remesas(curso.id)]);
+  const remPor = new Map(remesas.map((r) => [r.id, r]));
+  const dondeCargo = (c) => { const r = remPor.get(c.remesa_id); return r ? ` · en ${r.nombre || capitalizar(r.mes)}${r.banco ? ' (' + r.banco + ')' : ''}` : (c.concepto === 'mensualidad' ? ' · sin remesa' : ''); };
   const inscPor = new Map(insc.map((i) => [i.alumno_id, i]));
   const cuotaPor = new Map(cuotas.map((c) => [`${c.alumno_id}|${c.concepto}|${c.mes}`, c]));
   const editor = ctx.edita('ac_pagos');
@@ -33,11 +35,11 @@ export async function renderPagos(view, ctx) {
   const celda = (a, concepto, mes) => {
     const c = cuotaPor.get(`${a.id}|${concepto}|${mes}`);
     if (!c) return h('td', { class: 'ac-cel vacia' }, '·');
-    const b = h('button', { type: 'button', class: `ac-pago ${c.estado}`, title: `${fmtEUR2(c.importe)} · ${c.estado}${editor ? ' · clic: pagado/pendiente · Alt+clic: devuelto · Mayús+clic: exento' : ''}`, disabled: !editor }, c.estado === 'pagado' ? '✓' : c.estado === 'devuelto' ? '↩' : c.estado === 'exento' ? '–' : fmtEUR(c.importe).replace(/\s?€/, ''));
+    const b = h('button', { type: 'button', class: `ac-pago ${c.estado}${c.nota_cambio ? ' cambio' : ''}`, title: `${fmtEUR2(c.importe)} · ${c.estado}${dondeCargo(c)}${c.nota_cambio ? '\n⚠ ' + c.nota_cambio : ''}${editor ? ' · clic: pagado/pendiente · Alt+clic: devuelto · Mayús+clic: exento' : ''}`, disabled: !editor }, c.estado === 'pagado' ? '✓' : c.estado === 'devuelto' ? '↩' : c.estado === 'exento' ? '–' : fmtEUR(c.importe).replace(/\s?€/, ''));
     b.addEventListener('click', async (e) => {
       const nuevo = e.altKey ? 'devuelto' : e.shiftKey ? 'exento' : c.estado === 'pagado' ? 'pendiente' : 'pagado';
       b.disabled = true;
-      try { Object.assign(c, await api.upd('ac_cuotas', c.id, { estado: nuevo, fecha_pago: nuevo === 'pagado' ? hoyISO() : null })); b.className = `ac-pago ${c.estado}`; b.textContent = c.estado === 'pagado' ? '✓' : c.estado === 'devuelto' ? '↩' : c.estado === 'exento' ? '–' : fmtEUR(c.importe).replace(/\s?€/, ''); pintarPie(); } catch (ex) { toast(ex.message, 'error'); } finally { b.disabled = !editor; }
+      try { Object.assign(c, await api.upd('ac_cuotas', c.id, { estado: nuevo, fecha_pago: nuevo === 'pagado' ? hoyISO() : null })); b.className = `ac-pago ${c.estado}${c.nota_cambio ? ' cambio' : ''}`; b.textContent = c.estado === 'pagado' ? '✓' : c.estado === 'devuelto' ? '↩' : c.estado === 'exento' ? '–' : fmtEUR(c.importe).replace(/\s?€/, ''); pintarPie(); } catch (ex) { toast(ex.message, 'error'); } finally { b.disabled = !editor; }
     });
     return h('td', { class: 'ac-cel' }, b);
   };
@@ -51,6 +53,11 @@ export async function renderPagos(view, ctx) {
         if (cur) Object.assign(cur, await api.upd('ac_inscripciones', cur.id, { [campo]: v }));
         else inscPor.set(a.id, await api.ins('ac_inscripciones', { alumno_id: a.id, curso_id: curso.id, [campo]: v }));
         inp.classList.add('saved'); setTimeout(() => inp.classList.remove('saved'), 800);
+        if (campo === 'cuota_mensual') { // el servidor deja una nota en la cuota del mes en curso si aún no está pagada
+          const nuevas = await api.cuotas(curso.id); let avisos = 0;
+          for (const n of nuevas) { const c = cuotaPor.get(`${n.alumno_id}|${n.concepto}|${n.mes}`); if (c && n.nota_cambio !== c.nota_cambio) { Object.assign(c, n); avisos++; } }
+          if (avisos) { toast('Cuota cambiada: se ha dejado una nota en el cargo de este mes para cuadrar importes.'); pintar(); }
+        }
       } catch (ex) { toast(ex.message, 'error'); }
     });
     return h('td', { class: 'num' }, inp);
