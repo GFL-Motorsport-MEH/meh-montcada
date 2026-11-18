@@ -691,3 +691,16 @@ td.con-detalle:hover { outline: 1px dashed var(--border-strong, #9aa3af); outlin
 .popover-detalle td { padding: 2px 6px 2px 0; vertical-align: top; border-top: 1px solid var(--border); }
 .popover-detalle td.num { text-align: right; white-space: nowrap; font-weight: 600; }
 .popover-detalle td.mono { white-space: nowrap; }
+
+/* Nº de factura vacío en Gastos: amarillo; SIN FACTURA en los marcados */
+:root { --nfac-vacio-bg: #ffe14d; }
+[data-theme="dark"] { --nfac-vacio-bg: #7a6410; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --nfac-vacio-bg: #7a6410; } }
+table.data tbody tr > td.nfac-vacio, table.tabla-gastos tbody tr:hover > td.nfac-vacio { background: var(--nfac-vacio-bg); }
+td.nfac-vacio input::placeholder { color: var(--text-primary); opacity: .75; font-size: 10.5px; font-weight: 600; letter-spacing: .02em; }
+/* selector de proveedor del escáner */
+.combo { position: relative; }
+.combo-lista { position: absolute; z-index: 30; left: 0; right: 0; top: 100%; margin: 2px 0 0; padding: 2px; list-style: none; max-height: 240px; overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 18px rgba(0,0,0,.15); }
+.combo-lista[hidden] { display: none; }
+.combo-lista li { padding: 5px 8px; border-radius: 4px; cursor: pointer; }
+.combo-lista li:hover, .combo-lista li.activo { background: var(--surface-2); }

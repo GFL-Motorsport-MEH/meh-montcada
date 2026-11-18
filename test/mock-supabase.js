@@ -146,6 +146,7 @@ export function createClient() {
       const yo = session && db.profiles.find((p) => p.id === session.user.id);
       const norm = (x) => (x || '').toLowerCase().trim();
       if (fn === 'password_cambiada') { yo.debe_cambiar_password = false; return { data: null, error: null }; }
+      if (fn === 'escaner_empresas') return { data: (db.empresas || []).map((e) => ({ id: e.id, nombre_comercial: e.nombre_comercial, razon_social: e.razon_social || null, cif: e.cif || null, iban: e.iban || null })), error: null };
       if (fn === 'escaner_proveedores') {
         const m = new Map(); for (const g of db.gastos) if (g.empresa && !m.has(norm(g.empresa))) m.set(norm(g.empresa), { nombre: g.empresa.trim(), nif: g.nif || null });
         for (const g of db.gastos) { const x = m.get(norm(g.empresa)); if (x && !x.nif && g.nif) x.nif = g.nif; }

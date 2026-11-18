@@ -287,6 +287,15 @@ export async function renderGastos(view, ctx) {
     });
     return h('td', {}, inp);
   }
+  // Nº de factura: si está vacío la casilla se sombrea en amarillo; en los gastos marcados «sin factura» se lee SIN FACTURA
+  function celdaNFactura(g) {
+    const td = celdaTexto(g, 'factura_nr', { cls: 'gc-nfac', label: 'Nº factura' });
+    const inp = td.querySelector('input');
+    const marcar = () => { const vacio = !inp.value.trim(); td.classList.toggle('nfac-vacio', vacio); inp.placeholder = vacio && g.sin_factura ? 'SIN FACTURA' : ''; };
+    inp.addEventListener('input', marcar); inp.addEventListener('change', () => setTimeout(marcar, 0));
+    marcar();
+    return td;
+  }
   // fecha: se puede escribir (dd/mm/aa) o elegir en el calendario que se abre al hacer clic
   function celdaFecha(g, campo, label) {
     const td = celdaTexto(g, campo, {
@@ -393,7 +402,7 @@ export async function renderGastos(view, ctx) {
       h('td', {}, selMes),
       celdaSelect(g, 'tipo', LISTAS.tipo, 'Tipo'),
       celdaTexto(g, 'empresa', { lista: 'dl-g-empresa', label: 'Empresa' }),
-      celdaTexto(g, 'factura_nr', { label: 'Nº factura' }),
+      celdaNFactura(g),
       celdaTexto(g, 'concepto', { label: 'Concepto' }),
       h('td', {}, selCat), h('td', {}, selSub),
       celdaSelect(g, 'periodicidad', LISTAS.periodicidad, 'Periodicidad'),

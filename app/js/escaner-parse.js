@@ -119,7 +119,7 @@ function mejorNombre(texto, conocidas) {
   let mejor = null;
   for (const e of conocidas) {
     const sc = puntuarNombre(e.nombre, palabras, porInicio);
-    if (sc >= 0.5 && (!mejor || sc > mejor.sc || (sc === mejor.sc && e.nombre.length > mejor.nombre.length))) mejor = { nombre: e.nombre, sc };
+    if (sc >= 0.5 && (!mejor || sc > mejor.sc || (sc === mejor.sc && e.nombre.length > mejor.nombre.length))) mejor = { nombre: e.canon || e.nombre, sc };
   }
   return mejor;
 }

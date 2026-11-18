@@ -1,7 +1,7 @@
 // Escáner de facturas: lee un PDF o una foto, saca proveedor, NIF, fecha, nº e importe, y propone el gasto
 // completando la clasificación con la del último gasto de ese proveedor. Todo se hace en el navegador.
 import { h, clear, toast, fmtEUR2, fmtFecha, mesDeFecha, normalizar, num } from '../ui.js';
-import { subirFactura, escanerProveedores, escanerSugerencia, escanerDuplicado } from '../db.js';
+import { subirFactura, escanerProveedores, escanerEmpresas, escanerSugerencia, escanerDuplicado } from '../db.js';
 import { analizarFactura, rutaSugerida } from '../escaner-parse.js';
 
 const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs';
@@ -92,7 +92,15 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onCerrar = () => {}, texto
   let cerrado = false;
   // proveedores conocidos (de la BD, sin necesidad de ver los gastos)
   let conocidas = [];
-  const cargaConocidas = escanerProveedores().then((l) => { conocidas = l.map((x) => ({ nombre: x.nombre, nif: x.nif })); }).catch(() => {});
+  // además de los nombres de los gastos, las empresas del listado: el texto de la factura suele llevar la razón social
+  // y el gasto se guarda con el nombre comercial (canon)
+  const cargaConocidas = Promise.all([escanerProveedores().catch(() => []), escanerEmpresas().catch(() => [])]).then(([gs, es]) => {
+    const vistos = new Set(), out = [];
+    const add = (nombre, nif, canon) => { const k = `${normalizar(nombre)}|${normalizar(canon || '')}`; if (nombre && !vistos.has(k)) { vistos.add(k); out.push({ nombre, nif, canon }); } };
+    for (const e of es) { add(e.nombre_comercial, e.cif); if (e.razon_social && normalizar(e.razon_social) !== normalizar(e.nombre_comercial)) add(e.razon_social, e.cif, e.nombre_comercial); }
+    for (const x of gs) if (!es.some((e) => normalizar(e.nombre_comercial) === normalizar(x.nombre))) add(x.nombre, x.nif);
+    conocidas = out;
+  });
 
   function inicio() {
     const inputArchivo = h('input', { type: 'file', accept: 'application/pdf,image/*', hidden: true, 'aria-label': 'Archivo de la factura', onchange: () => procesar(inputArchivo.files[0]) });
