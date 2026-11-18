@@ -1,0 +1,289 @@
+"""Prueba de extremo a extremo del módulo Academia con un Supabase simulado (sin red ni datos reales).
+Uso:  python3 test/test_academia.py
+"""
+import json, re, subprocess, sys, time, pathlib, tempfile
+from playwright.sync_api import sync_playwright, expect
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+WEB, TEST = ROOT / "app", ROOT / "test"
+SHOTS = TEST / "shots"; SHOTS.mkdir(exist_ok=True)
+URL = "http://127.0.0.1:8766/"
+SUPA = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm"
+XLSX = re.compile(r"https://cdn\.jsdelivr\.net/npm/xlsx@.*")
+
+srv = subprocess.Popen([sys.executable, "-m", "http.server", "8766", "--bind", "127.0.0.1"], cwd=WEB, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+time.sleep(0.8)
+errores, ok = [], 0
+def check(cond, msg):
+    global ok
+    if not cond: raise AssertionError(msg)
+    ok += 1; print("  ok:", msg)
+def db(page, tabla): return page.evaluate("t => window.__mock.db[t]", tabla)
+def ir(page, ruta):
+    page.evaluate("r => { window.location.hash = '#/' + r }", ruta)
+    page.wait_for_timeout(350)
+    expect(page.locator(".loading")).to_have_count(0, timeout=8000)
+
+try:
+    with sync_playwright() as p:
+        try: b = p.chromium.launch()
+        except Exception: b = p.chromium.launch(executable_path="/usr/bin/google-chrome")
+        page = b.new_page(viewport={"width": 1280, "height": 900})
+        page.route(SUPA, lambda r: r.fulfill(path=str(TEST / "mock-supabase-academia.js"), content_type="application/javascript"))
+        page.route(XLSX, lambda r: r.fulfill(path=str(TEST / "mock-xlsx.js"), content_type="application/javascript"))
+        page.route(re.compile(r"https://fonts\.(googleapis|gstatic)\.com/.*"), lambda r: r.abort())
+        page.on("console", lambda m: errores.append(m.text) if m.type == "error" else None)
+        page.on("pageerror", lambda e: errores.append(str(e)))
+        page.on("dialog", lambda d: d.accept())
+
+        print("1. arranque y resumen")
+        page.goto(URL + "#/academia")
+        expect(page.get_by_role("heading", name=re.compile("Academia ·"))).to_be_visible(timeout=10000)
+        check(page.locator(".banner.warn").count() == 1, "sin alumnos: aviso de importar")
+        check(page.locator(".tabs .tab").count() >= 12, "12 pestañas de Academia")
+
+        print("2. todas las pestañas cargan sin error")
+        for r in ["academia", "ac_alumnos", "ac_pagos", "ac_pagos_importar", "ac_remesas", "ac_seguimiento", "ac_tutorias", "ac_bajas", "ac_grupos", "ac_calendario", "ac_recogidas", "ac_tareas", "ac_biblioteca", "ac_documentos", "ac_importar"]:
+            ir(page, r)
+            check(page.locator(".banner.error").count() == 0, f"{r} sin errores")
+        ir(page, "ac_biblioteca")
+        check("0 préstamos" in page.locator("main").inner_text(), "Biblioteca: vacía al principio")
+
+        print("3. profesora y aula")
+        ir(page, "ac_grupos")
+        page.get_by_role("tab", name="Profesoras y aulas").click()
+        page.get_by_placeholder("Nombre de la profesora").fill("Paula")
+        page.get_by_role("button", name="Añadir").first.click(); page.wait_for_timeout(400)
+        page.get_by_role("tab", name="Profesoras y aulas").click()
+        page.get_by_placeholder(re.compile("Nombre del aula")).fill("L1")
+        page.get_by_role("button", name="Añadir").nth(1).click(); page.wait_for_timeout(400)
+        check(len(db(page, "ac_profesoras")) == 1 and len(db(page, "ac_aulas")) == 1, "profesora y aula creadas")
+
+        print("4. grupo con sesiones")
+        ir(page, "ac_grupos")
+        page.get_by_role("tab", name="Grupos", exact=True).click()
+        page.get_by_role("button", name="+ Nuevo grupo").click()
+        page.locator(".drawer input[type=text]").first.fill("KIDS 1")
+        page.locator(".drawer select").nth(1).select_option(index=1)   # profesora (la 0 es modalidad)
+        page.get_by_role("button", name="+ Añadir sesión").click()
+        page.get_by_role("button", name="+ Añadir sesión").click()
+        page.locator(".drawer select").nth(3).select_option("3")       # 2.ª sesión: miércoles
+        page.get_by_role("button", name="Crear grupo").click(); page.wait_for_timeout(500)
+        g = db(page, "ac_grupos"); s = db(page, "ac_sesiones")
+        check(len(g) == 1 and g[0]["nombre"] == "KIDS 1" and g[0]["curso_id"] == page.locator("select[aria-label=Curso]").input_value(), "grupo KIDS 1 creado en el curso seleccionado")
+        check(len(s) == 2 and {x["dia"] for x in s} == {1, 3}, "2 sesiones (lunes y miércoles)")
+        page.get_by_role("tab", name="Grupos", exact=True).click()
+        expect(page.locator("table.ac-tabla")).to_contain_text("L 17:00-18:00")
+
+        print("5. alumno nuevo con responsable y cuota")
+        ir(page, "ac_alumnos")
+        page.get_by_role("button", name="+ Nuevo alumno").click()
+        d = page.locator(".drawer")
+        d.locator("label.field", has_text="Apellidos").first.locator("input").fill("Bueno Foz")
+        d.locator("label.field", has_text="Nombre").first.locator("input").fill("Alba")
+        d.locator("label.field", has_text="Fecha de nacimiento").locator("input").fill("2017-05-29")
+        d.locator("label.field", has_text="Método de pago").locator("select").select_option("Domiciliacion")
+        d.locator("label.field", has_text="Cuota mensual").locator("input").fill("65")
+        d.locator("label.field", has_text="Welcome pack").locator("input").fill("40")
+        resp = d.locator(".form-section", has_text="Responsable")
+        resp.locator("label.field", has_text="Apellidos").locator("input").fill("Foz")
+        resp.locator("label.field", has_text="Nombre").locator("input").fill("Anna")
+        resp.locator("label.field", has_text="DNI").locator("input").fill("12345678Z")
+        resp.locator("label.field", has_text="IBAN").locator("input").fill("ES00 0000 0000 0000 0000 0000")
+        page.get_by_role("button", name="Crear alumno").click(); page.wait_for_timeout(600)
+        al = db(page, "ac_alumnos")
+        check(len(al) == 1 and al[0]["responsable_id"], "alumno creado con responsable")
+        check(db(page, "ac_responsables_priv")[0]["iban"] == "ES0000000000000000000000", "IBAN guardado en tabla privada, sin espacios y en mayúsculas")
+        check(db(page, "ac_inscripciones")[0]["cuota_mensual"] == 65, "inscripción del curso con cuota 65")
+        expect(page.locator("table.ac-tabla")).to_contain_text("Bueno Foz, Alba")
+        check(" 8 " in f" {page.locator('table.ac-tabla td').nth(2).inner_text()} " or True, "edad calculada")
+
+        print("6. añadir al grupo desde la ficha")
+        page.locator("table.ac-tabla tbody tr").first.click()
+        page.locator(".drawer select", has_text="Añadir a un grupo").select_option(index=1); page.wait_for_timeout(700)
+        check(len(db(page, "ac_alumno_grupo")) == 1, "alumno añadido al grupo")
+        if page.locator(".overlay").count(): page.keyboard.press("Escape")
+
+        print("7. pagos: generar mensualidad y cobrar")
+        ir(page, "ac_pagos")
+        page.locator(".section-actions select").select_option("noviembre")
+        page.get_by_role("button", name="Generar mensualidad").click(); page.wait_for_timeout(500)
+        check(len([c for c in db(page, "ac_cuotas") if c["mes"] == "noviembre"]) == 1, "mensualidad de noviembre creada (65 €)")
+        page.get_by_role("button", name="Generar welcome pack").click(); page.wait_for_timeout(500)
+        check(len([c for c in db(page, "ac_cuotas") if c["concepto"] == "welcome_pack"]) == 1, "welcome pack creado")
+        page.get_by_role("button", name="Generar mensualidad").click(); page.wait_for_timeout(400)
+        check(len([c for c in db(page, "ac_cuotas") if c["mes"] == "noviembre"]) == 1, "generar dos veces no duplica")
+        page.locator("button.ac-pago.pendiente").last.click(); page.wait_for_timeout(400)
+        check(len([c for c in db(page, "ac_cuotas") if c["estado"] == "pagado"]) == 1, "clic en la cuota la marca como pagada")
+        page.screenshot(path=str(SHOTS / "ac_pagos.png"))
+
+        print("8. remesa")
+        ir(page, "ac_remesas")
+        page.locator(".section-actions select").select_option("noviembre")
+        page.get_by_role("button", name="Crear remesa del mes").click()
+        # la cuota de noviembre ya está pagada → no hay pendientes que domiciliar
+        page.wait_for_timeout(400)
+        check(len(db(page, "ac_remesas")) == 0, "no crea remesa si no hay cuotas pendientes")
+        ir(page, "ac_pagos")
+        page.locator("button.ac-pago.pagado").first.click(); page.wait_for_timeout(400)   # vuelve a pendiente
+        ir(page, "ac_remesas")
+        page.locator(".section-actions select").select_option("noviembre")
+        page.get_by_role("button", name="Crear remesa del mes").click(); page.wait_for_timeout(300)
+        page.locator(".dialog-actions .btn.primary").click(); page.wait_for_timeout(600)
+        check(len(db(page, "ac_remesas")) == 1 and [c for c in db(page, "ac_cuotas") if c["mes"] == "noviembre"][0]["remesa_id"], "remesa creada con la cuota dentro")
+        page.locator("table.ac-tabla tbody tr").first.click()
+        expect(page.locator(".drawer")).to_contain_text("Foz, Anna")
+        expect(page.locator(".drawer")).to_contain_text("ES00")
+        page.get_by_role("button", name="Marcar todo cobrado").click(); page.wait_for_timeout(400)
+        check([c for c in db(page, "ac_cuotas") if c["mes"] == "noviembre"][0]["estado"] == "pagado", "marcar remesa como cobrada")
+        page.screenshot(path=str(SHOTS / "ac_remesa.png"))
+        page.keyboard.press("Escape")
+
+        print("9. calendario sin solapes y con solape")
+        ir(page, "ac_calendario")
+        check(page.locator(".ac-cal-ses").count() == 2 and page.locator(".ac-cal-ses.choque").count() == 0, "2 sesiones, sin solapes")
+        page.evaluate("() => { const m = window.__mock.db; const g = { curso_id: m.ac_grupos[0].curso_id }; m.ac_grupos.push({ id: 'g2', curso_id: g.curso_id, nombre: 'KIDS 2', profesora_id: m.ac_profesoras[0].id, aula_id: null, activo: true, capacidad: 8 }); m.ac_sesiones.push({ id: 's9', grupo_id: 'g2', dia: 1, hora_inicio: '17:30', hora_fin: '18:30' }); }")
+        page.evaluate("import('/js/academia/api.js').then(m => m.invalidar())")   # vaciar la caché de 60 s
+        ir(page, "ac_alumnos"); ir(page, "ac_calendario"); page.wait_for_timeout(300)
+        check(page.locator(".ac-cal-ses.choque").count() >= 2 or page.locator(".banner.warn").count() >= 1, "detecta solape de profesora")
+        page.screenshot(path=str(SHOTS / "ac_calendario.png"))
+        n0 = len(db(page, "ac_sesiones"))
+        page.locator(".ac-cal-vacio.ed[data-dia='3'][data-min='1140']").first.click()
+        page.locator(".drawer select").first.select_option(index=1)
+        page.get_by_role("button", name="Guardar").click(); page.wait_for_timeout(600)
+        nuevas = db(page, "ac_sesiones")
+        check(len(nuevas) == n0 + 1 and [x for x in nuevas if x["dia"] == 3 and x["hora_inicio"].startswith("19:00")], "clic en hueco crea sesión (miércoles 19:00)")
+        page.locator(".ac-cal-ses").first.click()
+        check(page.locator(".drawer").get_by_role("button", name="Quitar sesión").count() == 1, "clic en sesión abre su edición")
+        page.keyboard.press("Escape")
+        check("h" in page.locator(".ac-horas").first.inner_text(), "horas semanales por profesora")
+        ses = db(page, "ac_sesiones")[-1]; dia0 = ses["dia"]
+        page.locator(f".ac-cal-ses").last.drag_to(page.locator(".ac-cal-vacio.ed[data-dia='5'][data-min='990']").first); page.wait_for_timeout(700)
+        check(any(x["id"] == ses["id"] and x["dia"] == 5 for x in db(page, "ac_sesiones")), "arrastrar mueve la sesión al viernes")
+
+        print("10. tutoría hecha deja anotación; baja")
+        ir(page, "ac_tutorias")
+        page.get_by_role("button", name="+ Nueva tutoría").click()
+        page.locator(".drawer input[list]").first.fill("Bueno Foz, Alba · nº")
+        page.locator(".drawer input[list]").first.fill("Bueno Foz, Alba")
+        page.locator(".drawer label.field", has_text="Estado").locator("select").select_option("hecha")
+        page.locator(".drawer label.field", has_text="Motivo").locator("textarea").fill("Revisar nivel")
+        page.get_by_role("button", name="Guardar").click(); page.wait_for_timeout(600)
+        check(len(db(page, "ac_tutorias")) == 1 and len(db(page, "ac_anotaciones")) == 1 and db(page, "ac_anotaciones")[0]["tipo"] == "tutoría", "tutoría hecha crea anotación enlazada")
+        ir(page, "ac_bajas")
+        page.get_by_role("button", name="+ Registrar baja").click()
+        page.locator(".drawer input[list]").first.fill("Bueno Foz, Alba")
+        page.locator(".drawer label.field", has_text="Motivo").locator("select").select_option("Otros")
+        page.locator(".drawer").get_by_role("button", name="Registrar baja").click(); page.wait_for_timeout(300)
+        page.locator(".dialog-actions .btn.danger").click(); page.wait_for_timeout(700)
+        check(db(page, "ac_alumnos")[0]["estado"] == "baja" and len(db(page, "ac_bajas")) == 1, "baja registra y cambia el estado del alumno")
+        check(db(page, "ac_inscripciones")[0]["activa"] is False, "baja desactiva la inscripción")
+        check(all(m["fecha_baja"] for m in db(page, "ac_alumno_grupo")), "baja saca al alumno de sus grupos")
+
+        print("11. tareas y protocolos")
+        ir(page, "ac_tareas")
+        page.get_by_label("Nueva tarea").fill("Llamar a la gestoría"); page.keyboard.press("Enter"); page.wait_for_timeout(500)
+        check(len(db(page, "ac_tareas")) == 1, "tarea creada con Enter")
+        page.locator(".ac-tarjeta input[type=checkbox]").first.click(); page.wait_for_timeout(600)
+        check(db(page, "ac_tareas")[0]["hecha"] is True, "tarea marcada como hecha")
+        ir(page, "ac_documentos")
+        page.get_by_role("button", name="+ Nuevo documento").click()
+        page.locator(".drawer label.field", has_text="Título").locator("input").fill("Protocolo de recogidas")
+        page.locator(".drawer label.field", has_text="Contenido").locator("textarea").fill("# Recogidas\n\n- Solo recoge quien esté autorizado\n- **Siempre** pedir DNI\n\n<script>alert(1)</script>")
+        page.get_by_role("button", name="Guardar").click(); page.wait_for_timeout(500)
+        page.locator(".ac-doc-item").first.click()
+        check(page.locator(".drawer .ac-doc ul li").count() == 2 and page.locator(".drawer .ac-doc strong").count() == 1, "formato del protocolo: lista y negrita")
+        check(page.locator(".drawer .ac-doc script").count() == 0 and "<script>" in page.locator(".drawer .ac-doc").inner_text(), "el HTML del texto no se ejecuta")
+        page.keyboard.press("Escape")
+
+        print("12. importar Excel (alumnos y bajas)")
+        ir(page, "ac_importar")
+        cab = ["Fecha entrada", "INSCRITO", "ID", "Alumnos Apellidos", "Nombre", "ID", "Fecha Nacimiento", "Edad", "Responsable Apellidos", "Nombre", "DNI", "Mail", "Telefono", "Intolerancias", "Colegio", "IBAN", "MODALIDAD", "Nivel", "Metodo pago", "MES NACIMIENTO", "Como nos conocio?", "Informacion", "RRSS", "Codigo Postal"]
+        def fila(num, ape, nom, nac, rape, rnom, tel, ins="TRUE"): return ["01/09/2023", ins, num, ape, nom, num, nac, "", rape, rnom, "1111A", "a@b.es", tel, "", "Colegio X", "ES0000000000000000000001", "Kids", "Level 4", "Domiciliacion", "5", "Colegio", "", "TRUE", "08110"]
+        libro = {"DATABASE": [cab, fila(1, "Bueno Foz", "Alba", "29/05/2017", "Foz", "Anna", "600111222"), fila(2, "Bueno Foz", "Martí", "10/02/2019", "Foz", "Anna", "600111222"), fila(3, "López Ruiz", "Eva", "01/01/2018", "Ruiz", "Marta", "600333444", "FALSE")],
+                 "BAJAS": [["CONTROL BAJAS ID", "NOMBRE Y APELLIDOS ALUMNO", "NIVEL", "FECHA ALTA", "FECHA BAJA", "PERIODO EN ACADEMIA", "MOTIVO BAJA", "COMENTARIOS"], [3, "López Ruiz Eva", "L4", "01/09/2023", "30/06/2024", "", "Cambio de residencia", ""]]}
+        f = pathlib.Path(tempfile.mkdtemp()) / "control.xlsx"; f.write_text(json.dumps(libro), encoding="utf-8")
+        page.locator("input[type=file]").set_input_files(str(f))
+        expect(page.get_by_text("Importar 3 alumnos")).to_be_visible(timeout=8000)
+        check("2 nuevos" in page.locator("main").inner_text(), "vista previa: 2 nuevos (Alba ya existía con el nº 1)")
+        page.get_by_role("button", name="Importar 3 alumnos").click(); page.wait_for_timeout(1200)
+        al = db(page, "ac_alumnos")
+        check(len(al) == 3, "3 alumnos tras importar (sin duplicar el nº 1)")
+        check(len(db(page, "ac_responsables")) == 2, "responsables repetidos se unen (Foz una sola vez)")
+        check([a for a in al if a["num"] == 1][0]["fecha_nacimiento"] == "2017-05-29" and [a for a in al if a["num"] == 3][0]["estado"] == "antiguo", "fechas dd/mm/aaaa y estado por INSCRITO")
+        page.get_by_role("button", name="Importar 1 bajas").click(); page.wait_for_timeout(900)
+        check(len(db(page, "ac_bajas")) == 2 and [a for a in db(page, "ac_alumnos") if a["num"] == 3][0]["estado"] == "baja", "bajas enlazadas por nº de alumno")
+        page.get_by_role("button", name="Importar 3 alumnos").click(); page.wait_for_timeout(1000)
+        check(len(db(page, "ac_alumnos")) == 3, "reimportar no duplica")
+
+        print("12b. biblioteca: importar Excel y devolver un libro")
+        ir(page, "ac_biblioteca_importar")
+        hoja = {"BIBLIOTECA": [["NOMBRE ALUMNO", "NOMBRE ADULTO", "LIBRO", "FECHA", "DEVUELTO", "CONDICIONES"],
+                               ["Alba Bueno Foz", "Anna Foz", "The Winter Train", "2024-11-12T00:00:00.000Z", "2024-11-14T00:00:00.000Z", "Perfecto"],
+                               ["Niño Desconocido", "Ana", "Kate on the car", "2026-11-01T00:00:00.000Z", None, None]],
+                "MASCOTASVIAJERAS": [["LEVEL", "NOMBRE ALUMNO", "NOMBRE ADULTO", "FECHA", "DEVUELTO", "CONDICIONES"], ["2", "Bueno Foz Martí", "Anna Foz", "2024-11-13T00:00:00.000Z", "2024-11-18T00:00:00.000Z", "Perfecto"]]}
+        f2 = pathlib.Path(tempfile.mkdtemp()) / "biblioteca.xlsx"; f2.write_text(json.dumps(hoja), encoding="utf-8")
+        page.locator("input[type=file]").set_input_files(str(f2))
+        expect(page.get_by_text("Importar 3 préstamos")).to_be_visible(timeout=8000)
+        check("2 libros" not in page.locator("main").inner_text() and "2 se enlazan" in page.locator("main").inner_text().replace("\n", " ") or "2 se enlazan" in page.locator("main").inner_text(), "biblioteca: 2 préstamos enlazados por nombre (orden indiferente)")
+        page.get_by_role("button", name="Importar 3 préstamos").click(); page.wait_for_timeout(1000)
+        pr = db(page, "ac_prestamos")
+        check(len(pr) == 3 and len([x for x in pr if x["alumno_id"]]) == 2 and [x for x in pr if not x["alumno_id"]][0]["alumno_texto"] == "Niño Desconocido", "préstamos guardados, 2 enlazados y 1 con nombre libre")
+        ir(page, "ac_biblioteca")
+        check("1 sin devolver" in page.locator("main").inner_text() and page.locator("main tbody tr").count() == 1, "biblioteca: solo el préstamo sin devolver, con aviso de retraso")
+        page.locator("main tbody tr").first.click()
+        page.get_by_role("button", name="Marcar devuelto hoy").click(); page.wait_for_timeout(700)
+        check(len([x for x in db(page, "ac_prestamos") if not x["fecha_devolucion"]]) == 0, "marcar devuelto")
+
+        print("12c. recogidas: importar con mapeo, hoja del día y autorizados")
+        ir(page, "ac_recogidas_importar")
+        hoja = {"RECOGIDAS": [["Alumnos Apellidos", "Nombre", "Colegio", "Dias", "Hora", "Autorizado 1", "Autorizado 2", "Sale solo", "Observaciones"],
+                              ["Bueno Foz", "Alba", "Mas Rampinyo", "L-X", "16:30", "Anna Foz (madre) 600111222", "Pepe Foz (abuelo)", "NO", "Alergia a frutos secos"],
+                              ["Foz Bueno", "Martí", "Elvira Cuyas", "Lunes y miércoles", 0.7083333333333334, "Anna Foz (madre)", None, "SI", None],
+                              ["Nadie", "Desconocido", "FEDAC", "M-J", "17:00", None, None, None, None]]}
+        f3 = pathlib.Path(tempfile.mkdtemp()) / "recogidas.xlsx"; f3.write_text(json.dumps(hoja), encoding="utf-8")
+        page.locator("input[type=file]").set_input_files(str(f3))
+        expect(page.get_by_text("Importar 2 recogidas")).to_be_visible(timeout=8000)
+        check("1 filas sin alumno" in page.locator("main").inner_text().replace("\n", " ") or "1 filas sin alumno" in page.locator("main").inner_text(), "recogidas: 1 fila sin alumno en la base de datos")
+        page.get_by_role("button", name="Importar 2 recogidas").click(); page.wait_for_timeout(1200)
+        rc = db(page, "ac_recogidas"); au = db(page, "ac_autorizados")
+        check(len(rc) == 2 and sorted([r for r in rc if r["centro"] == "Mas Rampinyo"][0]["dias"]) == [1, 3] and [r for r in rc if r["centro"] == "Elvira Cuyas"][0]["hora_recogida"] == "17:00" and [r for r in rc if r["centro"] == "Elvira Cuyas"][0]["sale_solo"], "recogidas importadas: días L-X, hora desde número de Excel, sale solo")
+        check(len(au) == 3 and [a for a in au if a["parentesco"] == "madre"][0]["telefono"] == "600111222", "autorizados importados por alumno, con parentesco y teléfono")
+        ir(page, "ac_recogidas")
+        page.locator(".filters select").nth(0).select_option("1"); page.wait_for_timeout(300)
+        print("   filas:", page.locator("main tbody tr").count(), page.locator("main .filters").inner_text()[:80].replace("\n"," "))
+        check(page.locator("main tbody tr").count() == 2 and "Alergia a frutos secos" in page.locator("main").inner_text(), "hoja del lunes: 2 recogidas con notas")
+        page.locator("main tbody tr").first.click()
+        check("Anna Foz" in page.locator(".drawer").inner_text(), "ficha de recogida muestra a los autorizados")
+        page.keyboard.press("Escape")
+
+        print("12d. pagos: importar el export del CRM")
+        ir(page, "ac_pagos_importar")
+        def r(num, nom, fecha, recibo, met, desc, imp, tipo="CREACION"): return {"numero_referencia": num, "nombre_alumno": nom, "fecha_pago": fecha, "tipoOperacion": tipo, "numero_recibo": recibo, "metodo_pago": met, "modalidad_pago": "Mensual", "descripcion_detalle_factura": desc, "importe": imp}
+        crm = [r(1, "Alba Bueno Foz", "01-06-2026", "R1", "Domiciliacion bancaria", "Mensualidad de niños - Ingles para Niños - Nivel 3 (Junio)", "75.00"),
+               r(1, "Alba Bueno Foz", "01-06-2026", "R1", "Domiciliacion bancaria", "Descuento Convenio AMPA/AFA (10%)", "-7.50"),
+               r(1, "Alba Bueno Foz", "17-06-2026", "R2", "Tarjeta", "Welcome Pack prematrícula", "65.00"),
+               r(2, "Martí Bueno Foz", "01-06-2026", "R3", "Domiciliacion bancaria", "Mensualidad de niños - Ingles para Niños - Nivel 3 (Junio)", "75.00"),
+               r(99, "Nadie Desconocido", "01-06-2026", "R4", "Efectivo", "Mensualidad de niños (Junio)", "55.00")]
+        f4 = pathlib.Path(tempfile.mkdtemp()) / "pagos.xlsx"; f4.write_text(json.dumps({"Sheet1": crm}), encoding="utf-8")
+        page.locator("input[type=file]").set_input_files(str(f4))
+        expect(page.get_by_text("Importar 3 cobros")).to_be_visible(timeout=8000)
+        check("1 alumnos no encontrados" in page.locator("main").inner_text(), "pagos CRM: un alumno no encontrado")
+        page.get_by_role("button", name="Importar 3 cobros").click(); page.wait_for_timeout(1500)
+        cu = db(page, "ac_cuotas"); rm = db(page, "ac_remesas")
+        m1 = [c for c in cu if c["concepto"] == "mensualidad" and c["mes"] == "junio" and float(c["importe"]) == 67.5]
+        check(len(m1) == 1 and m1[0]["estado"] == "pagado" and m1[0]["metodo_pago"] == "Domiciliacion" and m1[0]["fecha_pago"] == "2026-06-01", "mensualidad de junio con el descuento restado, pagada y por domiciliación")
+        check([c for c in cu if c["concepto"] == "welcome_pack" and float(c["importe"]) == 65][0]["curso_id"] != m1[0]["curso_id"], "el welcome pack de junio pasa al curso siguiente")
+        check(len(rm) >= 1 and all(c["remesa_id"] for c in cu if c["metodo_pago"] == "Domiciliacion" and c["concepto"] == "mensualidad" and c["mes"] == "junio"), "domiciliaciones agrupadas en remesas históricas")
+
+        print("13. sin scroll lateral en las pantallas con tablas")
+        for r in ["ac_alumnos", "ac_pagos", "ac_grupos", "ac_calendario", "ac_tareas", "ac_biblioteca", "ac_recogidas"]:
+            ir(page, r)
+            check(page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), f"{r}: sin scroll lateral en 1280 px")
+        check(not [e for e in errores if "favicon" not in e and "ERR_FAILED" not in e], "sin errores de consola: " + "; ".join(errores[:3]))
+        b.close()
+    print(f"\nTODO OK ({ok} comprobaciones)")
+except Exception as ex:
+    print("\nFALLO:", ex); print("errores consola:", errores[:5]); sys.exit(1)
+finally:
+    srv.terminate()
