@@ -145,3 +145,41 @@ table.ac-parrilla td { vertical-align: top; }
 .ac-tarea .ac-com-nuevo input[type="text"] { flex: 1; }
 .ac-tarea select { max-width: 190px; }
 .ac-tarea .ac-t-l1 select.ac-resp { max-width: 150px; }
+
+/* tareas v3: línea resumen, semana, persona y fecha */
+.ac-res { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 12px; }
+.ac-res-t { flex: 1 1 240px; min-width: 0; text-align: left; background: none; border: none; font: inherit; font-size: 14px; font-weight: 500; color: var(--text-primary); cursor: pointer; padding: 3px 2px; }
+.ac-res-t:hover { text-decoration: underline; }
+.ac-res.hecha .ac-res-t { text-decoration: line-through; color: var(--text-muted); }
+.ac-res-meta { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; margin-left: auto; }
+.ac-res .ac-chip { margin: 0; }
+.ac-fecha { font-weight: 600; color: var(--text-secondary); }
+.ac-fecha.venc { color: var(--critical); }
+.ac-fecha.hoy { color: var(--warning); }
+.ac-quien { display: inline-flex; align-items: center; gap: 5px; }
+.ac-res.ac-tarjeta { padding: 6px 8px; }
+.ac-tarjeta.ac-res .ac-res-t { flex-basis: 60%; }
+.ac-tarjeta.ac-res .ac-res-meta { margin-left: 0; flex-basis: 100%; }
+.ac-sem-nav { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ac-semana { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; align-items: start; }
+.ac-semana .ac-col { min-height: 110px; padding: 0 6px 6px; }
+.ac-col.hoy { outline: 2px solid var(--text-primary); }
+.ac-banda.venc .ac-grupo-h { color: var(--critical); }
+.ac-banda { min-height: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.ac-banda > .ac-grupo-h { grid-column: 1 / -1; }
+.ac-matriz-w { padding: 0; overflow: hidden; }
+.ac-matriz { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.ac-matriz th, .ac-matriz td { vertical-align: top; padding: 6px 8px; border-top: 1px solid var(--border); text-align: left; }
+.ac-matriz thead th { background: var(--surface-2); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-secondary); border-top: none; }
+.ac-matriz thead th.venc { color: var(--critical); }
+.ac-matriz tbody th { width: 130px; font-weight: 400; }
+.ac-matriz tr.det td { background: var(--surface-2); padding: 0; }
+.ac-matriz tr.det .ac-tarea { border-top: none; }
+.ac-chipt { display: flex; align-items: center; gap: 5px; width: 100%; margin: 0 0 3px; padding: 2px 6px; text-align: left; font: inherit; font-size: 12.5px; background: var(--surface); color: var(--text-primary); border: 1px solid var(--border); border-left: 3px solid var(--border-strong); border-radius: 4px; cursor: pointer; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ac-chipt i { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.ac-chipt.prio1 { border-left-color: var(--warning); }
+.ac-chipt.prio2 { border-left-color: var(--critical); }
+.ac-chipt.on { outline: 2px solid var(--text-primary); }
+.ac-chipt.hecha { text-decoration: line-through; opacity: .6; }
+@media (max-width: 1100px) { .ac-semana { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); } }
+@media (max-width: 760px) { .ac-matriz-w { overflow-x: auto; } .ac-matriz { min-width: 640px; } }

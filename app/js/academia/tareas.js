@@ -1,5 +1,5 @@
 // Tareas de Academia (sustituye a Google Keep). Todo se ve y se edita en la propia fila, sin ventanas aparte.
-// Vistas: lista por vencimiento, tablero por estado y tablero por persona.
+// Vistas: lista del día, por persona, semana, persona y fecha, y tablero por estado. Las tareas hechas se conservan (Ver hechas).
 // Las áreas «Contabilidad» y «Domiciliaciones y pagos» solo las ven quienes tienen permiso de dinero (se aplica en la base de datos).
 import { h, clear, cargando, toast, confirmar, hoyISO, normalizar } from '../ui.js';
 import * as api from './api.js';
@@ -10,7 +10,14 @@ const AREAS = { aca: 'Académica', centro: 'Centro', conta: 'Contabilidad', pago
 const AREAS_DINERO = ['conta', 'pagos'];
 const ESTADOS = { pend: 'Pendiente', curso: 'En curso', hecha: 'Hecha' };
 const GRUPOS = [['venc', 'Vencidas'], ['hoy', 'Hoy'], ['sem', 'Próximos 7 días'], ['des', 'Más adelante'], ['sin', 'Sin fecha'], ['hecha', 'Hechas']];
-const S = { quien: 'todas', area: 'all', vista: 'lista', q: '', hechas: false, spec: null };
+const S = { quien: 'todas', area: 'all', vista: 'lista', q: '', hechas: false, spec: null, sem: 0 };
+const VISTAS = [['lista', 'Lista del día'], ['persona', 'Por persona'], ['semana', 'Semana'], ['matriz', 'Persona y fecha'], ['estado', 'Tablero']];
+const COL_AREA = { aca: '#2a5bd7', centro: '#5a6b2a', conta: '#7a3fc0', pagos: '#a65f08' };
+const DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const diaCorto = (iso) => { const d = new Date(iso + 'T00:00'); return `${DIAS[d.getDay()]} ${d.getDate()}`; };
+const fechaCorta = (iso) => { const d = new Date(iso + 'T00:00'); return `${d.getDate()} ${MESES[d.getMonth()]}`; };
+const lunesDe = (iso) => { const d = new Date(iso + 'T00:00'); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return fmtISO(d); };
 const ayudaAbierta = () => { try { return localStorage.getItem('ac_tareas_ayuda') !== '0'; } catch { return true; } };
 const guardarAyuda = (v) => { try { localStorage.setItem('ac_tareas_ayuda', v ? '1' : '0'); } catch { /* sin almacenamiento */ } };
 
@@ -49,7 +56,7 @@ export async function renderTareas(view, ctx) {
   const cont = h('div', { class: 'ac-tareas-cont' });
   const tiles = h('div', { class: 'ac-tiles' });
   const barraResp = h('div', { class: 'segmented', role: 'group', 'aria-label': 'Persona' });
-  const comAbierto = new Set(); const comTodos = new Set();
+  const comAbierto = new Set(); const comTodos = new Set(); const abiertas = new Set();
   if (S.area !== 'all' && !areasPropias.includes(S.area)) S.area = 'all';
 
   // personas conocidas: usuarios + nombres escritos a mano en las tareas (clave = id de usuario o «r:nombre»)
@@ -148,6 +155,7 @@ export async function renderTareas(view, ctx) {
         h('input', { type: 'checkbox', class: 'ac-cb', checked: t.estado === 'hecha', disabled: dis, 'aria-label': 'Hecha', onchange: (e) => cambiarEstado(t, e.target.checked ? 'hecha' : 'pend') }),
         h('input', { type: 'text', class: 'ac-t-titulo', value: t.titulo, disabled: dis, 'aria-label': 'Título de la tarea', onchange: (e) => { if (e.target.value.trim()) guardar(t, { titulo: e.target.value.trim() }); else e.target.value = t.titulo; } }),
         avatar(nombreResp(t)), selResp,
+        h('button', { class: 'btn small ghost', type: 'button', title: 'Cerrar', onclick: () => { abiertas.delete(t.id); pintar(); } }, 'Cerrar ▴'),
         editor ? h('button', { class: 'ac-x', type: 'button', title: 'Borrar tarea', 'aria-label': 'Borrar tarea', onclick: async () => { if (await confirmar({ titulo: 'Borrar tarea', texto: t.titulo, ok: 'Borrar', peligro: true })) { try { await api.del('ac_tareas', t.id); recargar(); } catch (ex) { toast(ex.message, 'error'); } } } }, '✕') : null),
       h('div', { class: 'ac-t-l2' },
         sel(Object.entries(ESTADOS), t.estado, { disabled: dis, 'aria-label': 'Estado', onchange: (e) => cambiarEstado(t, e.target.value) }),
@@ -171,8 +179,36 @@ export async function renderTareas(view, ctx) {
           : h('button', { class: 'btn small', type: 'button', onclick: () => { comAbierto.add(t.id); pintar(); } }, 'Comentar')) : null));
   }
 
-  function columna(titulo, total, tareasCol, onDrop, extra) {
-    const col = h('div', { class: 'ac-col' }, h('div', { class: 'ac-grupo-h' }, h('span', { class: 'ac-col-t' }, extra, titulo), h('span', {}, total)), tareasCol.map((t) => bloque(t, true)));
+
+  // ---- una tarea cerrada: una sola línea (clic para abrirla) ----
+  function fechaRel(t, g) {
+    if (t.estado === 'hecha') return t.hecha_at ? `hecha ${fechaCorta(String(t.hecha_at).slice(0, 10))}` : 'hecha';
+    if (!t.vence) return '';
+    const d = Math.round((new Date(t.vence + 'T00:00') - new Date(hoy + 'T00:00')) / 864e5);
+    return d === 0 ? 'hoy' : d === 1 ? 'mañana' : d === -1 ? 'ayer' : d < 0 ? `hace ${-d} d` : d < 7 ? diaCorto(t.vence) : fechaCorta(t.vence);
+  }
+  function resumen(t, tarjeta, sinPersona) {
+    const g = grupo(t, hoy);
+    const its = Array.isArray(t.items) ? t.items : [];
+    const nCom = (t.comentarios || []).filter((c) => !c.sys).length;
+    const fr = fechaRel(t, g);
+    const nombre = nombreResp(t);
+    return h('div', { class: `ac-tarea ac-trow ac-res${tarjeta ? ' ac-tarjeta' : ''} prio${t.prioridad}${t.estado === 'hecha' ? ' hecha' : ''}`, dataset: { id: t.id } },
+      tarjeta && editor ? h('span', { class: 'ac-asa', draggable: 'true', title: 'Arrastra para mover', ondragstart: (e) => e.dataTransfer.setData('text/plain', t.id) }, '⋮⋮') : null,
+      h('input', { type: 'checkbox', class: 'ac-cb', checked: t.estado === 'hecha', disabled: !editor, 'aria-label': 'Hecha', onchange: (e) => cambiarEstado(t, e.target.checked ? 'hecha' : 'pend') }),
+      h('button', { type: 'button', class: 'ac-res-t', title: 'Abrir la tarea', onclick: () => { abiertas.add(t.id); pintar(); } }, t.titulo),
+      h('span', { class: 'ac-res-meta' },
+        nCom ? h('span', { class: 'muted', title: 'Comentarios' }, `${nCom} com.`) : null,
+        its.length ? h('span', { class: 'muted', title: 'Lista de comprobación' }, `${its.filter((i) => i.ok).length}/${its.length}`) : null,
+        t.repite ? h('span', { class: 'muted', title: 'Se repite' }, '↻ ' + (t.repite === 'semanal' ? 'semanal' : 'mensual')) : null,
+        h('span', { class: 'ac-chip', style: `--c:${COL_AREA[t.area] || '#666'}` }, AREAS[t.area] || t.area),
+        fr ? h('span', { class: `ac-fecha${g === 'venc' ? ' venc' : g === 'hoy' ? ' hoy' : ''}` }, fr) : null,
+        sinPersona ? null : h('span', { class: 'ac-quien' }, avatar(nombre), h('span', {}, nombre ? primerNombre(nombre) : 'Sin asignar'))));
+  }
+  const tarea = (t, tarjeta, sinPersona) => (abiertas.has(t.id) ? bloque(t, tarjeta) : resumen(t, tarjeta, sinPersona));
+
+  function columna(titulo, total, tareasCol, onDrop, extra, sinPersona, clase) {
+    const col = h('div', { class: 'ac-col' + (clase ? ' ' + clase : '') }, h('div', { class: 'ac-grupo-h' }, h('span', { class: 'ac-col-t' }, extra, titulo), h('span', {}, total)), tareasCol.map((t) => tarea(t, true, sinPersona)));
     col.addEventListener('dragover', (e) => { if (editor) { e.preventDefault(); col.classList.add('sobre'); } });
     col.addEventListener('dragleave', () => col.classList.remove('sobre'));
     col.addEventListener('drop', (e) => { e.preventDefault(); col.classList.remove('sobre'); const t = tareas.find((x) => x.id === e.dataTransfer.getData('text/plain')); if (t && editor) onDrop(t); });
@@ -183,14 +219,50 @@ export async function renderTareas(view, ctx) {
     const lista = filas();
     if (S.vista === 'lista') {
       const bloques = GRUPOS.map(([k, titulo]) => {
-        const it = lista.filter((t) => grupo(t, hoy) === k).sort(orden);
-        return it.length ? h('div', { class: 'card ac-grupo' }, h('div', { class: `ac-grupo-h${k === 'venc' ? ' venc' : ''}` }, h('span', {}, titulo), h('span', {}, it.length)), it.map((t) => bloque(t, false))) : null;
+        const it = lista.filter((t) => grupo(t, hoy) === k).sort(k === 'hecha' ? (a, b) => String(b.hecha_at || '').localeCompare(String(a.hecha_at || '')) : orden);
+        return it.length ? h('div', { class: 'card ac-grupo' }, h('div', { class: `ac-grupo-h${k === 'venc' ? ' venc' : ''}` }, h('span', {}, titulo), h('span', {}, it.length)), it.map((t) => tarea(t, false))) : null;
       }).filter(Boolean);
       clear(cont, bloques.length ? bloques : h('div', { class: 'card empty' }, 'No hay tareas con estos filtros.'));
+    } else if (S.vista === 'semana') {
+      const ini = sumarDias(lunesDe(hoy), 7 * S.sem);
+      const dias = [0, 1, 2, 3, 4, 5, 6].map((i) => sumarDias(ini, i));
+      const atras = lista.filter((t) => t.estado !== 'hecha' && t.vence && t.vence < hoy).sort(orden);
+      const sinF = lista.filter((t) => t.estado !== 'hecha' && !t.vence).sort(orden);
+      const nav = h('div', { class: 'ac-sem-nav' },
+        h('button', { class: 'btn small', type: 'button', onclick: () => { S.sem--; pintar(); } }, '← Semana anterior'),
+        h('button', { class: 'btn small', type: 'button', onclick: () => { S.sem = 0; pintar(); } }, 'Esta semana'),
+        h('button', { class: 'btn small', type: 'button', onclick: () => { S.sem++; pintar(); } }, 'Semana siguiente →'),
+        h('span', { class: 'muted small' }, `${fechaCorta(dias[0])} – ${fechaCorta(dias[6])}`));
+      clear(cont, nav,
+        atras.length ? columna('Atrasadas', atras.length, atras, (t) => guardar(t, { vence: hoy }), null, false, 'ac-banda venc') : null,
+        h('div', { class: 'ac-semana' }, dias.map((d) => {
+          const it = lista.filter((t) => t.vence === d && (d >= hoy || t.estado === 'hecha')).sort(orden);
+          return columna(`${DIAS[new Date(d + 'T00:00').getDay()]} ${new Date(d + 'T00:00').getDate()}`, it.length, it, (t) => guardar(t, { vence: d }), null, false, d === hoy ? 'hoy' : '');
+        })),
+        columna('Sin fecha (arrastra a un día para ponerle fecha)', sinF.length, sinF, (t) => guardar(t, { vence: null }), null, false, 'ac-banda'));
+    } else if (S.vista === 'matriz') {
+      const colsM = GRUPOS.filter(([k]) => k !== 'hecha' || S.hechas);
+      const otras = [...personas.keys()].filter((k) => k !== yo.id).sort((a, b) => String(personas.get(a)).localeCompare(String(personas.get(b))));
+      const filasM = [yo.id, ...otras, ''];
+      const cuerpo = [];
+      filasM.forEach((k) => {
+        const n = k === '' ? 'Sin asignar' : personas.get(k);
+        const suyas = lista.filter((t) => claveResp(t) === k);
+        if (!suyas.length && S.quien !== 'todas') return;
+        const abiertasFila = suyas.filter((t) => abiertas.has(t.id));
+        cuerpo.push(h('tr', { class: 'r' }, h('th', { scope: 'row' }, h('span', { class: 'ac-quien' }, avatar(k === '' ? '' : n), h('b', {}, k === yo.id ? `${miNombre} (tú)` : primerNombre(n) || n)), h('div', { class: 'muted small' }, `${suyas.filter((t) => t.estado !== 'hecha').length} abiertas`)),
+          colsM.map(([g]) => h('td', {}, suyas.filter((t) => grupo(t, hoy) === g).sort(g === 'hecha' ? (a, b) => String(b.hecha_at || '').localeCompare(String(a.hecha_at || '')) : orden).map((t) =>
+            h('button', { type: 'button', class: `ac-chipt prio${t.prioridad}${abiertas.has(t.id) ? ' on' : ''}${t.estado === 'hecha' ? ' hecha' : ''}`, title: t.titulo, onclick: () => { if (abiertas.has(t.id)) abiertas.delete(t.id); else abiertas.add(t.id); pintar(); } },
+              h('i', { style: `background:${COL_AREA[t.area] || '#666'}` }), t.titulo))))));
+        abiertasFila.forEach((t) => cuerpo.push(h('tr', { class: 'det' }, h('td', { colspan: colsM.length + 1 }, bloque(t, false)))));
+      });
+      clear(cont, h('div', { class: 'card ac-matriz-w' }, h('table', { class: 'ac-matriz' },
+        h('thead', {}, h('tr', {}, h('th', {}), colsM.map(([k, l]) => h('th', { class: k === 'venc' ? 'venc' : '' }, l)))),
+        h('tbody', {}, cuerpo))));
     } else if (S.vista === 'estado') {
       clear(cont, h('div', { class: 'ac-tablero' }, Object.entries(ESTADOS).map(([k, titulo]) => {
         const todas = lista.filter((t) => t.estado === k).sort(orden);
-        return columna(titulo, todas.length, k === 'hecha' ? todas.slice(0, 15) : todas, (t) => cambiarEstado(t, k));
+        return columna(titulo, todas.length, k === 'hecha' ? todas.sort((a, b) => String(b.hecha_at || '').localeCompare(String(a.hecha_at || ''))).slice(0, 30) : todas, (t) => cambiarEstado(t, k));
       })));
     } else {
       const otras = [...personas.keys()].filter((k) => k !== yo.id).sort((a, b) => String(personas.get(a)).localeCompare(String(personas.get(b))));
@@ -198,7 +270,7 @@ export async function renderTareas(view, ctx) {
       clear(cont, h('div', { class: 'ac-tablero personas' }, cols.map(([k, n]) => {
         const it = lista.filter((t) => claveResp(t) === k).sort(orden);
         if (!it.length && S.quien !== 'todas') return null;
-        return columna(k === yo.id ? `${miNombre} (tú)` : n, it.length, it, (t) => guardar(t, parcheResp(valorDe(k), n)), avatar(k === '' ? '' : n));
+        return columna(k === yo.id ? `${miNombre} (tú)` : n, it.length, it, (t) => guardar(t, parcheResp(valorDe(k), n)), avatar(k === '' ? '' : n), true);
       }).filter(Boolean)));
     }
     const base = tareas.filter((t) => t.estado !== 'hecha' && (S.area === 'all' || t.area === S.area) && (S.quien === 'todas' || (S.quien === 'mias' ? t.asignado_a === yo.id : S.quien === 'nadie' ? !claveResp(t) : claveResp(t) === S.quien)));
@@ -215,7 +287,7 @@ export async function renderTareas(view, ctx) {
 
   const chips = h('div', { class: 'segmented', role: 'group', 'aria-label': 'Área' }, ['all', ...areasPropias].map((a) =>
     h('button', { class: 'seg-btn ac-chip', type: 'button', dataset: { area: a }, onclick: () => { S.area = a; pintar(); } }, a === 'all' ? 'Todas las áreas' : AREAS[a])));
-  const vista = h('div', { class: 'segmented ac-vista', role: 'group', 'aria-label': 'Vista' }, [['lista', 'Lista'], ['estado', 'Tablero'], ['persona', 'Por persona']].map(([k, l]) =>
+  const vista = h('div', { class: 'segmented ac-vista', role: 'group', 'aria-label': 'Vista' }, VISTAS.map(([k, l]) =>
     h('button', { class: 'seg-btn', type: 'button', dataset: { v: k }, onclick: () => { S.vista = k; pintar(); } }, l)));
   const ayuda = leyenda(areasPropias, miNombre);
   ayuda.hidden = !ayudaAbierta();
@@ -225,7 +297,7 @@ export async function renderTareas(view, ctx) {
     ayuda, tiles,
     h('div', { class: 'ac-nueva' }, nueva, nuevaResp, nuevaArea, nuevaFecha, h('button', { class: 'btn primary', type: 'button', disabled: !editor, onclick: crear }, 'Añadir')),
     h('div', { class: 'ac-filtros' }, barraResp, chips, h('input', { type: 'search', placeholder: 'Buscar…', 'aria-label': 'Buscar tareas', value: S.q, oninput: (e) => { S.q = e.target.value; pintar(); } }),
-      h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: S.hechas, onchange: (e) => { S.hechas = e.target.checked; pintar(); } }), ' Ver hechas'), vista),
+      h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: S.hechas, onchange: (e) => { S.hechas = e.target.checked; pintar(); } }), ` Ver hechas (${tareas.filter((t) => t.estado === 'hecha').length})`), vista),
     cont);
   pintar();
 }
@@ -237,7 +309,9 @@ function leyenda(areasPropias, miNombre) {
     h('ul', { class: 'small' },
       p('Crear.', 'Escribe el título, elige responsable, área y fecha (opcional) y pulsa Intro o «Añadir».'),
       p('Todo en la propia tarea.', 'Cambia estado, área, fecha, prioridad, repetición, notas y lista de comprobación directamente en su fila; se guarda solo. El botón «Comentar» abre la caja para escribir un comentario.'),
-      p('Vistas.', 'Lista (por vencimiento), Tablero (Pendiente → En curso → Hecha) y Por persona (una columna por responsable). En los tableros arrastra con ⋮⋮ para cambiar de columna.'),
+      p('Una línea por tarea.', 'Pulsa el título para abrirla y editarlo todo en su sitio; «Cerrar» la vuelve a plegar. El círculo de la izquierda la marca como hecha.'),
+      p('Vistas.', 'Lista del día (Vencidas, Hoy, Próximos 7 días…), Por persona (una columna por responsable), Semana (calendario), Persona y fecha (quién y cuándo a la vez) y Tablero (Pendiente → En curso → Hecha). Arrastra con ⋮⋮ para reasignar, cambiar de día o de estado.'),
+      p('Tareas hechas.', 'No se borran: quedan guardadas con su fecha. Marca «Ver hechas» para consultarlas (aparecen en el grupo «Hechas» y en la columna Hecha del tablero).'),
       p('Áreas.', 'Académica (alumnos, grupos, tutorías, eventos), Centro (mantenimiento, material, organización), Contabilidad (royalties, facturas, cobros) y Domiciliaciones y pagos (altas y bajas en domiciliaciones, cambios de cuota o de cuenta, recibos, devoluciones).'),
       p('Quién ve qué.', areasPropias.some((a) => AREAS_DINERO.includes(a)) ? 'Contabilidad y Domiciliaciones y pagos solo las ven las personas con permiso de dinero; quien no lo tiene no las ve ni se le pueden asignar.' : 'Tu usuario no tiene permiso de dinero, por eso no ves las áreas Contabilidad ni Domiciliaciones y pagos.'),
       p('Cambios en domiciliaciones y pagos.', 'Apunta aquí cada cambio antes de generar la remesa (alta, baja, cuota nueva, cuenta nueva, pago por Visa o transferencia) y márcalo como hecho cuando esté aplicado en Pagos/Remesas. No escribas IBAN: están en la ficha del alumno.'),
