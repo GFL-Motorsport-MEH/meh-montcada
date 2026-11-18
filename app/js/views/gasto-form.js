@@ -71,7 +71,8 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado, onDividido, 
   const cBanca = h('input', { type: 'checkbox', checked: !!g.check_banca });
   const cSinFactura = h('input', { type: 'checkbox', checked: !!g.sin_factura });
   const cFiscontal = h('input', { type: 'checkbox', checked: esVerdad(g.fiscontal) });
-  const cRevisado = h('input', { type: 'checkbox', checked: g.revisado !== false });
+  const cRevisar = h('input', { type: 'checkbox', checked: g.revisado === false });
+  const deOtro = g.revisado === false && g.created_by && g.created_by !== state.session?.user?.id;
   const cResaltado = h('input', { type: 'checkbox', checked: !!g.resaltado });
 
   function pintarSubs() {
@@ -132,7 +133,7 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado, onDividido, 
           h('label', { class: 'check' }, cBanca, 'Comprobado en el banco'),
           h('label', { class: 'check' }, cSinFactura, 'Sin factura'),
           h('label', { class: 'check' }, cFiscontal, 'Enviada a la gestoría (FISCONTAL)', g.fiscontal_fecha ? h('span', { class: 'muted small' }, ` · ${fmtFecha(g.fiscontal_fecha)}`) : null),
-          nuevo ? null : h('label', { class: 'check' + (g.revisado === false ? ' check-revision' : '') }, cRevisado, 'Revisado', g.revisado === false ? h('span', { class: 'muted small' }, ' · añadido por otra persona') : null),
+          h('label', { class: 'check' + (g.revisado === false ? ' check-revision' : ''), title: 'Queda en naranja y en "Pendientes de revisar" hasta que se quite la marca' }, cRevisar, 'Para revisar', deOtro ? h('span', { class: 'muted small' }, ' · añadido por otra persona') : null),
           h('label', { class: 'check check-resaltado' }, cResaltado, 'Resaltar en amarillo')),
         campo('Factura (enlace o archivo)', h('div', { class: 'link-factura' }, fLink,
           botonSubirFactura({ carpeta: () => state.cursos.find((c) => c.id === fCurso.value)?.nombre || 'general',
@@ -194,7 +195,7 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado, onDividido, 
       link_factura: limpio(fLink.value), nif: limpio(fNif.value), iban: limpio(fIban.value), swift: limpio(fSwift.value),
       comentarios: limpio(fComentarios.value),
       pago: cPago.checked ? 'True' : 'False', fiscontal: cFiscontal.checked ? 'True' : 'False',
-      ...(nuevo ? {} : { revisado: cRevisado.checked }),
+      ...(nuevo && !cRevisar.checked ? {} : { revisado: !cRevisar.checked }),
       resaltado: cResaltado.checked,
       fiscontal_fecha: cFiscontal.checked ? (esVerdad(g.fiscontal) && g.fiscontal_fecha ? g.fiscontal_fecha : hoyISO()) : null,
       check_banca: cBanca.checked, sin_factura: cSinFactura.checked,

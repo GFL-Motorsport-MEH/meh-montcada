@@ -106,6 +106,7 @@ export async function renderGastos(view, ctx) {
         enBloque((g) => (g.resaltado === !todos ? null : { resaltado: !todos }), todos ? 'sin resaltar' : 'resaltados');
       } }, gastos.filter((g) => seleccion.has(g.id)).every((g) => g.resaltado) ? 'Quitar resaltado' : 'Resaltar en amarillo'),
       gastos.some((g) => seleccion.has(g.id) && g.revisado === false) ? h('button', { class: 'btn small', onclick: () => enBloque((g) => (g.revisado === false ? { revisado: true } : null), 'marcados como revisados') }, 'Marcar revisados') : null,
+      gastos.some((g) => seleccion.has(g.id) && g.revisado !== false) ? h('button', { class: 'btn small', title: 'Quedan en naranja y en "Pendientes de revisar" hasta que los marques como revisados', onclick: () => enBloque((g) => (g.revisado === false ? null : { revisado: false }), 'marcados para revisar') }, 'Marcar para revisar') : null,
       varios ? h('span', { class: 'barra-accion' }, 'Mover a', destino, h('button', { class: 'btn small primary', onclick: async () => {
         try {
           const nuevos = await moverGastosACentro([...seleccion], destino.value);
@@ -325,7 +326,7 @@ export async function renderGastos(view, ctx) {
     return [];
   }
   function tituloColor(g) {
-    return [g.resaltado ? 'Resaltado' : null, g.revisado === false ? 'Añadido por otra persona: pendiente de revisar' : null, faltaFactura(g) ? 'Falta la factura' : null].filter(Boolean).join(' · ') || null;
+    return [g.resaltado ? 'Resaltado' : null, g.revisado === false ? (g.created_by && g.created_by !== state.session?.user?.id ? 'Añadido por otra persona: pendiente de revisar' : 'Marcado para revisar') : null, faltaFactura(g) ? 'Falta la factura' : null].filter(Boolean).join(' · ') || null;
   }
 
   function fila(g) {
@@ -493,8 +494,8 @@ export async function renderGastos(view, ctx) {
     if (avisoRevision.hidden) return;
     const irA = [...porCurso.entries()].map(([id, n]) => h('button', { class: 'btn small', type: 'button', onclick: () => ctx.irACurso(id, 'revisar') }, `${n} en el curso ${ctx.state.cursos.find((c) => c.id === id)?.nombre || '?'}`));
     clear(avisoRevision,
-      pend.length ? h('span', {}, h('strong', {}, pend.length === 1 ? '1 gasto pendiente de revisar' : `${pend.length} gastos pendientes de revisar`), ` (añadidos con el escáner, en amarillo) · ${fmtEUR2(pend.reduce((s0, g) => s0 + num(g.cantidad), 0))} `)
-        : h('span', {}, h('strong', {}, 'Gastos del escáner pendientes de revisar en otro curso: ')),
+      pend.length ? h('span', {}, h('strong', {}, pend.length === 1 ? '1 gasto pendiente de revisar' : `${pend.length} gastos pendientes de revisar`), ` (en naranja: añadidos por otra persona o marcados para revisar) · ${fmtEUR2(pend.reduce((s0, g) => s0 + num(g.cantidad), 0))} `)
+        : h('span', {}, h('strong', {}, 'Gastos pendientes de revisar en otro curso: ')),
       pend.length ? h('button', { class: 'btn small', type: 'button', onclick: () => { fEstado.value = 'revisar'; f.estado = 'revisar'; limite = POR_PAGINA; pintar(); } }, 'Ver solo esos') : null,
       pend.length && ctx.puedeEditar() ? h('button', { class: 'btn small', type: 'button', onclick: () => { pend.forEach((g) => seleccion.add(g.id)); pintar(); } }, 'Seleccionarlos') : null,
       ...irA);
