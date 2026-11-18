@@ -58,7 +58,7 @@ export const autorizadosPriv = (ids) => (ids?.length ? supabase.from('ac_autoriz
 export const tareas = () => memo('tareas', () => all('ac_tareas'));
 export const documentos = () => memo('documentos', () => all('ac_documentos'));
 // compañeros de equipo (para asignar tareas): lo devuelve una función del servidor porque un usuario normal solo puede leer su propio perfil
-export const usuarios = () => memo('usuarios', async () => chk(await supabase.rpc('usuarios_equipo')));
+export const usuarios = () => memo('usuarios', async () => chk(await supabase.rpc('equipo_tareas')));
 // DNI / IBAN: solo los devuelve la base de datos a quien tiene el permiso de Pagos
 export const privados = (ids) => (ids?.length ? supabase.from('ac_responsables_priv').select('*').in('responsable_id', ids).then(chk) : Promise.resolve([]));
 

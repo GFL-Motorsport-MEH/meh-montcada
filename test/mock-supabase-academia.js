@@ -120,7 +120,7 @@ export function createClient() {
         }
         return { data: n, error: null };
       }
-      if (fn === 'usuarios_equipo') return { data: db.profiles.map((x) => ({ id: x.id, nombre: x.nombre, email: x.email, rol: x.rol })), error: null };
+      if (fn === 'equipo_tareas') return { data: db.profiles.map((x) => ({ id: x.id, nombre: x.nombre, email: x.email, rol: x.rol, siglas: x.siglas })), error: null };
       return { data: null, error: { message: 'función desconocida' } };
     },
     auth: {

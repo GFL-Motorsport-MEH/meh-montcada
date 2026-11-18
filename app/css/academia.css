@@ -93,7 +93,7 @@ table.ac-parrilla td { vertical-align: top; }
 .ac-grupo-h { display: flex; justify-content: space-between; padding: 5px 12px; background: var(--surface-2); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-secondary); }
 .ac-grupo-h.venc { color: var(--critical); }
 .ac-col-t { display: inline-flex; align-items: center; gap: 6px; }
-.ac-av { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: #fff; font-size: 10px; font-weight: 600; flex: none; text-transform: none; letter-spacing: 0; }
+.ac-av { display: inline-grid; place-items: center; min-width: 24px; height: 22px; padding: 0 4px; border-radius: 11px; color: #fff; font-size: 10px; font-weight: 600; flex: none; text-transform: none; letter-spacing: 0; }
 .ac-av.vacio { background: transparent; border: 1.5px dashed var(--text-muted); color: var(--text-muted); }
 /* una tarea */
 .ac-tarea { display: flex; flex-direction: column; gap: 5px; padding: 8px 12px; border-top: 1px solid var(--border); border-left: 4px solid transparent; }

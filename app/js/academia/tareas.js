@@ -27,7 +27,8 @@ const sumarMes = (iso) => { const d = new Date(iso + 'T00:00'); d.setMonth(d.get
 const primerNombre = (n) => String(n || '').trim().split(/\s+/)[0] || '';
 const colorDe = (s) => { let x = 0; for (const c of String(s)) x = (x * 31 + c.charCodeAt(0)) >>> 0; return `hsl(${x % 360} 42% 40%)`; };
 const iniciales = (n) => String(n).trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() || '').join('');
-const avatar = (n) => (n ? h('span', { class: 'ac-av', title: n, style: `background:${colorDe(n)}` }, iniciales(n)) : h('span', { class: 'ac-av vacio', title: 'Sin asignar' }, '?'));
+const SIGLAS = new Map(); // nombre -> siglas (GF, MG, ML, PA…)
+const avatar = (n) => (n ? h('span', { class: 'ac-av', title: n, style: `background:${colorDe(n)}` }, SIGLAS.get(n) || iniciales(n)) : h('span', { class: 'ac-av vacio', title: 'Sin asignar' }, '?'));
 const hace = (ts) => { const m = Math.round((Date.now() - new Date(ts)) / 6e4); return m < 2 ? 'ahora' : m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`; };
 
 function grupo(t, hoy) {
@@ -45,6 +46,8 @@ export async function renderTareas(view, ctx) {
   const [tareas, usuarios] = await Promise.all([api.tareas(), api.usuarios().catch(() => [])]);
   const yo = ctx.state.perfil;
   const miNombre = primerNombre(yo.nombre || yo.email);
+  SIGLAS.clear();
+  [...usuarios, yo].forEach((u) => { if (u?.siglas) SIGLAS.set(u.nombre || u.email, u.siglas.toUpperCase()); });
   const uPor = new Map([...usuarios, yo].filter(Boolean).map((u) => [u.id, u]));
   const editor = ctx.edita('ac_tareas');
   const verDinero = yo.rol === 'admin' || (ctx.ve('ac_pagos') && !yo.sin_dinero);
@@ -68,7 +71,6 @@ export async function renderTareas(view, ctx) {
   const opcionesResp = (actual) => {
     const o = [['', 'Sin asignar'], ...[...personas.entries()].map(([k, n]) => [valorDe(k), n])];
     if (actual && !o.some(([k]) => k === actual)) o.push([actual, actual]);
-    o.push(['__otro', 'Otra persona…']);
     return o;
   };
   const valorResp = (t) => (t.asignado_a ? 'u:' + t.asignado_a : t.responsable ? 'r:' + t.responsable : '');
@@ -101,7 +103,7 @@ export async function renderTareas(view, ctx) {
   // ---- alta rápida ----
   const nueva = h('input', { type: 'text', placeholder: 'Nueva tarea… (Enter para añadir)', class: 'ac-tarea-nueva', disabled: !editor, 'aria-label': 'Nueva tarea' });
   const nuevaArea = sel(areasPropias.map((a) => [a, AREAS[a]]), S.area !== 'all' ? S.area : 'aca', { 'aria-label': 'Área al crear', disabled: !editor });
-  const nuevaResp = sel(opcionesResp('').filter(([k]) => k !== '__otro'), 'u:' + yo.id, { 'aria-label': 'Responsable al crear', disabled: !editor });
+  const nuevaResp = sel(opcionesResp(''), 'u:' + yo.id, { 'aria-label': 'Responsable al crear', disabled: !editor });
   const nuevaFecha = h('input', { type: 'date', 'aria-label': 'Fecha al crear', disabled: !editor });
   async function crear() {
     if (!nueva.value.trim()) return;
@@ -138,12 +140,7 @@ export async function renderTareas(view, ctx) {
     const guardarItems = () => guardar(t, { items: items.filter((i) => i.t.trim()) });
     const resp = valorResp(t);
     const selResp = sel(opcionesResp(resp), resp, { disabled: dis, 'aria-label': 'Responsable', class: 'ac-resp' });
-    selResp.addEventListener('change', () => {
-      if (selResp.value !== '__otro') { guardar(t, parcheResp(selResp.value, selResp.selectedOptions[0]?.textContent)); return; }
-      const otro = h('input', { type: 'text', placeholder: 'Nombre y Enter', class: 'ac-resp', 'aria-label': 'Nombre del responsable' });
-      otro.addEventListener('keydown', (e) => { if (e.key === 'Enter' && otro.value.trim()) guardar(t, { asignado_a: null, responsable: otro.value.trim() }); if (e.key === 'Escape') pintar(); });
-      selResp.replaceWith(otro); otro.focus();
-    });
+    selResp.addEventListener('change', () => guardar(t, parcheResp(selResp.value, selResp.selectedOptions[0]?.textContent)));
     const coms = t.comentarios || [];
     const visibles = comTodos.has(t.id) ? coms : coms.slice(-3);
     const caja = h('input', { type: 'text', placeholder: 'Escribe un comentario y pulsa Intro', 'aria-label': 'Comentario' });
