@@ -1,4 +1,4 @@
-// Módulo ACADEMIA. Todo su código vive en esta carpeta; main.js solo importa RUTAS_ACADEMIA, TABS_ACADEMIA y TABS_COBROS.
+// Módulo ACADEMIA. Todo su código vive en esta carpeta; main.js solo importa RUTAS_ACADEMIA y TABS_ACADEMIA.
 import { renderResumen } from './resumen.js';
 import { renderAlumnos } from './alumnos.js';
 import { renderPagos } from './pagos.js';
@@ -32,7 +32,7 @@ function estilos(render) {
 // perm = permiso (ver permisos.js) que da acceso a la pantalla; edita = además hace falta poder editar (pantallas de importar)
 const R = (titulo, render, perm, edita = false, modulo = 'academia') => ({ titulo, render: estilos(render), modulo, perm, edita });
 // Resumen, Pagos y Remesas (y el importador de pagos) viven en el módulo de Facturación; su código sigue aquí porque usa las tablas ac_*.
-// El Resumen debería desaparecer cuando Ingresos cubra lo mismo.
+// El Resumen de Pagos ya no tiene pestaña: #/ac_resumen abre el Resumen de Ingresos (main.js). Pagos, Remesas y Facturación son sub-pestañas de Ingresos.
 const F = (titulo, render, perm, edita = false) => R(titulo, render, perm, edita, 'facturacion');
 export const RUTAS_ACADEMIA = {
   ac_resumen: F('Resumen', renderResumen, 'ac_resumen'),
@@ -60,5 +60,3 @@ export const TABS_ACADEMIA = [
   ['ac_alumnos', 'Alumnos'], ['ac_seguimiento', 'Seguimiento'], ['ac_tutorias', 'Tutorías'],
   ['ac_bajas', 'Bajas'], ['ac_grupos', 'Grupos'], ['ac_horarios', 'Horarios'], ['ac_calendario', 'Calendario'], ['ac_recogidas', 'Recogidas'], ['ac_tareas', 'Tareas'], ['ac_biblioteca', 'Biblioteca'], ['ac_documentos', 'Protocolos'],
 ];
-// pestañas de Academia que se muestran dentro de Facturación
-export const TABS_COBROS = [['ac_resumen', 'Resumen'], ['ac_pagos', 'Pagos'], ['ac_remesas', 'Remesas']];
