@@ -3,6 +3,8 @@ import { h, clear, cargando, toast, confirmar, fmtFecha, fmtEUR2, hoyISO, normal
 import * as api from './api.js';
 import { campo, txt, area, fecha, numero, sel, drawer, cabecera, tabla, pill, edad, nombreAlumno, hhmm, DIAS_CORTO, guardarBoton, buscadorAlumno, refrescar } from './kit.js';
 
+import { calcularFamilias, esActivo, esDescHermanos } from './familias.js';
+import { abrirEscaneo } from './escanear.js';
 import { pillMotivo, permanencia, colorMotivo as colorMotivoFicha } from './bajas.js';
 
 const ESTADOS = [['inscrito', 'Inscrito'], ['prematricula', 'Pre-matrícula'], ['baja', 'Baja'], ['antiguo', 'Antiguo']];
@@ -12,61 +14,135 @@ export const resumenSesiones = (g) => (g?.sesiones || []).slice().sort((a, b) =>
 export async function renderAlumnos(view, ctx) {
   clear(view, cargando());
   const curso = ctx.cursoActual();
-  const [alumnos, gruposAl, insc, ls] = await Promise.all([api.alumnos(), api.gruposDeAlumnos(curso.id), api.inscripciones(curso.id), api.listas()]);
+  const [alumnos, gruposAl0, insc, ls, grupos0, vinc] = await Promise.all([api.alumnos(), api.gruposDeAlumnos(curso.id), api.inscripciones(curso.id), api.listas(), api.grupos(curso.id), api.vinculos().catch(() => [])]);
+  let gruposAl = gruposAl0; let grupos = grupos0;
   const inscPor = new Map(insc.map((i) => [i.alumno_id, i]));
-  const f = { q: '', estado: 'inscrito', modalidad: '', grupo: '' };
-  const todosGrupos = [...new Set([...gruposAl.values()].flat().map((g) => g.nombre))].sort();
+  const verPagos = ctx.ve('ac_pagos'); const editaPagos = ctx.edita('ac_pagos'); const editaAl = ctx.edita('ac_alumnos');
+  const fam = calcularFamilias(alumnos, vinc);
+  const descPor = verPagos ? new Map(insc.map((i) => [i.alumno_id, i.descuento])) : null;
+  const f = { q: '', estado: 'inscrito', modalidad: '', grupo: '', hermanos: '', editar: false };
+  const todosGrupos = [...new Set(grupos.map((g) => g.nombre))].sort();
+  const colegios = h('datalist', { id: 'dl-colegio-lista' }, [...new Set(alumnos.map((x) => x.colegio).filter(Boolean))].sort().map((c) => h('option', { value: c })));
+  const niveles = h('datalist', { id: 'dl-nivel-lista' }, (ls.nivel || []).map((c) => h('option', { value: c })));
 
   const contenedor = h('div', { class: 'ac-lista' });
   const contador = h('div', { class: 'count' });
+  const recargar = () => { api.invalidar(); refrescar(); };
+
+  // guarda un campo del alumno al salir de la celda (edición en tabla)
+  async function guardarCampo(a, campo, valor) {
+    const v = typeof valor === 'string' ? valor.trim() || null : valor;
+    if ((a[campo] ?? null) === v) return;
+    try { await api.upd('ac_alumnos', a.id, { [campo]: v }); a[campo] = v; toast('Guardado'); } catch (ex) { toast('No se ha guardado: ' + ex.message, 'error'); }
+  }
+  async function guardarInscripcion(a, parche) {
+    try {
+      const i = inscPor.get(a.id);
+      const r = i ? await api.upd('ac_inscripciones', i.id, parche) : await api.ins('ac_inscripciones', { alumno_id: a.id, curso_id: curso.id, ...parche });
+      inscPor.set(a.id, r); descPor?.set(a.id, r.descuento); toast('Guardado');
+    } catch (ex) { toast('No se ha guardado: ' + ex.message, 'error'); }
+  }
+  async function recargarGrupos() { api.invalidar(); [grupos, gruposAl] = await Promise.all([api.grupos(curso.id), api.gruposDeAlumnos(curso.id)]); pintar(); }
+  async function anadirGrupo(a, grupoId) {
+    try {
+      const g = grupos.find((x) => x.id === grupoId); const previo = g?.miembros.find((m) => m.alumno_id === a.id);
+      if (previo) await api.upd('ac_alumno_grupo', previo.id, { fecha_baja: null }); else await api.ins('ac_alumno_grupo', { alumno_id: a.id, grupo_id: grupoId });
+      toast('Añadido al grupo'); await recargarGrupos();
+    } catch (ex) { toast(ex.message, 'error'); }
+  }
+  async function quitarGrupo(a, g) {
+    try { const m = g.miembros.find((x) => x.alumno_id === a.id && !x.fecha_baja); await api.upd('ac_alumno_grupo', m.id, { fecha_baja: hoyISO() }); toast('Quitado del grupo'); await recargarGrupos(); } catch (ex) { toast(ex.message, 'error'); }
+  }
+
+  // celdas editables
+  const inp = (a, campo, extra = {}) => { const e = h('input', { type: 'text', value: a[campo] ?? '', class: 'ac-celda', ...extra }); e.addEventListener('change', () => guardarCampo(a, campo, e.value)); return e; };
+  const selc = (a, campo, ops, vacio = '—') => { const e = sel(ops, a[campo], { ...(vacio === false ? {} : { vacio }), class: 'ac-celda' }); e.addEventListener('change', () => guardarCampo(a, campo, e.value)); return e; };
+  const celdaGrupos = (a) => {
+    const mios = gruposAl.get(a.id) || [];
+    if (!f.editar) return mios.map((g) => g.nombre).join(', ');
+    const libres = grupos.filter((g) => !mios.includes(g)).sort((x, y) => x.nombre.localeCompare(y.nombre, 'es', { numeric: true }));
+    const s = sel([['', '+ grupo']], '', { class: 'ac-celda ac-celda-grupo', 'aria-label': 'Añadir a un grupo' });
+    for (const g of libres) s.append(h('option', { value: g.id }, `${g.nombre}${resumenSesiones(g) ? ' · ' + resumenSesiones(g) : ''}`));
+    s.addEventListener('change', () => { if (s.value) anadirGrupo(a, s.value); });
+    return h('div', { class: 'ac-grupos-edit' }, mios.map((g) => h('span', { class: 'ac-chip' }, g.nombre, h('button', { type: 'button', class: 'ac-chip-x', title: `Quitar de ${g.nombre}`, 'aria-label': `Quitar de ${g.nombre}`, onclick: () => quitarGrupo(a, g) }, '×'))), s);
+  };
+  const celdaFamilia = (a) => {
+    const rel = fam.de(a.id); if (!rel.length) return '';
+    const r = fam.resumen(a.id, descPor);
+    const clase = r.aplicado === false ? 'aviso' : r.aplicado === true ? 'ok' : '';
+    const lista = rel.map((x) => `${nombreAlumno(x.alumno)}${esActivo(x.alumno) ? '' : ' (' + x.alumno.estado + ')'} — ${x.motivos.join(', ')}`).join('\n');
+    const msg = r.activos >= 2 && r.aplicado === false ? '\n⚠ Hay hermanos inscritos y ninguno tiene el descuento de hermanos.' : '';
+    return h('span', { class: `ac-fam ${clase}`, title: lista + msg }, `👪 ${rel.length}`, r.aplicado === false ? ' ⚠' : '');
+  };
+  const celdaComentario = (a) => {
+    if (f.editar) { const e = inp(a, 'info', { placeholder: 'Comentario' }); e.classList.add('ac-celda-coment'); return e; }
+    return h('button', { type: 'button', class: 'ac-coment' + (a.info ? ' tiene' : ''), title: a.info || 'Sin comentarios', 'aria-label': a.info ? `Comentario: ${a.info}` : 'Sin comentarios', onclick: (e) => { e.stopPropagation(); abrirFicha(a, ctx, recargar); } }, '💬');
+  };
+
   function pintar() {
     const q = normalizar(f.q);
     const filas = alumnos.filter((a) => {
       if (f.estado && a.estado !== f.estado) return false;
       if (f.modalidad && a.modalidad !== f.modalidad) return false;
       if (f.grupo && !(gruposAl.get(a.id) || []).some((g) => g.nombre === f.grupo)) return false;
-      if (q && !normalizar(`${a.apellidos} ${a.nombre} ${a.num || ''} ${a.responsable?.apellidos || ''} ${a.responsable?.nombre || ''} ${a.responsable?.telefono || ''}`).includes(q)) return false;
+      if (f.hermanos) {
+        const r = fam.resumen(a.id, descPor);
+        if (r.activos < 2 || !esActivo(a)) return false;
+        if (f.hermanos === 'sin' && r.aplicado !== false) return false;
+      }
+      if (q && !normalizar(`${a.apellidos} ${a.nombre} ${a.num || ''} ${a.colegio || ''} ${a.responsable?.apellidos || ''} ${a.responsable?.nombre || ''} ${a.responsable?.telefono || ''}`).includes(q)) return false;
       return true;
     });
     contador.textContent = `${filas.length} de ${alumnos.length} alumnos`;
-    clear(contenedor, tabla([
+    const e = f.editar;
+    const cols = [
       { t: 'Nº', v: (a) => a.num ?? '' },
-      { t: 'Alumno', v: (a) => h('strong', {}, nombreAlumno(a)) },
+      { t: 'Alumno', s: (a) => nombreAlumno(a), v: (a) => (e ? h('div', { class: 'ac-nombre-edit' }, inp(a, 'apellidos', { placeholder: 'Apellidos', required: true }), inp(a, 'nombre', { placeholder: 'Nombre', required: true }), h('button', { type: 'button', class: 'btn small ghost', title: 'Abrir ficha', 'aria-label': 'Abrir ficha', onclick: () => abrirFicha(a, ctx, recargar) }, '↗')) : h('strong', {}, nombreAlumno(a))) },
+      { t: 'Familia', s: (a) => (fam.de(a.id).length ? `hermanos ${fam.resumen(a.id, descPor).aplicado === false ? 'sin descuento' : ''}` : ''), v: celdaFamilia },
       { t: 'Edad', v: (a) => edad(a.fecha_nacimiento) },
+      { t: 'Colegio', s: (a) => a.colegio || '', v: (a) => (e ? inp(a, 'colegio', { list: 'dl-colegio-lista' }) : a.colegio || '') },
       { t: 'Responsable', v: (a) => (a.responsable ? `${a.responsable.nombre} ${a.responsable.apellidos}`.trim() : '') },
       { t: 'Teléfono', v: (a) => a.responsable?.telefono || '' },
-      { t: 'Modalidad · nivel', v: (a) => [a.modalidad, a.nivel].filter(Boolean).join(' · ') },
-      { t: 'Grupos', v: (a) => (gruposAl.get(a.id) || []).map((g) => g.nombre).join(', ') },
-      ...(ctx.ve('ac_pagos') ? [{ t: 'Cuota', num: true, v: (a) => (inscPor.get(a.id)?.cuota_mensual ? fmtEUR2(inscPor.get(a.id).cuota_mensual) : '') }] : []),
-      { t: 'Estado', v: (a) => pillEstado(a.estado) },
-    ], filas.slice(0, 3000), { onClick: (a) => abrirFicha(a, ctx, recargar), vacio: alumnos.length ? 'Ningún alumno coincide con el filtro.' : 'Todavía no hay alumnos. Usa «Importar del Excel» o «Nuevo alumno».' }));
-    if (filas.length > 400) contenedor.append(h('div', { class: 'small muted', style: 'padding:6px' }, `Mostrando 400 de ${filas.length}: afina el filtro.`));
+      { t: 'Modalidad · nivel', s: (a) => [a.modalidad, a.nivel].filter(Boolean).join(' · '), v: (a) => (e ? h('div', { class: 'ac-nombre-edit' }, selc(a, 'modalidad', ls.modalidad || []), inp(a, 'nivel', { list: 'dl-nivel-lista', placeholder: 'Nivel' })) : [a.modalidad, a.nivel].filter(Boolean).join(' · ')) },
+      { t: 'Grupos', s: (a) => (gruposAl.get(a.id) || []).map((g) => g.nombre).join(', '), v: celdaGrupos },
+      { t: 'Alergias', s: (a) => a.intolerancias || '', v: (a) => (e ? inp(a, 'intolerancias', { placeholder: 'Alergias / intolerancias' }) : a.intolerancias ? h('span', { class: 'ac-alergia', title: a.intolerancias }, '⚠ ' + a.intolerancias) : '') },
+      { t: 'RRSS', s: (a) => (a.autoriza_rrss ? 'Sí' : 'No'), v: (a) => { if (!e) return pill(a.autoriza_rrss ? 'Sí' : 'No', a.autoriza_rrss ? 'ok' : 'off'); const c = h('input', { type: 'checkbox', checked: !!a.autoriza_rrss, 'aria-label': 'Autoriza redes sociales' }); c.addEventListener('change', () => guardarCampo(a, 'autoriza_rrss', c.checked)); return c; } },
+      ...(verPagos ? [{ t: 'Pago', s: (a) => a.metodo_pago || '', v: (a) => (e && editaPagos ? selc(a, 'metodo_pago', ls.metodo_pago || []) : a.metodo_pago || '') }] : []),
+      ...(verPagos ? [{ t: 'Descuento', s: (a) => inscPor.get(a.id)?.descuento || '', v: (a) => { if (!(e && editaPagos)) return inscPor.get(a.id)?.descuento || ''; const c = sel(ls.descuento || [], inscPor.get(a.id)?.descuento, { vacio: '—', class: 'ac-celda' }); c.addEventListener('change', () => guardarInscripcion(a, { descuento: c.value || null })); return c; } }] : []),
+      ...(verPagos ? [{ t: 'Cuota', num: true, v: (a) => (inscPor.get(a.id)?.cuota_mensual ? fmtEUR2(inscPor.get(a.id).cuota_mensual) : '') }] : []),
+      { t: 'Estado', s: (a) => (ESTADOS.find((x) => x[0] === a.estado) || [0, a.estado])[1], v: (a) => (e ? selc(a, 'estado', ESTADOS, false) : pillEstado(a.estado)) },
+      { t: '💬', s: (a) => (a.info ? 'con comentario' : ''), v: celdaComentario },
+    ];
+    clear(contenedor, tabla(cols, filas.slice(0, 3000), { onClick: e ? null : (a) => abrirFicha(a, ctx, recargar), clase: e ? 'ac-editando' : '', vacio: alumnos.length ? 'Ningún alumno coincide con el filtro.' : 'Todavía no hay alumnos. Usa «Importar del Excel» o «Nuevo alumno».' }));
   }
-  const recargar = () => { api.invalidar(); refrescar(); };
-  const buscar = h('input', { type: 'search', placeholder: 'Buscar por alumno, responsable, teléfono o nº…', 'aria-label': 'Buscar', oninput: (e) => { f.q = e.target.value; pintar(); } });
+  const buscar = h('input', { type: 'search', placeholder: 'Buscar por alumno, colegio, responsable, teléfono o nº…', 'aria-label': 'Buscar', oninput: (ev) => { f.q = ev.target.value; pintar(); } });
+  const hayHermanos = alumnos.some((a) => esActivo(a) && fam.resumen(a.id, descPor).activos >= 2);
+  const btnEditar = editaAl ? h('button', { class: 'btn small', type: 'button', 'aria-pressed': 'false', title: 'Cambiar los datos directamente en la tabla', onclick: (ev) => { f.editar = !f.editar; ev.currentTarget.setAttribute('aria-pressed', String(f.editar)); ev.currentTarget.classList.toggle('primary', f.editar); ev.currentTarget.textContent = f.editar ? '✓ Terminar edición' : '✎ Editar en tabla'; pintar(); } }, '✎ Editar en tabla') : null;
   clear(view,
-    cabecera('Alumnos', null, ctx.edita('ac_alumnos') ? h('a', { class: 'btn small', href: '#/ac_importar' }, 'Importar del Excel') : null, ctx.edita('ac_alumnos') ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrirFicha(null, ctx, recargar) }, '+ Nuevo alumno') : null),
+    cabecera('Alumnos', null, btnEditar, editaAl ? h('button', { class: 'btn small', type: 'button', onclick: () => abrirEscaneo((pre) => abrirFicha(null, ctx, recargar, pre)) }, '📷 Desde foto') : null, editaAl ? h('a', { class: 'btn small', href: '#/ac_importar' }, 'Importar del Excel') : null, editaAl ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrirFicha(null, ctx, recargar) }, '+ Nuevo alumno') : null),
     contador,
-    h('div', { class: 'filters filters-4' },
+    h('div', { class: 'filters filters-5' },
       buscar,
-      sel([['', 'Todos los estados'], ...ESTADOS], f.estado, { onchange: (e) => { f.estado = e.target.value; pintar(); }, 'aria-label': 'Estado' }),
-      sel([['', 'Todas las modalidades'], ...(ls.modalidad || []).map((m) => [m, m])], '', { onchange: (e) => { f.modalidad = e.target.value; pintar(); }, 'aria-label': 'Modalidad' }),
-      sel([['', 'Todos los grupos'], ...todosGrupos.map((g) => [g, g])], '', { onchange: (e) => { f.grupo = e.target.value; pintar(); }, 'aria-label': 'Grupo' })),
-    contenedor);
+      sel([['', 'Todos los estados'], ...ESTADOS], f.estado, { onchange: (ev) => { f.estado = ev.target.value; pintar(); }, 'aria-label': 'Estado' }),
+      sel([['', 'Todas las modalidades'], ...(ls.modalidad || []).map((m) => [m, m])], '', { onchange: (ev) => { f.modalidad = ev.target.value; pintar(); }, 'aria-label': 'Modalidad' }),
+      sel([['', 'Todos los grupos'], ...todosGrupos.map((g) => [g, g])], '', { onchange: (ev) => { f.grupo = ev.target.value; pintar(); }, 'aria-label': 'Grupo' }),
+      sel([['', 'Todas las familias'], ['con', 'Con hermanos inscritos'], ...(verPagos ? [['sin', 'Hermanos sin descuento']] : [])], '', { onchange: (ev) => { f.hermanos = ev.target.value; pintar(); }, 'aria-label': 'Hermanos' })),
+    colegios, niveles, contenedor);
   pintar();
 }
 
 // ---------- ficha del alumno ----------
-export async function abrirFicha(alumno, ctx, onCambio) {
+export async function abrirFicha(alumno, ctx, onCambio, prefill = null) {
   const curso = ctx.cursoActual();
   const nuevo = !alumno;
-  const [ls, profes, grupos, insc] = await Promise.all([api.listas(), api.profesoras(), api.grupos(curso.id), api.inscripciones(curso.id)]);
-  const a = alumno || { estado: 'inscrito', fecha_entrada: hoyISO(), autoriza_rrss: false };
+  const [ls, profes, grupos, insc, vinc, todos] = await Promise.all([api.listas(), api.profesoras(), api.grupos(curso.id), api.inscripciones(curso.id), api.vinculos().catch(() => []), api.alumnos()]);
+  const a = alumno || { estado: 'inscrito', fecha_entrada: hoyISO(), autoriza_rrss: false, ...(prefill?.alumno || {}) };
   const miInsc = alumno ? insc.find((i) => i.alumno_id === alumno.id) : null;
-  const r = a.responsable || {};
-  let priv = null;
+  const r = a.responsable || prefill?.responsable || {};
+  let priv = prefill && (prefill.dni || prefill.iban) ? { dni: prefill.dni, iban: prefill.iban } : null;
   const verPagos = ctx.ve('ac_pagos'); const editaPagos = ctx.edita('ac_pagos'); const editaAl = ctx.edita('ac_alumnos');
   if (alumno?.responsable_id && verPagos) priv = (await api.privados([alumno.responsable_id]))[0] || null;
+  const fam = calcularFamilias(todos, vinc);
   const d = drawer({ titulo: nuevo ? 'Nuevo alumno' : nombreAlumno(a), ancho: 760 });
   const cambio = () => { api.invalidar(); onCambio?.(); };
 
@@ -90,7 +166,7 @@ export async function abrirFicha(alumno, ctx, onCambio) {
     campo('Estado', F.estado), campo('Fecha de entrada', F.entrada),
     campo('Modalidad', F.modalidad), campo('Nivel', F.nivel),
     campo('Cómo nos conoció', F.conocio), campo('Código postal', F.cp),
-    campo('Intolerancias / alergias', F.intol, { full: true }), campo('Información', F.info, { full: true }),
+    campo('Alergias / intolerancias', F.intol, { full: true }), campo('Información / comentarios', F.info, { full: true }),
     h('label', { class: 'check full' }, F.rrss, ' Autoriza imágenes en redes sociales'), colegios, conocios);
   const secResp = h('div', { class: 'form-section' }, h('h3', {}, 'Responsable (padre / madre / tutor)'),
     campo('Apellidos', F.rApe), campo('Nombre', F.rNom), campo('Email', F.rMail), campo('Teléfono', F.rTel),
@@ -117,6 +193,10 @@ export async function abrirFicha(alumno, ctx, onCambio) {
         metodo_pago: F.metodo.value || null, como_nos_conocio: F.conocio.value.trim() || null, intolerancias: F.intol.value.trim() || null,
         info: F.info.value.trim() || null, codigo_postal: F.cp.value.trim() || null, autoriza_rrss: F.rrss.checked, responsable_id: respId,
       };
+      if (!alumno) {
+        const dup = todos.find((x) => normalizar(`${x.apellidos} ${x.nombre}`) === normalizar(`${fila.apellidos} ${fila.nombre}`) && (x.fecha_nacimiento || '') === (fila.fecha_nacimiento || ''));
+        if (dup && !(await confirmar({ titulo: 'Posible alumno repetido', texto: `Ya existe ${nombreAlumno(dup)} con la misma fecha de nacimiento. ¿Crear otro igualmente?`, ok: 'Crear igualmente' }))) return false;
+      }
       const guardado = alumno ? await api.upd('ac_alumnos', alumno.id, fila) : await api.ins('ac_alumnos', fila);
       const cuota = Number(F.cuota.value || 0), wp = Number(F.wp.value || 0);
       if (editaPagos && (miInsc || cuota || wp)) {
@@ -129,12 +209,42 @@ export async function abrirFicha(alumno, ctx, onCambio) {
     } catch (ex) { toast('No se ha guardado: ' + ex.message, 'error'); return false; }
   }
 
-  d.cuerpo.append(...[secDatos, secResp, secInsc].filter(Boolean));
+  const bannerLectura = prefill ? h('div', { class: 'banner' }, h('strong', {}, 'Datos leídos de la foto: revísalos antes de crear el alumno. '), prefill.dudas?.length ? `Dudas: ${prefill.dudas.join('; ')}.` : 'La lectura no ha marcado dudas, pero comprueba nombres, fechas, teléfono y alergias.',
+    !verPagos && (prefill.dni || prefill.iban) ? ' (DNI e IBAN no se muestran con tu rol y no se guardarán.)' : '') : null;
+  d.cuerpo.append(...[bannerLectura, secDatos, secResp, secInsc].filter(Boolean));
   if (!nuevo) {
     const sec = (t, ...c) => h('div', { class: 'form-section ac-sec-completa' }, h('h3', {}, t), h('div', { class: 'full' }, ...c));
-    const cont = { grupos: h('div'), cuotas: h('div'), notas: h('div'), tut: h('div'), baja: h('div') };
-    d.cuerpo.append(...[sec('Baja', cont.baja), sec('Grupos del curso', cont.grupos), verPagos ? sec('Cuotas del curso', cont.cuotas) : null, sec('Anotaciones de seguimiento', cont.notas), sec('Tutorías', cont.tut)].filter(Boolean));
-    pintarBajas(cont.baja); pintarGrupos(cont.grupos); if (verPagos) pintarCuotas(cont.cuotas); pintarNotas(cont.notas); pintarTutorias(cont.tut);
+    const cont = { grupos: h('div'), cuotas: h('div'), notas: h('div'), tut: h('div'), baja: h('div'), fam: h('div') };
+    d.cuerpo.append(...[sec('Familia (hermanos y familiares)', cont.fam), sec('Baja', cont.baja), sec('Grupos del curso', cont.grupos), verPagos ? sec('Cuotas del curso', cont.cuotas) : null, sec('Anotaciones de seguimiento', cont.notas), sec('Tutorías', cont.tut)].filter(Boolean));
+    pintarFamilia(cont.fam); pintarBajas(cont.baja); pintarGrupos(cont.grupos); if (verPagos) pintarCuotas(cont.cuotas); pintarNotas(cont.notas); pintarTutorias(cont.tut);
+  }
+
+  function pintarFamilia(el) {
+    const rel = fam.de(alumno.id);
+    const descPor = verPagos ? new Map(insc.map((i) => [i.alumno_id, i.descuento])) : null;
+    const r = fam.resumen(alumno.id, descPor);
+    const refrescarFicha = async () => { api.invalidar(); onCambio?.(); d.cerrar(); abrirFicha((await api.alumnos()).find((x) => x.id === alumno.id), ctx, onCambio); };
+    const aviso = r.activos >= 2 && r.aplicado === false
+      ? h('div', { class: 'banner warn' }, h('strong', {}, 'Hay hermanos inscritos y ninguno tiene el descuento de hermanos. '),
+        editaPagos ? h('button', { class: 'btn small', type: 'button', onclick: async () => {
+          try {
+            const i = miInsc; if (i) await api.upd('ac_inscripciones', i.id, { descuento: (ls.descuento || []).find(esDescHermanos) || 'Hermanos' });
+            else await api.ins('ac_inscripciones', { alumno_id: alumno.id, curso_id: curso.id, descuento: (ls.descuento || []).find(esDescHermanos) || 'Hermanos' });
+            toast('Descuento de hermanos aplicado a este alumno'); await refrescarFicha();
+          } catch (ex) { toast(ex.message, 'error'); }
+        } }, 'Aplicar «Hermanos» a este alumno') : null)
+      : r.activos >= 2 && r.aplicado === true ? h('div', { class: 'small muted' }, 'El descuento de hermanos ya está aplicado en esta familia.') : null;
+    const buscador = buscadorAlumno(todos.filter((x) => x.id !== alumno.id), { placeholder: 'Vincular a otro alumno (apellido o nombre)…' });
+    const tipo = sel([['hermano', 'Hermano/a'], ['primo', 'Primo/a'], ['familiar', 'Otro familiar']], 'hermano');
+    const vincular = guardarBoton('Vincular', async () => {
+      const o = buscador.getAlumno(); if (!o) { toast('Elige un alumno de la lista.', 'error'); return; }
+      try { await api.ins('ac_vinculos', { alumno_id: alumno.id, otro_id: o.id, tipo: tipo.value }); toast('Vinculado'); await refrescarFicha(); } catch (ex) { toast(ex.message, 'error'); }
+    });
+    clear(el, aviso, rel.length ? rel.map((x) => h('div', { class: 'ac-fila' }, h('strong', {}, nombreAlumno(x.alumno)), pillEstado(x.alumno.estado),
+      verPagos ? (esDescHermanos(descPor.get(x.alumno.id)) ? pill('Dto. hermanos', 'ok') : null) : null, h('span', { class: 'muted small' }, x.motivos.join(' · ')),
+      x.vid && editaAl ? h('button', { class: 'btn small ghost', type: 'button', onclick: async () => { try { await api.del('ac_vinculos', x.vid); toast('Vínculo quitado'); await refrescarFicha(); } catch (ex) { toast(ex.message, 'error'); } } }, 'Quitar vínculo') : null))
+      : h('div', { class: 'muted small' }, 'Sin hermanos ni familiares detectados (mismo responsable o mismos apellidos).'),
+    editaAl ? h('div', { class: 'ac-fila' }, buscador, tipo, vincular) : null);
   }
 
   function pintarGrupos(el) {

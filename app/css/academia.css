@@ -1,5 +1,6 @@
 /* Módulo Academia: solo estilos propios (el resto viene de app.css). Todos los selectores empiezan por .ac- o cuelgan de él. */
 .filters.filters-4 { grid-template-columns: 2fr 1fr 1fr 1fr; }
+.filters.filters-5 { grid-template-columns: 2fr 1fr 1fr 1fr 1fr; }
 .ac-tabla td { vertical-align: middle; }
 .ac-fila { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 3px 0; }
 .ac-fila > .muted { flex: 1; }
@@ -339,3 +340,21 @@ td.ac-pcelda.drop, .ac-cal-ses.arrastrando { background: color-mix(in oklab, var
 .ac-mov { display: flex; gap: 2px; margin-top: 2px; }
 .ac-mov .ac-x { padding: 0 4px; font-size: 11px; }
 .ac-reg { white-space: nowrap; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+/* Alumnos: edición en tabla, familia, alergias y comentarios */
+.ac-celda { width: 100%; min-width: 70px; font: inherit; font-size: 12px; padding: 2px 4px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); }
+.ac-celda-coment { min-width: 140px; }
+.ac-nombre-edit { display: flex; gap: 3px; align-items: center; }
+.ac-nombre-edit .ac-celda { min-width: 90px; }
+.ac-grupos-edit { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
+.ac-celda-grupo { width: auto; min-width: 84px; }
+.ac-chip { display: inline-flex; align-items: center; gap: 2px; padding: 0 3px 0 6px; border-radius: 10px; background: var(--surface-alt, #eef0f3); font-size: 11.5px; white-space: nowrap; }
+.ac-chip-x { border: 0; background: none; cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; color: var(--text-secondary); }
+.ac-chip-x:hover { color: #c0392b; }
+.ac-fam { white-space: nowrap; font-size: 12px; cursor: help; }
+.ac-fam.ok { color: #2e7d4f; }
+.ac-fam.aviso { color: #b26a00; font-weight: 600; }
+.ac-alergia { color: #b3261e; font-weight: 600; font-size: 12px; }
+.ac-coment { border: 0; background: none; cursor: pointer; font-size: 14px; opacity: .25; filter: grayscale(1); padding: 0 2px; }
+.ac-coment.tiene { opacity: 1; filter: none; }
+.ac-tabla.ac-editando td { padding-top: 2px; padding-bottom: 2px; }
+.banner.warn { border-color: #b26a00; }

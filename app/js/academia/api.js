@@ -35,6 +35,7 @@ export const listas = () => memo('listas', async () => {
   return o;
 });
 export const alumnos = () => memo('alumnos', () => all('ac_alumnos', '*, responsable:ac_responsables(id,apellidos,nombre,email,telefono)'));
+export const vinculos = () => memo('vinculos', () => all('ac_vinculos'));
 export const profesoras = () => memo('profesoras', () => all('ac_profesoras').then((l) => l.sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre))));
 export const aulas = () => memo('aulas', () => all('ac_aulas').then((l) => l.sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre))));
 export const grupos = (curso) => memo('grupos' + curso, () => all('ac_grupos', '*, sesiones:ac_sesiones(*), miembros:ac_alumno_grupo(id,alumno_id,fecha_alta,fecha_baja)', (q) => q.eq('curso_id', curso)));
@@ -91,3 +92,12 @@ export async function updMany(tabla, ids, parche, lote = 100) {
   invalidar();
 }
 export const responsables = () => memo('responsables', () => all('ac_responsables'));
+
+// lee una foto o PDF de una ficha de inscripción (función del servidor «escanear-ficha»); no guarda nada
+export async function escanearFicha(imagen, tipo) {
+  const { data, error } = await supabase.functions.invoke('escanear-ficha', { body: { imagen, tipo } });
+  let det = data;
+  if (error) { try { det = await error.context.json(); } catch { det = { error: error.message }; } }
+  if (!det || det.error) { const e = new Error(det?.error === 'sin_clave' ? 'La lectura de fichas aún no está activada (falta la clave del servicio).' : det?.error || 'No se ha podido leer la ficha'); e.sinClave = det?.error === 'sin_clave'; throw e; }
+  return det.datos;
+}
