@@ -1,7 +1,8 @@
 // Alumnos: listado con filtros y ficha (datos, inscripción del curso, grupos, cuotas, anotaciones y tutorías).
 import { h, clear, cargando, toast, confirmar, fmtFecha, fmtEUR2, hoyISO, normalizar, MESES, capitalizar } from '../ui.js';
 import * as api from './api.js';
-import { campo, txt, area, fecha, numero, sel, drawer, cabecera, tabla, pill, edad, nombreAlumno, hhmm, DIAS_CORTO, guardarBoton, buscadorAlumno, refrescar } from './kit.js';
+import { avisosAlumnoGrupo, confirmarAvisos } from './avisos.js';
+import { campo, txt, area, fecha, numero, sel, drawer, cabecera, tabla, pill, edad, nombreAlumno, pillNivel, hhmm, DIAS_CORTO, guardarBoton, buscadorAlumno, refrescar } from './kit.js';
 
 import { calcularFamilias, esActivo, esDescHermanos } from './familias.js';
 import { abrirEscaneo } from './escanear.js';
@@ -103,7 +104,7 @@ export async function renderAlumnos(view, ctx) {
       { t: 'Colegio', s: (a) => a.colegio || '', v: (a) => (e ? inp(a, 'colegio', { list: 'dl-colegio-lista' }) : a.colegio || '') },
       { t: 'Responsable', v: (a) => (a.responsable ? `${a.responsable.nombre} ${a.responsable.apellidos}`.trim() : '') },
       { t: 'Teléfono', v: (a) => a.responsable?.telefono || '' },
-      { t: 'Modalidad · nivel', s: (a) => [a.modalidad, a.nivel].filter(Boolean).join(' · '), v: (a) => (e ? h('div', { class: 'ac-nombre-edit' }, selc(a, 'modalidad', ls.modalidad || []), inp(a, 'nivel', { list: 'dl-nivel-lista', placeholder: 'Nivel' })) : [a.modalidad, a.nivel].filter(Boolean).join(' · ')) },
+      { t: 'Modalidad · nivel', s: (a) => [a.modalidad, a.nivel].filter(Boolean).join(' · '), v: (a) => (e ? h('div', { class: 'ac-nombre-edit' }, selc(a, 'modalidad', ls.modalidad || []), inp(a, 'nivel', { list: 'dl-nivel-lista', placeholder: 'Nivel' })) : h('span', {}, a.modalidad || '', a.modalidad && a.nivel ? ' · ' : '', pillNivel(a.nivel))) },
       { t: 'Grupos', s: (a) => (gruposAl.get(a.id) || []).map((g) => g.nombre).join(', '), v: celdaGrupos },
       { t: 'Alergias', s: (a) => a.intolerancias || '', v: (a) => (e ? inp(a, 'intolerancias', { placeholder: 'Alergias / intolerancias' }) : a.intolerancias ? h('span', { class: 'ac-alergia', title: a.intolerancias }, '⚠ ' + a.intolerancias) : '') },
       { t: 'RRSS', s: (a) => (a.autoriza_rrss ? 'Sí' : 'No'), v: (a) => { if (!e) return pill(a.autoriza_rrss ? 'Sí' : 'No', a.autoriza_rrss ? 'ok' : 'off'); const c = h('input', { type: 'checkbox', checked: !!a.autoriza_rrss, 'aria-label': 'Autoriza redes sociales' }); c.addEventListener('change', () => guardarCampo(a, 'autoriza_rrss', c.checked)); return c; } },
@@ -119,7 +120,7 @@ export async function renderAlumnos(view, ctx) {
   const hayHermanos = alumnos.some((a) => esActivo(a) && fam.resumen(a.id, descPor).activos >= 2);
   const btnEditar = editaAl ? h('button', { class: 'btn small', type: 'button', 'aria-pressed': 'false', title: 'Cambiar los datos directamente en la tabla', onclick: (ev) => { f.editar = !f.editar; ev.currentTarget.setAttribute('aria-pressed', String(f.editar)); ev.currentTarget.classList.toggle('primary', f.editar); ev.currentTarget.textContent = f.editar ? '✓ Terminar edición' : '✎ Editar en tabla'; pintar(); } }, '✎ Editar en tabla') : null;
   clear(view,
-    cabecera('Alumnos', null, btnEditar, editaAl ? h('button', { class: 'btn small', type: 'button', onclick: () => abrirEscaneo((pre) => abrirFicha(null, ctx, recargar, pre)) }, '📷 Desde foto') : null, editaAl ? h('a', { class: 'btn small', href: '#/ac_importar' }, 'Importar del Excel') : null, editaAl ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrirFicha(null, ctx, recargar) }, '+ Nuevo alumno') : null),
+    cabecera('Alumnos', null, btnEditar, editaAl ? h('button', { class: 'btn small', type: 'button', onclick: () => abrirEscaneo((pre) => abrirFicha(null, ctx, recargar, pre)) }, '📷 Desde foto') : null, editaAl ? h('a', { class: 'btn small', href: '#/ac_cambio_curso' }, 'Cambio de curso') : null, editaAl ? h('a', { class: 'btn small', href: '#/ac_importar' }, 'Importar del Excel') : null, editaAl ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrirFicha(null, ctx, recargar) }, '+ Nuevo alumno') : null),
     contador,
     h('div', { class: 'filters filters-5' },
       buscar,
@@ -135,7 +136,7 @@ export async function renderAlumnos(view, ctx) {
 export async function abrirFicha(alumno, ctx, onCambio, prefill = null) {
   const curso = ctx.cursoActual();
   const nuevo = !alumno;
-  const [ls, profes, grupos, insc, vinc, todos] = await Promise.all([api.listas(), api.profesoras(), api.grupos(curso.id), api.inscripciones(curso.id), api.vinculos().catch(() => []), api.alumnos()]);
+  const [ls, profes, grupos, insc, vinc, todos, tarifas] = await Promise.all([api.listas(), api.profesoras(), api.grupos(curso.id), api.inscripciones(curso.id), api.vinculos().catch(() => []), api.alumnos(), api.cuotasTarifa().catch(() => [])]);
   const a = alumno || { estado: 'inscrito', fecha_entrada: hoyISO(), autoriza_rrss: false, ...(prefill?.alumno || {}) };
   const miInsc = alumno ? insc.find((i) => i.alumno_id === alumno.id) : null;
   const r = a.responsable || prefill?.responsable || {};
@@ -157,6 +158,11 @@ export async function abrirFicha(alumno, ctx, onCambio, prefill = null) {
     rDni: txt(priv?.dni, { disabled: !editaPagos }), rIban: txt(priv?.iban, { disabled: !editaPagos }),
     cuota: numero(miInsc?.cuota_mensual ?? ''), wp: numero(miInsc?.welcome_pack ?? ''), desc: sel(ls.descuento || [], miInsc?.descuento, { vacio: 'Sin descuento' }),
   };
+  // al elegir la modalidad se propone la cuota configurada (solo si la cuota está vacía)
+  F.modalidad.addEventListener('change', () => {
+    const t = tarifas.find((x) => x.activa && x.modalidad && x.modalidad === F.modalidad.value);
+    if (t && !Number(F.cuota.value)) { F.cuota.value = t.cuota_mensual; if (!Number(F.wp.value)) F.wp.value = t.welcome_pack || ''; toast(`Cuota propuesta: ${t.nombre}`); }
+  });
   const colegios = h('datalist', { id: 'dl-colegio' }, [...new Set((await api.alumnos()).map((x) => x.colegio).filter(Boolean))].sort().map((c) => h('option', { value: c })));
   const conocios = h('datalist', { id: 'dl-conocio' }, (ls.como_conocio || []).map((c) => h('option', { value: c })));
 
@@ -253,6 +259,8 @@ export async function abrirFicha(alumno, ctx, onCambio, prefill = null) {
     const s = sel([['', 'Añadir a un grupo…'], ...libres.map((g) => [g.id, `${g.nombre}${resumenSesiones(g) ? ' · ' + resumenSesiones(g) : ''}`])], '');
     s.addEventListener('change', async () => {
       if (!s.value) return;
+      const elegido = grupos.find((g) => g.id === s.value);
+      if (elegido && !await confirmarAvisos(avisosAlumnoGrupo(alumno, elegido, grupos))) { s.value = ''; return; }
       try { await api.ins('ac_alumno_grupo', { alumno_id: alumno.id, grupo_id: s.value }); toast('Añadido al grupo'); cambio(); d.cerrar(); abrirFicha((await api.alumnos()).find((x) => x.id === alumno.id), ctx, onCambio); } catch (ex) { toast(ex.message, 'error'); }
     });
     clear(el, mios.length ? mios.map((g) => h('div', { class: 'ac-fila' }, h('strong', {}, g.nombre), h('span', { class: 'muted small' }, ` ${[g.nivel, resumenSesiones(g)].filter(Boolean).join(' · ')}`),

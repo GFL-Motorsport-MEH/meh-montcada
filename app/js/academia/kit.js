@@ -10,6 +10,19 @@ export function colorGrupo(g) {
   const t = `${g.modalidad || ''} ${g.nombre || ''}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   return (COLORES_MODALIDAD.find(([k]) => t.includes(k)) || [0, '#8c8a81'])[1];
 }
+// niveles de la academia: L1 amarillo · L2 azul · L3 rojo claro · L4 verde · L5 negro (el texto puede ser «Level 3», «L3», «3»…)
+export const COLORES_NIVEL = { 1: ['#f2c94c', '#3b3000'], 2: ['#3b82f6', '#fff'], 3: ['#f28b82', '#4a0d08'], 4: ['#43a85b', '#fff'], 5: ['#1d1d1f', '#fff'] };
+export function nivelNum(n) {
+  const m = /^\s*(?:level|nivel|l)?\s*([1-5])\s*$/i.exec(String(n ?? ''));
+  return m ? Number(m[1]) : null;
+}
+export const colorNivel = (n) => (COLORES_NIVEL[nivelNum(n)] || [])[0] || null;
+export function pillNivel(n) {
+  const k = nivelNum(n);
+  if (!k) return n ? h('span', { class: 'muted' }, String(n)) : '';
+  const [bg, fg] = COLORES_NIVEL[k];
+  return h('span', { class: 'ac-nivel', style: `background:${bg};color:${fg}`, title: `Nivel ${k}` }, `L${k}`);
+}
 export const nombreAlumno = (a) => (a ? `${a.apellidos}, ${a.nombre}` : '—');
 export const hhmm = (t) => (t || '').slice(0, 5);
 

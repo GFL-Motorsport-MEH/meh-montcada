@@ -32,6 +32,9 @@ export const invalidar = () => cache.clear();
 export const listas = () => memo('listas', async () => {
   const o = {};
   for (const x of (await all('ac_listas')).sort((a, b) => a.orden - b.orden)) (o[x.lista] ||= []).push(x.valor);
+  // los descuentos se configuran en Configuración > Cuotas y descuentos: si hay, esos nombres sustituyen a los de la lista
+  const d = await all('ac_descuentos').catch(() => []);
+  if (d.length) o.descuento = d.filter((x) => x.activo).sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre)).map((x) => x.nombre);
   return o;
 });
 export const alumnos = () => memo('alumnos', () => all('ac_alumnos', '*, responsable:ac_responsables(id,apellidos,nombre,email,telefono)'));
@@ -45,7 +48,7 @@ export const gruposDeAlumnos = (curso) => memo('ag' + curso, async () => {
   for (const g of gs) for (const x of g.miembros) if (!x.fecha_baja) (m.get(x.alumno_id) || m.set(x.alumno_id, []).get(x.alumno_id)).push(g);
   return m;
 });
-export const calendarioDias = (curso) => memo('cal' + curso, () => all('ac_calendario_dias', '*', (q) => q.eq('curso_id', curso)));
+export const calendarioDias = (curso) => memo('cal' + curso, () => all('ac_calendario_marcas', '*', (q) => q.eq('curso_id', curso)));
 export const inscripciones = (curso) => memo('ins' + curso, () => all('ac_inscripciones', '*', (q) => q.eq('curso_id', curso)));
 export const cuotas = (curso) => memo('cuo' + curso, () => all('ac_cuotas', '*', (q) => q.eq('curso_id', curso)));
 export const wpPrecios = (curso) => memo('wpp' + curso, () => all('ac_wp_precios', '*', (q) => q.eq('curso_id', curso)));
@@ -93,6 +96,26 @@ export async function updMany(tabla, ids, parche, lote = 100) {
   for (let i = 0; i < ids.length; i += lote) chk(await supabase.from(tabla).update(parche).in('id', ids.slice(i, i + lote)));
   invalidar();
 }
+export const descuentos = () => memo('descuentos', () => all('ac_descuentos').then((l) => l.sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre))));
+export const cuotasTarifa = () => memo('cuotasTarifa', () => all('ac_cuotas_tarifa').then((l) => l.sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre))));
+// todos los grupos de todos los cursos con sus miembros (historial de niveles de cada alumno)
+export const gruposTodos = () => memo('gruposTodos', () => all('ac_grupos', 'id,nombre,nivel,curso_id,miembros:ac_alumno_grupo(alumno_id,fecha_alta,fecha_baja)'));
+export const nivelHistorial = () => memo('nivelHistorial', () => all('ac_nivel_historial'));
+export const portalDocs = () => memo('portalDocs', () => all('ac_portal_docs').then((l) => l.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))));
+// archivos del portal del trabajador (bucket privado «trabajadores»; ruta = <id del usuario>/<fecha>-<nombre>)
+export async function subirPortal(profileId, file) {
+  const limpio = file.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w.\-]+/g, '_');
+  const ruta = `${profileId}/${Date.now()}-${limpio}`;
+  const { error } = await supabase.storage.from('trabajadores').upload(ruta, file, { contentType: file.type || 'application/pdf', upsert: false });
+  if (error) throw new Error(traducirError(error));
+  return ruta;
+}
+export async function urlPortal(ruta) {
+  const { data, error } = await supabase.storage.from('trabajadores').createSignedUrl(ruta, 600);
+  if (error) throw new Error(traducirError(error));
+  return data.signedUrl;
+}
+export async function quitarArchivoPortal(ruta) { await supabase.storage.from('trabajadores').remove([ruta]); }
 export const responsables = () => memo('responsables', () => all('ac_responsables'));
 
 // lee una foto o PDF de una ficha de inscripción (función del servidor «escanear-ficha»); no guarda nada

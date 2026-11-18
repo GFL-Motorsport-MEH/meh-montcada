@@ -31,6 +31,7 @@ try:
         page = b.new_page(viewport={"width": 1280, "height": 900})
         page.route(SUPA, lambda r: r.fulfill(path=str(TEST / "mock-supabase-academia.js"), content_type="application/javascript"))
         page.route(XLSX, lambda r: r.fulfill(path=str(TEST / "mock-xlsx.js"), content_type="application/javascript"))
+        page.route(re.compile(r"https://calendar\.google\.com/.*"), lambda r: r.abort())
         page.route(re.compile(r"https://fonts\.(googleapis|gstatic)\.com/.*"), lambda r: r.abort())
         page.on("console", lambda m: errores.append(m.text) if m.type == "error" else None)
         page.on("pageerror", lambda e: errores.append(str(e)))
@@ -54,7 +55,7 @@ try:
         check(page.evaluate("document.body.dataset.modulo") == "academia", "#/academia abre el módulo Academia")
 
         print("2. todas las pestañas cargan sin error")
-        for r in ["ac_resumen", "ac_alumnos", "ac_pagos", "ac_pagos_importar", "ac_remesas", "ac_seguimiento", "ac_tutorias", "ac_bajas", "ac_grupos", "ac_horarios", "ac_calendario", "ac_recogidas", "ac_tareas", "ac_biblioteca", "ac_documentos", "ac_importar"]:
+        for r in ["ac_resumen", "ac_alumnos", "ac_pagos", "ac_pagos_importar", "ac_remesas", "ac_seguimiento", "ac_tutorias", "ac_bajas", "ac_grupos", "ac_horarios", "ac_calendario", "ac_recogidas", "ac_tareas", "ac_biblioteca", "ac_documentos", "ac_importar", "ac_programaciones", "ac_portal", "ac_cambio_curso"]:
             ir(page, r)
             check(page.locator(".banner.error").count() == 0, f"{r} sin errores")
         ir(page, "ac_biblioteca")
@@ -301,16 +302,53 @@ try:
         page.locator(".drawer select").first.select_option("festivo")
         page.locator(".drawer input[type=text]").first.fill("Navidad")
         page.get_by_role("button", name="Guardar").click(); page.wait_for_timeout(600)
-        check(any(x["fecha"].endswith("-12-25") and x["tipo"] == "festivo" for x in db(page, "ac_calendario_dias")), "marcar un festivo")
+        check(any(x["fecha"].endswith("-12-25") and x["tipo"] == "festivo" for x in db(page, "ac_calendario_marcas")), "marcar un festivo")
         page.get_by_role("button", name="Añadir festivos habituales").click()
         page.get_by_role("button", name="Añadir", exact=True).click(); page.wait_for_timeout(700)
-        check(len(db(page, "ac_calendario_dias")) >= 10, "festivos habituales añadidos sin repetir los ya marcados")
+        check(len(db(page, "ac_calendario_marcas")) >= 10, "festivos habituales añadidos sin repetir los ya marcados")
         d1 = page.locator(".ac-ano-d[data-fecha$='-12-23']").first
         d1.click(); page.locator(".drawer select").first.select_option("vacaciones")
-        page.locator(".drawer input[type=date]").nth(1).fill(db(page, "ac_calendario_dias")[0]["fecha"][:4] + "-12-24")
+        page.locator(".drawer input[type=date]").nth(1).fill(db(page, "ac_calendario_marcas")[0]["fecha"][:4] + "-12-24")
         page.get_by_role("button", name="Guardar").click(); page.wait_for_timeout(600)
-        check(len([x for x in db(page, "ac_calendario_dias") if x["tipo"] == "vacaciones"]) == 2, "rango de vacaciones (2 días)")
+        check(len([x for x in db(page, "ac_calendario_marcas") if x["tipo"] == "vacaciones"]) == 2, "rango de vacaciones (2 días)")
         page.screenshot(path=str(SHOTS / "ac_calendario_anual.png"), full_page=True)
+
+        print("9c. calendario con varias marcas, Google Calendar, niveles, avisos, programaciones, portal y cambio de curso")
+        ir(page, "ac_calendario")
+        page.locator(".ac-ano-d[data-fecha$='-12-25']").first.click()
+        page.locator(".drawer select").first.select_option("camp")
+        page.locator(".drawer input[type=text]").first.fill("Xmas Camp")
+        page.get_by_role("button", name="Guardar").click(); page.wait_for_timeout(600)
+        check(len([x for x in db(page, "ac_calendario_marcas") if x["fecha"].endswith("-12-25")]) == 2, "un día puede tener dos marcas (festivo y camp)")
+        check(page.locator(".ac-ano-d.doble[data-fecha$='-12-25']").count() == 1, "el día con dos marcas se pinta con segunda franja")
+        page.get_by_role("tab", name="Google Calendar").click(); page.wait_for_timeout(300)
+        check("meh.montcada%40gmail.com" in (page.locator("iframe.ac-gcal-marco").get_attribute("src") or ""), "pestaña Google Calendar con la cuenta de la academia")
+        page.get_by_role("tab", name="Calendario del curso").click(); page.wait_for_timeout(500)
+        check(page.locator(".ac-ano-mes").count() == 12, "se vuelve al calendario del curso")
+        r = page.evaluate("""async () => { const k = await import('/js/academia/kit.js'); const c = await import('/js/academia/cambio_curso.js'); const a = await import('/js/academia/avisos.js');
+          const pas = new Map([[3, '2024.25']]);
+          return { n: [k.nivelNum('Level 3'), k.nivelNum('L2'), k.nivelNum('4'), k.nivelNum('A2'), k.nivelNum('')], col: [1,2,3,4,5].map((i) => k.colorNivel('L' + i)),
+            edad: c.edadEn('2015-10-01', '2026-09-07'), fmt: [c.formatoNivel('Level 2', 3), c.formatoNivel('L2', 3), c.formatoNivel('2', 3), c.formatoNivel('', 3)],
+            prop: c.proponer({ nivel: 'L2' }, new Map(), undefined), aviso: c.proponer({ nivel: 'L2' }, pas, undefined), sin: c.proponer({ nivel: '' }, new Map(), undefined).avisos,
+            av1: a.avisosAlumnoGrupo({ id: 'y', nivel: 'L2', fecha_nacimiento: '2012-05-01' }, { id: 'g', nombre: 'KIDS 3', nivel: 'L3', anios_nacimiento: '2015-2016', sesiones: [{ dia: 1, hora_inicio: '17:00', hora_fin: '18:00' }] }, [{ id: 'o', nombre: 'TEENS 1', miembros: [{ alumno_id: 'zz', fecha_baja: null }], sesiones: [{ dia: 1, hora_inicio: '17:30', hora_fin: '18:30' }] }]),
+            av2: a.avisosAlumnoGrupo({ id: 'x', nivel: 'L3', fecha_nacimiento: '2015-05-01' }, { id: 'g', nombre: 'KIDS 3', nivel: 'L3', anios_nacimiento: '2015-2016', sesiones: [{ dia: 1, hora_inicio: '17:00', hora_fin: '18:00' }] }, [{ id: 'o', nombre: 'TEENS 1', miembros: [{ alumno_id: 'x', fecha_baja: null }], sesiones: [{ dia: 1, hora_inicio: '17:30', hora_fin: '18:30' }] }]) }; }""")
+        check(r["n"] == [3, 2, 4, None, None] and r["col"][0] == "#f2c94c" and r["col"][4] == "#1d1d1f", "niveles: L1 amarillo, L5 negro y lectura de «Level 3», «L2», «4»")
+        check(r["edad"] == 10 and r["fmt"] == ["Level 3", "L3", "3", "Level 3"], "cambio de curso: edad en la fecha de inicio y formato del nivel")
+        check(r["prop"]["prop"] == 3 and not r["prop"]["avisos"] and any("Ya estuvo en L3" in t for t in r["aviso"]["avisos"]) and r["sin"] == ["Sin nivel asignado"], "cambio de curso: propone el siguiente nivel y avisa si ya lo cursó o no tiene")
+        check(len(r["av1"]) == 2 and "nivel" in r["av1"][0] and "Nació en 2012" in r["av1"][1], "aviso al meter un alumno en un nivel / año de nacimiento que no corresponde")
+        check(len(r["av2"]) == 1 and "coincide" in r["av2"][0], "aviso de horario que se pisa con otro grupo del alumno")
+        ir(page, "ac_programaciones")
+        check(page.locator(".card[data-bloque]").count() == 2, "Programaciones: espacio con los dos bloques (talleres / intensivos y cursos)")
+        ir(page, "ac_portal")
+        check(page.get_by_role("heading", name="Portal del trabajador").count() == 1, "portal del trabajador abre")
+        ir(page, "ac_cambio_curso")
+        check(page.get_by_role("heading", name="Cambio de curso").count() == 1 and page.locator(".banner.error").count() == 0, "pantalla de cambio de curso abre")
+        ir(page, "config")
+        page.locator(".seg-btn", has_text="Cuotas y descuentos").click(); page.wait_for_timeout(500)
+        page.get_by_role("button", name="+ Nueva cuota").click(); page.wait_for_timeout(600)
+        check(len(db(page, "ac_cuotas_tarifa")) == 1, "Configuración: se crea una cuota")
+        page.get_by_role("button", name="+ Nuevo descuento").click(); page.wait_for_timeout(600)
+        check(len(db(page, "ac_descuentos")) == 1, "Configuración: se crea un descuento")
 
         print("10. tutoría hecha deja anotación; baja")
         ir(page, "ac_tutorias")

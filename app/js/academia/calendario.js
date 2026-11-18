@@ -1,15 +1,26 @@
-// Calendario anual del curso: los 365 días de septiembre a agosto, con festivos, vacaciones, días sin clase y eventos editables.
-// Clic en un día = marcarlo/editarlo; Mayús + clic en otro día = marcar todo el rango. Es el calendario de DÍAS; el horario semanal está en «Horarios».
+// Calendario del curso (como el PDF «Calendario MEH Montcada»): los días de septiembre a agosto con festivos, comienzo de clases, fun days,
+// storytimes, fechas temáticas, camps, vacaciones, días sin clase y eventos. Un día puede tener varias marcas (p. ej. festivo dentro de un camp).
+// Clic en un día = editarlo; Mayús + clic en otro día = marcar todo el rango. El horario semanal está en «Horarios».
+// Segunda pestaña: el calendario de Google de la academia (se incrusta; hay que haber iniciado sesión en Google o tenerlo compartido).
 import { h, clear, cargando, toast, confirmar } from '../ui.js';
 import * as api from './api.js';
-import { campo, sel, txt, fecha, drawer, cabecera, guardarBoton, refrescar } from './kit.js';
+import { campo, sel, txt, fecha, drawer, guardarBoton } from './kit.js';
 
+// orden = prioridad de color cuando un día tiene varias marcas
 export const TIPOS = [
   ['festivo', 'Festivo', '#d64545'],
+  ['inicio_clases', 'Comienzo de clases', '#2e9d5b'],
+  ['fun_day', 'Fun Day', '#e0a21b'],
+  ['storytime', 'Storytime', '#b05fc2'],
+  ['camp', 'Camp', '#1f9bb0'],
+  ['tematica', 'Fecha temática', '#e0709a'],
   ['vacaciones', 'Vacaciones', '#3f7ad9'],
   ['sin_clase', 'Sin clase (puente, jornada…)', '#e08a3c'],
   ['evento', 'Evento / reunión', '#8c6bc8'],
 ];
+const SIN_CLASE = ['festivo', 'vacaciones', 'sin_clase']; // los días con estas marcas no hay clase
+export const GOOGLE_CALENDAR = 'meh.montcada@gmail.com';
+let vistaCal = 'curso';
 const COLOR = Object.fromEntries(TIPOS.map(([k, , c]) => [k, c]));
 const NOMBRE = Object.fromEntries(TIPOS.map(([k, n]) => [k, n]));
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -44,19 +55,46 @@ export function rangoCurso(curso) {
 }
 
 export async function renderCalendario(view, ctx) {
-  clear(view, cargando());
   const curso = ctx.cursoActual();
+  const cuerpo = h('div', { class: 'ac-cal-cuerpo' });
+  const seg = h('div', { class: 'segmented', role: 'tablist' }, [['curso', 'Calendario del curso'], ['google', 'Google Calendar']].map(([k, l]) =>
+    h('button', { class: 'seg-btn', role: 'tab', type: 'button', 'aria-selected': String(vistaCal === k), onclick: () => { vistaCal = k; seg.querySelectorAll('.seg-btn').forEach((b) => b.setAttribute('aria-selected', String(b.textContent === l))); pintar(); } }, l)));
+  clear(view, h('div', { class: 'section-head' }, h('div', {}, h('h2', {}, `Calendario · ${curso.nombre}`)), h('div', { class: 'section-actions' }, seg)), cuerpo);
+  async function pintar() {
+    if (vistaCal === 'google') { clear(cuerpo, googleCalendar()); return; }
+    clear(cuerpo, cargando());
+    try { clear(cuerpo, ...(await calendarioCurso(ctx, curso, pintar)).childNodes); } catch (ex) { clear(cuerpo, h('div', { class: 'banner error', role: 'alert' }, 'No se ha podido cargar el calendario: ', ex.message)); }
+  }
+  await pintar();
+}
+
+// ---------- pestaña Google Calendar ----------
+function googleCalendar() {
+  const src = encodeURIComponent(GOOGLE_CALENDAR);
+  const url = `https://calendar.google.com/calendar/embed?src=${src}&ctz=Europe%2FMadrid&hl=es&mode=MONTH&showTitle=0&showPrint=0&showTz=0&wkst=2`;
+  return h('div', { class: 'ac-gcal' },
+    h('div', { class: 'small muted' }, `Calendario de Google de ${GOOGLE_CALENDAR}. Solo se ve si has iniciado sesión en Google en este navegador con una cuenta que tenga acceso, o si el calendario está compartido como público.`,
+      ' ', h('a', { href: `https://calendar.google.com/calendar/u/0/r?cid=${src}`, target: '_blank', rel: 'noopener noreferrer' }, 'Abrir en Google Calendar ↗')),
+    h('iframe', { class: 'ac-gcal-marco', src: url, title: 'Google Calendar de la academia', loading: 'lazy', referrerpolicy: 'no-referrer-when-downgrade' }));
+}
+
+// ---------- pestaña Calendario del curso ----------
+async function calendarioCurso(ctx, curso, repintar) {
   const editor = ctx.edita('ac_calendario');
   const [ini, fin] = rangoCurso(curso);
   const dias = await api.calendarioDias(curso.id);
-  const marca = new Map(dias.map((d) => [d.fecha, d]));
-  const recargar = () => { api.invalidar(); refrescar(); };
+  const prioridad = Object.fromEntries(TIPOS.map(([k], i) => [k, i]));
+  const marcas = new Map(); // fecha -> [marca], la más importante primero
+  for (const d of dias) (marcas.get(d.fecha) || marcas.set(d.fecha, []).get(d.fecha)).push(d);
+  for (const l of marcas.values()) l.sort((a, b) => (prioridad[a.tipo] ?? 99) - (prioridad[b.tipo] ?? 99));
+  const recargar = () => { api.invalidar(); repintar(); };
   let ultimo = null; // último día pulsado (para marcar un rango con Mayús)
 
-  // días con clase = lunes a viernes sin marcar
-  const conClase = (f) => { const dsem = (aFecha(f).getUTCDay() + 6) % 7; return dsem < 5 && !marca.has(f); };
+  const sinClase = (f) => (marcas.get(f) || []).some((m) => SIN_CLASE.includes(m.tipo));
+  const conClase = (f) => { const dsem = (aFecha(f).getUTCDay() + 6) % 7; return dsem < 5 && !sinClase(f); };
   const todos = rango(ini, fin);
   const cuentaTipo = (t) => dias.filter((d) => d.tipo === t && d.fecha >= ini && d.fecha <= fin).length;
+  const textoMarcas = (f) => (marcas.get(f) || []).map((m) => `${NOMBRE[m.tipo] || m.tipo}${m.nombre ? ': ' + m.nombre : ''}`).join(' · ');
 
   function mes(y, m) {
     const primero = `${y}-${String(m + 1).padStart(2, '0')}-01`;
@@ -67,12 +105,12 @@ export async function renderCalendario(view, ctx) {
     let lectivos = 0;
     for (let d = 1; d <= nDias; d++) {
       const f = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const fuera = f < ini || f > fin; const mk = marca.get(f); const dsem = (aFecha(f).getUTCDay() + 6) % 7;
+      const fuera = f < ini || f > fin; const mk = marcas.get(f) || []; const dsem = (aFecha(f).getUTCDay() + 6) % 7;
       if (!fuera && conClase(f)) lectivos++;
-      const el = h('button', { type: 'button', class: 'ac-ano-d' + (dsem >= 5 ? ' fin' : '') + (mk ? ' marcado' : '') + (fuera ? ' fuera' : ''), 'data-fecha': f, disabled: fuera || null,
-        style: mk ? `--c:${COLOR[mk.tipo] || '#888'}` : null, title: mk ? `${largo(f)} · ${NOMBRE[mk.tipo] || mk.tipo}${mk.nombre ? ': ' + mk.nombre : ''}` : largo(f),
-        onclick: (e) => { if (e.shiftKey && ultimo && ultimo !== f) abrirDia(ultimo < f ? ultimo : f, ultimo < f ? f : ultimo); else { ultimo = f; abrirDia(f, f); } } }, String(d));
-      celdas.push(el);
+      const estilo = mk.length ? `--c:${COLOR[mk[0].tipo] || '#888'}${mk[1] ? `;--c2:${COLOR[mk[1].tipo] || '#888'}` : ''}` : null;
+      celdas.push(h('button', { type: 'button', class: 'ac-ano-d' + (dsem >= 5 ? ' fin' : '') + (mk.length ? ' marcado' : '') + (mk[1] ? ' doble' : '') + (fuera ? ' fuera' : ''), 'data-fecha': f, disabled: fuera || null,
+        style: estilo, title: mk.length ? `${largo(f)} · ${textoMarcas(f)}` : largo(f),
+        onclick: (e) => { if (e.shiftKey && ultimo && ultimo !== f) abrirDia(ultimo < f ? ultimo : f, ultimo < f ? f : ultimo); else { ultimo = f; abrirDia(f, f); } } }, String(d)));
     }
     return h('div', { class: 'ac-ano-mes card' }, h('h3', {}, `${MESES[m]} ${y}`, h('span', { class: 'small muted' }, `${lectivos} días con clase`)),
       h('div', { class: 'ac-ano-sem' }, DIAS_SEM.map((x) => h('span', {}, x))), h('div', { class: 'ac-ano-dias' }, celdas));
@@ -81,25 +119,40 @@ export async function renderCalendario(view, ctx) {
   const meses = [];
   for (let y = Number(ini.slice(0, 4)), m = Number(ini.slice(5, 7)) - 1; `${y}-${String(m + 1).padStart(2, '0')}` <= fin.slice(0, 7); m++) { if (m > 11) { m = 0; y++; } meses.push(mes(y, m)); if (meses.length > 14) break; }
 
-  // lista de días marcados (los consecutivos del mismo tipo y nombre se juntan)
-  const marcados = dias.filter((d) => d.fecha >= ini && d.fecha <= fin).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  // lista de días marcados: los consecutivos (saltando fines de semana) con el mismo tipo y nombre se juntan
+  const marcados = dias.filter((d) => d.fecha >= ini && d.fecha <= fin).sort((a, b) => a.tipo.localeCompare(b.tipo) || (a.nombre || '').localeCompare(b.nombre || '') || a.fecha.localeCompare(b.fecha));
+  const siguiente = (f) => { let n = sumar(f, 1); while (((aFecha(n).getUTCDay() + 6) % 7) >= 5) n = sumar(n, 1); return n; };
   const tramos = [];
-  for (const d of marcados) { const t = tramos[tramos.length - 1]; if (t && t.tipo === d.tipo && (t.nombre || '') === (d.nombre || '') && sumar(t.hasta, 1) === d.fecha) t.hasta = d.fecha; else tramos.push({ desde: d.fecha, hasta: d.fecha, tipo: d.tipo, nombre: d.nombre }); }
+  for (const d of marcados) {
+    const t = tramos[tramos.length - 1];
+    if (t && t.tipo === d.tipo && (t.nombre || '') === (d.nombre || '') && (sumar(t.hasta, 1) === d.fecha || (d.tipo !== 'festivo' && siguiente(t.hasta) === d.fecha && d.fecha > t.hasta))) t.hasta = d.fecha;
+    else tramos.push({ desde: d.fecha, hasta: d.fecha, tipo: d.tipo, nombre: d.nombre });
+  }
+  tramos.sort((a, b) => a.desde.localeCompare(b.desde) || (prioridad[a.tipo] ?? 99) - (prioridad[b.tipo] ?? 99));
 
   function abrirDia(desde, hasta) {
     if (!editor) return;
     const d = drawer({ titulo: desde === hasta ? largo(desde) : `${corto(desde)} → ${corto(hasta)}`, ancho: 460 });
-    const m0 = marca.get(desde);
-    const F = { tipo: sel([['', 'Día normal (con clase)'], ...TIPOS.map(([k, n]) => [k, n])], m0?.tipo || '', {}), nombre: txt(m0?.nombre || '', { placeholder: 'Navidad, puente, Open day…' }), desde: fecha(desde), hasta: fecha(hasta) };
-    d.cuerpo.append(h('div', { class: 'form-section' }, campo('Qué es', F.tipo, { full: true }), campo('Nombre', F.nombre, { full: true }), campo('Desde', F.desde), campo('Hasta', F.hasta)),
-      h('div', { class: 'small muted' }, 'Elige «Día normal» para quitar la marca. Para varios días seguidos cambia «Hasta» o usa Mayús + clic en el calendario.'));
+    const existentes = desde === hasta ? marcas.get(desde) || [] : [];
+    const F = { tipo: sel([['', 'Quitar todas las marcas de estos días'], ...TIPOS.map(([k, n]) => [k, n])], existentes[0]?.tipo || 'festivo', {}), nombre: txt(existentes[0]?.nombre || '', { placeholder: 'Navidad, puente, Open day…' }), desde: fecha(desde), hasta: fecha(hasta),
+      lv: h('input', { type: 'checkbox', checked: desde !== hasta }) };
+    const cajaEx = h('div');
+    const pintarEx = () => clear(cajaEx, existentes.length ? h('div', { class: 'form-section' }, h('h3', {}, 'Marcas de este día'), h('div', { class: 'full' }, existentes.map((m) => h('div', { class: 'ac-fila' },
+      h('span', { class: 'ac-punto', style: `background:${COLOR[m.tipo] || '#888'}` }), h('strong', {}, NOMBRE[m.tipo] || m.tipo), h('span', { class: 'muted small' }, m.nombre || ''),
+      h('button', { class: 'btn small ghost', type: 'button', onclick: async () => { try { await api.delMany('ac_calendario_marcas', [m.id]); toast('Marca quitada'); d.cerrar(); recargar(); } catch (ex) { toast(ex.message, 'error'); } } }, 'Quitar')))))
+      : null);
+    pintarEx();
+    d.cuerpo.append(cajaEx, h('div', { class: 'form-section' }, h('h3', {}, existentes.length ? 'Añadir o cambiar una marca' : 'Marcar'), campo('Qué es', F.tipo, { full: true }), campo('Nombre', F.nombre, { full: true }), campo('Desde', F.desde), campo('Hasta', F.hasta),
+      h('label', { class: 'check full' }, F.lv, ' Solo de lunes a viernes (para camps y semanas temáticas)')),
+      h('div', { class: 'small muted' }, 'Si ya hay una marca del mismo tipo ese día se actualiza. Para varios días seguidos cambia «Hasta» o usa Mayús + clic en el calendario.'));
     const guardar = guardarBoton('Guardar', async () => {
       const a = F.desde.value; const b = F.hasta.value || a;
       if (!a || b < a) { toast('Revisa las fechas: «Hasta» no puede ser anterior a «Desde».', 'error'); return; }
-      const fs = rango(a, b); if (fs.length > 400) { toast('Demasiados días de golpe.', 'error'); return; }
+      let fs = rango(a, b); if (fs.length > 400) { toast('Demasiados días de golpe.', 'error'); return; }
+      if (F.lv.checked && a !== b) fs = fs.filter((f) => ((aFecha(f).getUTCDay() + 6) % 7) < 5);
       try {
-        if (!F.tipo.value) { const ids = fs.map((f) => marca.get(f)?.id).filter(Boolean); if (ids.length) await api.delMany('ac_calendario_dias', ids); }
-        else await api.insMany('ac_calendario_dias', fs.map((f) => ({ curso_id: curso.id, fecha: f, tipo: F.tipo.value, nombre: F.nombre.value.trim() || null })), { onConflict: 'curso_id,fecha' });
+        if (!F.tipo.value) { const ids = fs.flatMap((f) => (marcas.get(f) || []).map((m) => m.id)); if (ids.length) await api.delMany('ac_calendario_marcas', ids); }
+        else await api.insMany('ac_calendario_marcas', fs.map((f) => ({ curso_id: curso.id, fecha: f, tipo: F.tipo.value, nombre: F.nombre.value.trim() || null })), { onConflict: 'curso_id,fecha,tipo' });
         toast('Calendario guardado'); d.cerrar(); recargar();
       } catch (ex) { toast('No se ha guardado: ' + ex.message, 'error'); }
     });
@@ -107,16 +160,18 @@ export async function renderCalendario(view, ctx) {
   }
 
   async function anadirHabituales() {
-    const nuevos = festivosHabituales(ini, fin).filter(([f]) => !marca.has(f));
+    const nuevos = festivosHabituales(ini, fin).filter(([f]) => !(marcas.get(f) || []).some((m) => m.tipo === 'festivo'));
     if (!nuevos.length) { toast('Los festivos habituales ya están marcados.'); return; }
-    if (!await confirmar({ titulo: 'Añadir festivos habituales', texto: `Se marcarán ${nuevos.length} festivos de Cataluña (${nuevos.map(([f]) => corto(f)).join(', ')}). No se tocan los días que ya tienes marcados. Los festivos locales de tu municipio añádelos a mano. Revisa las fechas del curso.`, ok: 'Añadir' })) return;
-    try { await api.insMany('ac_calendario_dias', nuevos.map(([f, n]) => ({ curso_id: curso.id, fecha: f, tipo: 'festivo', nombre: n })), { onConflict: 'curso_id,fecha', ignorar: true }); toast('Festivos añadidos'); recargar(); } catch (ex) { toast(ex.message, 'error'); }
+    if (!await confirmar({ titulo: 'Añadir festivos habituales', texto: `Se marcarán ${nuevos.length} festivos de Cataluña (${nuevos.map(([f]) => corto(f)).join(', ')}). No se tocan las marcas que ya tienes. Los festivos locales de tu municipio añádelos a mano. Revisa las fechas del curso.`, ok: 'Añadir' })) return;
+    try { await api.insMany('ac_calendario_marcas', nuevos.map(([f, n]) => ({ curso_id: curso.id, fecha: f, tipo: 'festivo', nombre: n })), { onConflict: 'curso_id,fecha,tipo', ignorar: true }); toast('Festivos añadidos'); recargar(); } catch (ex) { toast(ex.message, 'error'); }
   }
 
   const leyenda = h('div', { class: 'ac-leyenda small' }, TIPOS.map(([k, n, c]) => h('span', {}, h('span', { class: 'ac-punto', style: `background:${c}` }), `${n} (${cuentaTipo(k)})`)), h('span', { class: 'muted' }, `Días con clase (L–V): ${todos.filter(conClase).length}`));
   const lista = h('div', { class: 'card ac-ano-lista' }, h('h3', { class: 'sub-titulo' }, 'Días marcados'),
     tramos.length ? tramos.map((t) => h('div', { class: 'ac-fila ac-ano-tramo', onclick: editor ? () => abrirDia(t.desde, t.hasta) : null },
       h('span', { class: 'ac-punto', style: `background:${COLOR[t.tipo] || '#888'}` }), h('strong', {}, t.desde === t.hasta ? corto(t.desde) : `${corto(t.desde)} → ${corto(t.hasta)}`), h('span', {}, t.nombre || NOMBRE[t.tipo] || t.tipo), h('span', { class: 'small muted' }, NOMBRE[t.tipo] || ''))) : h('div', { class: 'muted small' }, 'Todavía no hay días marcados. Pulsa un día del calendario para marcarlo.'));
-  clear(view, cabecera(`Calendario · ${curso.nombre}`, `${corto(ini)} ${ini.slice(0, 4)} – ${corto(fin)} ${fin.slice(0, 4)}`, editor ? h('button', { class: 'btn small', type: 'button', onclick: anadirHabituales }, 'Añadir festivos habituales') : null),
-    editor ? h('div', { class: 'small muted' }, 'Clic en un día para marcarlo (festivo, vacaciones, sin clase, evento); Mayús + clic en otro día marca el rango.') : null, leyenda, h('div', { class: 'ac-ano' }, meses), lista);
+  const raiz = h('div', { style: 'display:flex; flex-direction:column; gap:8px' });
+  raiz.append(h('div', { class: 'section-actions' }, h('span', { class: 'small muted' }, `${corto(ini)} ${ini.slice(0, 4)} – ${corto(fin)} ${fin.slice(0, 4)}`), editor ? h('button', { class: 'btn small', type: 'button', onclick: anadirHabituales }, 'Añadir festivos habituales') : null),
+    editor ? h('div', { class: 'small muted' }, 'Clic en un día para marcarlo; Mayús + clic en otro día marca el rango. Un día puede tener varias marcas (el color grande es la más importante, la franja de abajo es la segunda).') : null, leyenda, h('div', { class: 'ac-ano' }, meses), lista);
+  return raiz;
 }

@@ -22,6 +22,8 @@ export const GRUPOS_PERMISOS = [
     { k: 'ac_tareas', t: 'Tareas (las de dinero solo con permiso de Pagos)', tipo: 'todo' },
     { k: 'ac_biblioteca', t: 'Biblioteca y Mascotas', tipo: 'todo' },
     { k: 'ac_documentos', t: 'Protocolos', tipo: 'todo' },
+    { k: 'ac_programaciones', t: 'Programaciones (talleres, intensivos y cursos)', tipo: 'todo' },
+    { k: 'ac_portal', t: 'Portal del trabajador (nóminas y documentos: «lo suyo» = los suyos; «todo» = los de todos)', tipo: 'propio', dinero: true },
   ] },
   { grupo: 'Facturación y contabilidad', items: [
     { k: 'fact', t: 'Contabilidad: Panel, Gastos, Ingresos, Balance, Facturación, Control y Configuración', tipo: 'todo', dinero: true },
@@ -42,12 +44,12 @@ export const celda = (fila) => (fila ? `${fila.alcance}:${fila.editar ? 1 : 0}` 
 export const aFila = (valor) => { const [alcance, e] = valor.split(':'); return { alcance, editar: e === '1' }; };
 
 // Valores recomendados de cada rol (los mismos que siembra la migración 0105). El administrador no se guarda: siempre tiene todo.
-const ACADEMIA = ['ac_alumnos', 'ac_pagos', 'ac_remesas', 'ac_seguimiento', 'ac_tutorias', 'ac_bajas', 'ac_grupos', 'ac_calendario', 'ac_recogidas', 'ac_tareas', 'ac_biblioteca', 'ac_documentos'];
+const ACADEMIA = ['ac_alumnos', 'ac_pagos', 'ac_remesas', 'ac_seguimiento', 'ac_tutorias', 'ac_bajas', 'ac_grupos', 'ac_calendario', 'ac_recogidas', 'ac_tareas', 'ac_biblioteca', 'ac_documentos', 'ac_programaciones'];
 const todoEdita = (ks) => Object.fromEntries(ks.map((k) => [k, 'todo:1']));
 export const RECOMENDADOS = {
-  direccion: { ac_resumen: 'todo:0', ...todoEdita(ACADEMIA), escaner: 'todo:1' },
-  coordinacion: { ac_resumen: 'todo:0', ...todoEdita(ACADEMIA.filter((k) => !['ac_pagos', 'ac_remesas'].includes(k))) },
-  profesora: { ac_grupos: 'propio:0', ac_calendario: 'todo:0', ac_tutorias: 'propio:1', ac_seguimiento: 'propio:1', ac_biblioteca: 'todo:1', ac_documentos: 'todo:0' },
+  direccion: { ac_resumen: 'todo:0', ...todoEdita(ACADEMIA), ac_portal: 'todo:1', escaner: 'todo:1' },
+  coordinacion: { ac_resumen: 'todo:0', ...todoEdita(ACADEMIA.filter((k) => !['ac_pagos', 'ac_remesas'].includes(k))), ac_portal: 'propio:0' },
+  profesora: { ac_grupos: 'propio:0', ac_calendario: 'todo:0', ac_tutorias: 'propio:1', ac_seguimiento: 'propio:1', ac_biblioteca: 'todo:1', ac_documentos: 'todo:0', ac_programaciones: 'todo:0', ac_portal: 'propio:0' },
   escaner: { escaner: 'todo:1' },
 };
 

@@ -5,7 +5,7 @@
 // Clic en una sesión = editarla; arrastrar = moverla (a otro día/hora o, en las rejillas, a otra profesora/aula).
 import { h, clear, cargando, toast, confirmar } from '../ui.js';
 import * as api from './api.js';
-import { campo, sel, drawer, cabecera, hhmm, DIAS, DIAS_CORTO, colorGrupo, nombreAlumno, pill, guardarBoton, refrescar } from './kit.js';
+import { campo, sel, drawer, cabecera, hhmm, DIAS, DIAS_CORTO, colorGrupo, colorNivel, nombreAlumno, pill, guardarBoton, refrescar } from './kit.js';
 import { abrirGrupo, sesionesTexto } from './grupos.js';
 
 const aMin = (t) => { const [a, b] = hhmm(t).split(':').map(Number); return a * 60 + b; };
@@ -16,7 +16,7 @@ const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toL
 
 // estado que se recuerda al cambiar de pestaña
 let vista = 'franjas';
-let color = 'modalidad';
+let color = 'nivel';
 let diaSel = 0;
 let profSel = '';
 let busca = '';
@@ -63,7 +63,7 @@ export async function renderHorarios(view, ctx) {
   const aviso = h('div');
   const barra = h('div', { class: 'ac-barra' });
   const modo = () => (vista === 'aula' ? 'aula' : 'profesora');
-  const colorDe = (x) => (color === 'profesora' ? pPor.get(x.prof)?.color || '#8c8a81' : colorGrupo(x.g));
+  const colorDe = (x) => (color === 'profesora' ? pPor.get(x.prof)?.color || '#8c8a81' : color === 'nivel' ? colorNivel(x.g.nivel) || colorGrupo(x.g) : colorGrupo(x.g));
 
   const seg = h('div', { class: 'segmented', role: 'tablist' }, [['franjas', 'Por franjas'], ['parrilla', 'Parrilla semanal'], ['profesora', 'Por profesora'], ['aula', 'Uso de aulas']].map(([k, l]) =>
     h('button', { class: 'seg-btn', role: 'tab', type: 'button', 'aria-selected': String(vista === k), onclick: () => { vista = k; seg.querySelectorAll('.seg-btn').forEach((b) => b.setAttribute('aria-selected', String(b.textContent === l))); pintar(); } }, l)));
@@ -232,7 +232,7 @@ export async function renderHorarios(view, ctx) {
   // ---------- barra de filtros según la vista ----------
   function pintarBarra() {
     const selProf = sel([['', 'Todas las profesoras'], ...profes.filter((p) => p.activa).map((p) => [p.id, p.nombre])].map(([v, n]) => [v, n]), profSel, { onchange: (e) => { profSel = e.target.value; pintar(); } });
-    const selColor = sel([['modalidad', 'Color: modalidad'], ['profesora', 'Color: profesora']], color, { onchange: (e) => { color = e.target.value; pintar(); } });
+    const selColor = sel([['nivel', 'Color: nivel'], ['modalidad', 'Color: modalidad'], ['profesora', 'Color: profesora']], color, { onchange: (e) => { color = e.target.value; pintar(); } });
     const leyenda = h('div', { class: 'ac-leyenda small muted' }, [['Babies', '#5aa469'], ['Kids', '#d9b72e'], ['Teens', '#e08a3c'], ['Adults', '#d76f9a'], ['1 to 1', '#4f7cff']].map(([n, c]) => h('span', {}, h('span', { class: 'ac-punto', style: `background:${c}` }), n)));
     if (vista === 'franjas') {
       const dias = h('div', { class: 'segmented' }, [[0, 'Todos'], ...[1, 2, 3, 4, 5, 6].map((d) => [d, DIAS_CORTO[d]])].map(([d, l]) => h('button', { class: 'seg-btn', type: 'button', title: d ? DIAS[d] : 'Todos los días', 'aria-pressed': String(diaSel === d), 'aria-selected': String(diaSel === d), onclick: () => { diaSel = d; pintar(); } }, l)));

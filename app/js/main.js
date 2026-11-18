@@ -16,6 +16,7 @@ import * as historial from './deshacer.js';
 import { crearPermisos } from './permisos.js';
 import './views/config-listas.js';
 import './views/config-centros.js';
+import './views/config-cuotas.js';
 import './views/plantillas.js';
 import './views/conciliacion.js';
 import './views/factcheck.js';

@@ -2,7 +2,8 @@
 // Los horarios (por franjas, parrilla semanal, por profesora/aula) están en horarios.js y el calendario anual en calendario.js.
 import { h, clear, cargando, toast, confirmar, normalizar } from '../ui.js';
 import * as api from './api.js';
-import { campo, txt, area, numero, sel, drawer, cabecera, tabla, pill, nombreAlumno, hhmm, DIAS, DIAS_CORTO, guardarBoton, buscadorAlumno, refrescar } from './kit.js';
+import { avisosAlumnoGrupo, confirmarAvisos } from './avisos.js';
+import { campo, txt, area, numero, sel, drawer, cabecera, tabla, pill, nombreAlumno, pillNivel, hhmm, DIAS, DIAS_CORTO, guardarBoton, buscadorAlumno, refrescar } from './kit.js';
 
 let vistaActual = 'lista';
 let verAlumnos = true;
@@ -31,7 +32,7 @@ export async function renderGrupos(view, ctx) {
     if (vistaActual === 'lista') {
       clear(cont, tabla([
         { t: 'Grupo', v: (g) => h('strong', {}, g.nombre) },
-        { t: 'Modalidad · nivel', v: (g) => [g.modalidad, g.nivel].filter(Boolean).join(' · ') },
+        { t: 'Modalidad · nivel', s: (g) => [g.modalidad, g.nivel].filter(Boolean).join(' · '), v: (g) => h('span', {}, g.modalidad || '', g.modalidad && g.nivel ? ' · ' : '', pillNivel(g.nivel)) },
         { t: 'Profesora', v: (g) => (pPor.get(g.profesora_id) ? h('span', {}, h('span', { class: 'ac-punto', style: `background:${pPor.get(g.profesora_id).color}` }), pPor.get(g.profesora_id).nombre) : '') },
         { t: 'Aula', v: (g) => aPor.get(g.aula_id)?.nombre || '' },
         { t: 'Horario', v: sesionesTexto },
@@ -100,6 +101,7 @@ export function abrirGrupo(g, { ctx, curso, profes, aulas, alumnos, ls, recargar
     const add = h('button', { class: 'btn small', type: 'button', onclick: async () => {
       const a = buscador.getAlumno(); if (!a) { toast('Elige un alumno de la lista.', 'error'); return; }
       if (activos(g).some((m) => m.alumno_id === a.id)) { toast('Ya está en el grupo.', 'error'); return; }
+      if (!await confirmarAvisos(avisosAlumnoGrupo(a, { ...g, sesiones }, await api.grupos(curso.id)))) return;
       try { const m = await api.insMany('ac_alumno_grupo', [{ alumno_id: a.id, grupo_id: g.id, fecha_baja: null }], { onConflict: 'alumno_id,grupo_id' }); g.miembros.push(m[0]); buscador.input.value = ''; pintarAl(); } catch (ex) { toast(ex.message, 'error'); }
     } }, 'Añadir');
     d.cuerpo.append(h('div', { class: 'form-section' }, h('h3', {}, 'Alumnos del grupo'), h('div', { class: 'full' }, cajaAl, editor ? h('div', { class: 'ac-fila' }, buscador, add) : null)));

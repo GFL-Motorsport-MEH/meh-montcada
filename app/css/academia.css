@@ -400,3 +400,11 @@ td.ac-cel.cambio { outline: 2px solid var(--warning); outline-offset: -2px; }
 .bib-foto-botones { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
 .bib-celda { display: inline-flex; align-items: center; gap: 6px; }
 .bib-mini { width: 22px; height: 28px; object-fit: cover; border-radius: 2px; border: 1px solid var(--border); }
+
+/* calendario: segunda marca del día y pestaña Google Calendar */
+.ac-ano-d.doble { box-shadow: inset 0 -4px 0 var(--c2); }
+.ac-gcal { display: flex; flex-direction: column; gap: 8px; }
+.ac-gcal-marco { width: 100%; height: 78vh; min-height: 520px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+/* niveles: L1 amarillo, L2 azul, L3 rojo claro, L4 verde, L5 negro */
+.ac-nivel { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11.5px; font-weight: 700; line-height: 1.5; white-space: nowrap; }
+.ac-niveles-leyenda { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }

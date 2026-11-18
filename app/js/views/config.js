@@ -2,7 +2,7 @@
 import { h, clear, fmtEUR2, fmtFecha, num, normalizar, cargando, descargarCSV, toast, confirmar, hoyISO } from '../ui.js';
 import * as db from '../db.js';
 
-const SECCIONES_BASE = [['empresas', 'Empresas'], ['listas', 'Listas'], ['centros', 'Centros'], ['plantillas', 'Plantillas de gastos']];
+const SECCIONES_BASE = [['empresas', 'Empresas'], ['listas', 'Listas'], ['cuotas', 'Cuotas y descuentos'], ['centros', 'Centros'], ['plantillas', 'Plantillas de gastos']];
 const LS = 'meh.config';
 const leerPref = () => { try { return localStorage.getItem(LS) || 'empresas'; } catch { return 'empresas'; } };
 const guardarPref = (v) => { try { localStorage.setItem(LS, v); } catch { /* sin almacenamiento */ } };

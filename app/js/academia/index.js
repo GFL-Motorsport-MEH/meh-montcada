@@ -16,6 +16,9 @@ import { renderImportarHorarios } from './importar_horarios.js';
 import { renderBiblioteca, renderImportarBiblioteca } from './biblioteca.js';
 import { renderDocumentos } from './documentos.js';
 import { renderImportar } from './importar.js';
+import { renderProgramaciones } from './programaciones.js';
+import { renderPortal } from './portal.js';
+import { renderCambioCurso } from './cambio_curso.js';
 
 // la hoja de estilos se carga solo al entrar en Academia (así no hay que tocar index.html)
 let cssPuesto = false;
@@ -54,9 +57,16 @@ export const RUTAS_ACADEMIA = {
   ac_biblioteca_importar: R('Importar biblioteca y mascotas', renderImportarBiblioteca, 'ac_biblioteca', true),
   ac_documentos: R('Protocolos', renderDocumentos, 'ac_documentos'),
   ac_importar: R('Importar del Excel', renderImportar, 'ac_alumnos', true),
+  ac_cambio_curso: R('Cambio de curso', renderCambioCurso, 'ac_alumnos', true),
+  ac_programaciones: R('Programaciones', renderProgramaciones, 'ac_programaciones'),
+  ac_portal: R('Mi portal', renderPortal, 'ac_portal'),
 };
 // pestañas visibles (ac_importar se abre desde el botón de Alumnos)
 export const TABS_ACADEMIA = [
   ['ac_alumnos', 'Alumnos'], ['ac_seguimiento', 'Seguimiento'], ['ac_tutorias', 'Tutorías'],
+<<<<<<< HEAD
   ['ac_bajas', 'Bajas'], ['ac_grupos', 'Grupos'], ['ac_horarios', 'Horarios'], ['ac_calendario', 'Calendario'], ['ac_recogidas', 'Recogidas'], ['ac_tareas', 'Tareas'], ['ac_biblioteca', 'Biblioteca y Mascotas'], ['ac_documentos', 'Protocolos'],
+=======
+  ['ac_bajas', 'Bajas'], ['ac_grupos', 'Grupos'], ['ac_horarios', 'Horarios'], ['ac_calendario', 'Calendario'], ['ac_recogidas', 'Recogidas'], ['ac_tareas', 'Tareas'], ['ac_biblioteca', 'Biblioteca'], ['ac_documentos', 'Protocolos'], ['ac_programaciones', 'Programaciones'], ['ac_portal', 'Mi portal'],
+>>>>>>> a7ef9aa (Calendario con tipos del PDF y pestaña Google Calendar, colores por nivel, Programaciones, cuotas y descuentos, cambio de curso, avisos de nivel/horario y portal del trabajador)
 ];
