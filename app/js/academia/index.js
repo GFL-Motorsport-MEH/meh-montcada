@@ -50,13 +50,13 @@ export const RUTAS_ACADEMIA = {
   ac_tareas: R('Tareas', renderTareas, 'ac_tareas'),
   ac_recogidas: R('Recogidas', renderRecogidas, 'ac_recogidas'),
   ac_recogidas_importar: R('Importar recogidas', renderImportarRecogidas, 'ac_recogidas', true),
-  ac_biblioteca: R('Biblioteca', renderBiblioteca, 'ac_biblioteca'),
-  ac_biblioteca_importar: R('Importar biblioteca', renderImportarBiblioteca, 'ac_biblioteca', true),
+  ac_biblioteca: R('Biblioteca y Mascotas', renderBiblioteca, 'ac_biblioteca'),
+  ac_biblioteca_importar: R('Importar biblioteca y mascotas', renderImportarBiblioteca, 'ac_biblioteca', true),
   ac_documentos: R('Protocolos', renderDocumentos, 'ac_documentos'),
   ac_importar: R('Importar del Excel', renderImportar, 'ac_alumnos', true),
 };
 // pestañas visibles (ac_importar se abre desde el botón de Alumnos)
 export const TABS_ACADEMIA = [
   ['ac_alumnos', 'Alumnos'], ['ac_seguimiento', 'Seguimiento'], ['ac_tutorias', 'Tutorías'],
-  ['ac_bajas', 'Bajas'], ['ac_grupos', 'Grupos'], ['ac_horarios', 'Horarios'], ['ac_calendario', 'Calendario'], ['ac_recogidas', 'Recogidas'], ['ac_tareas', 'Tareas'], ['ac_biblioteca', 'Biblioteca'], ['ac_documentos', 'Protocolos'],
+  ['ac_bajas', 'Bajas'], ['ac_grupos', 'Grupos'], ['ac_horarios', 'Horarios'], ['ac_calendario', 'Calendario'], ['ac_recogidas', 'Recogidas'], ['ac_tareas', 'Tareas'], ['ac_biblioteca', 'Biblioteca y Mascotas'], ['ac_documentos', 'Protocolos'],
 ];

@@ -440,6 +440,31 @@ try:
         page.get_by_role("button", name="Marcar devuelto hoy").click(); page.wait_for_timeout(700)
         check(len([x for x in db(page, "ac_prestamos") if not x["fecha_devolucion"]]) == 0, "marcar devuelto")
 
+        print("12b2. biblioteca y mascotas: colores, enlazar alumnos, stock y foto de portada")
+        page.evaluate("""() => { const m = window.__mock.db; const hoyS = new Date().toISOString().slice(0, 10);
+          m.ac_prestamos.push({ id: 'pt-1', tipo: 'libro', alumno_id: null, alumno_texto: 'Foz Bueno, Alba', libro: 'Dog Man', fecha_salida: hoyS, fecha_devolucion: null },
+                              { id: 'pt-2', tipo: 'mascota', alumno_id: null, alumno_texto: 'Niño Que No Existe', nivel: '1', fecha_salida: hoyS, fecha_devolucion: null }); }""")
+        page.evaluate("import('/js/academia/api.js').then(m => m.invalidar())")
+        ir(page, "ac_alumnos"); ir(page, "ac_biblioteca")
+        check("Biblioteca y Mascotas" in page.locator("main").inner_text(), "biblioteca: renombrada a Biblioteca y Mascotas")
+        cols = page.evaluate("() => [...document.querySelectorAll('main tbody .ac-motivo')].map((e) => e.style.getPropertyValue('--c'))")
+        check(len(set(cols)) == 2, "biblioteca: un color para libros y otro para mascotas")
+        page.get_by_role("button", name="Enlazar alumnos (3)").click(); page.wait_for_timeout(300)
+        page.get_by_role("button", name="Enlazar 1").click(); page.wait_for_timeout(800)
+        pr = {x["id"]: x for x in db(page, "ac_prestamos")}
+        check(pr["pt-1"]["alumno_id"] and pr["pt-1"]["alumno_texto"] is None and not pr["pt-2"]["alumno_id"], "enlazar: el nombre parecido se enlaza (orden invertido) y el desconocido queda sin enlazar")
+        page.get_by_role("button", name="Stock (0)").click(); page.wait_for_timeout(400)
+        page.get_by_role("button", name="+ Añadir al stock").click()
+        page.locator(".drawer input[type=text]").first.fill("Dog Man")
+        png = pathlib.Path(tempfile.mkdtemp()) / "portada.png"
+        png.write_bytes(__import__("base64").b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="))
+        page.locator(".drawer input[type=file]").set_input_files(str(png)); page.wait_for_timeout(300)
+        page.locator(".drawer").get_by_role("button", name="Guardar").click(); page.wait_for_timeout(1200)
+        it = db(page, "ac_biblioteca_items")
+        check(len(it) == 1 and it[0]["titulo"] == "Dog Man" and (it[0]["portada"] or "").endswith(".jpg") and page.evaluate("() => window.__mock.uploads.length") == 1, "stock: artículo creado con la foto de portada subida")
+        check(page.locator(".bib-card img").count() == 1 and "0 de 1" in page.locator(".bib-card").inner_text() or "1 de 1" in page.locator(".bib-card").inner_text(), "stock: tarjeta con portada y disponibilidad")
+        page.screenshot(path=str(SHOTS / "ac_biblioteca_stock.png"))
+
         print("12c. recogidas: importar con mapeo, hoja del día y autorizados")
         ir(page, "ac_recogidas_importar")
         hoja = {"RECOGIDAS": [["Alumnos Apellidos", "Nombre", "Colegio", "Dias", "Hora", "Autorizado 1", "Autorizado 2", "Sale solo", "Observaciones"],

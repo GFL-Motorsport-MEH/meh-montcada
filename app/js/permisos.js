@@ -20,7 +20,7 @@ export const GRUPOS_PERMISOS = [
     { k: 'ac_calendario', t: 'Horarios (franjas, parrilla, profesoras y aulas) y Calendario anual', tipo: 'propio' },
     { k: 'ac_recogidas', t: 'Recogidas', tipo: 'todo' },
     { k: 'ac_tareas', t: 'Tareas (las de dinero solo con permiso de Pagos)', tipo: 'todo' },
-    { k: 'ac_biblioteca', t: 'Biblioteca', tipo: 'todo' },
+    { k: 'ac_biblioteca', t: 'Biblioteca y Mascotas', tipo: 'todo' },
     { k: 'ac_documentos', t: 'Protocolos', tipo: 'todo' },
   ] },
   { grupo: 'Facturación y contabilidad', items: [

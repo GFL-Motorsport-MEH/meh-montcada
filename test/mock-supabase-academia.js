@@ -16,7 +16,7 @@ const db = {
   roles: ROLES_DB, rol_permisos: PERMISOS_DB,
   profiles: [ADMIN], cursos: CURSOS, categorias: [], subcategorias: [], centros: [{ id: 'ce1', nombre: 'MONTCADA', principal: true, activo: true, orden: 0 }], gastos: [], listas: [], empresas: [],
   ac_listas: [...L('modalidad', 'Babies', 'Kids', 'Teens', 'Adults'), ...L('metodo_pago', 'Domiciliacion', 'Efectivo'), ...L('motivo_baja', 'Incompatibilidad horaria', 'Otros'), ...L('categoria_documento', 'Protocolo', 'Familias'), ...L('situacion_contacto', 'posible alumno', 'prueba', 'inscrito'), ...L('descuento', 'Hermanos')],
-  ac_responsables: [], ac_responsables_priv: [], ac_vinculos: [], ac_profesoras: [], ac_aulas: [], ac_alumnos: [], ac_inscripciones: [], ac_grupos: [], ac_sesiones: [], ac_alumno_grupo: [], ac_remesas: [], ac_cuotas: [], ac_wp_precios: [], ac_bajas: [], ac_contactos: [], ac_tutorias: [], ac_anotaciones: [], ac_tareas: [], ac_reuniones: [], ac_reunion_temas: [], ac_documentos: [], ac_prestamos: [], ac_recogidas: [], ac_autorizados: [], ac_autorizados_priv: [], ac_calendario_dias: [],
+  ac_responsables: [], ac_responsables_priv: [], ac_vinculos: [], ac_profesoras: [], ac_aulas: [], ac_alumnos: [], ac_inscripciones: [], ac_grupos: [], ac_sesiones: [], ac_alumno_grupo: [], ac_remesas: [], ac_cuotas: [], ac_wp_precios: [], ac_bajas: [], ac_contactos: [], ac_tutorias: [], ac_anotaciones: [], ac_tareas: [], ac_reuniones: [], ac_reunion_temas: [], ac_documentos: [], ac_prestamos: [], ac_biblioteca_items: [], ac_recogidas: [], ac_autorizados: [], ac_autorizados_priv: [], ac_calendario_dias: [],
 };
 const DEFAULTS = {
   ac_alumnos: { estado: 'inscrito', autoriza_rrss: false }, ac_cuotas: { estado: 'pendiente', concepto: 'mensualidad', mes: '', importe: 0 }, ac_grupos: { activo: true, capacidad: 8 },
@@ -107,7 +107,7 @@ class Q {
 export function createClient() {
   return {
     from: (t) => new Q(t),
-    storage: { from: () => ({ async upload() { return { data: {}, error: null }; }, async createSignedUrl() { return { data: { signedUrl: 'about:blank' }, error: null }; } }) },
+    storage: { from: () => ({ async upload(ruta) { (window.__mock.uploads = window.__mock.uploads || []).push(ruta); return { data: {}, error: null }; }, async remove() { return { data: [], error: null }; }, getPublicUrl: (r) => ({ data: { publicUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=' } }), async createSignedUrl() { return { data: { signedUrl: 'about:blank' }, error: null }; } }) },
     functions: {
       async invoke(fn, { body } = {}) {
         window.__mock.calls.push({ fn, body });
