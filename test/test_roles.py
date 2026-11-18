@@ -51,9 +51,10 @@ try:
         pg.close()
 
         print("3. dirección: academia con pagos y remesas")
-        pg = abrir(b, "direccion")
+        pg = abrir(b, "direccion", "ac_pagos")
         t = tabs(pg)
-        check(any(x.startswith("Pagos") for x in t) and any(x.startswith("Remesas") for x in t), "dirección ve Pagos y Remesas")
+        check(any(x.startswith("Pagos") for x in t) and any(x.startswith("Remesas") for x in t) and any("Escáner" in x for x in t), "dirección ve Pagos, Remesas y Escáner")
+        check(not any(x.startswith("Balance") or x.startswith("Gastos") for x in t), "dirección NO ve Balance ni Gastos")
         pg.close()
 
         print("4. administrador: matriz editable")
