@@ -56,6 +56,8 @@ export const recogidas = (curso) => memo('rec' + curso, () => all('ac_recogidas'
 export const autorizados = () => memo('autorizados', () => all('ac_autorizados').then((l) => l.sort((a, b) => a.orden - b.orden)));
 export const autorizadosPriv = (ids) => (ids?.length ? supabase.from('ac_autorizados_priv').select('*').in('autorizado_id', ids).then(chk) : Promise.resolve([]));
 export const tareas = () => memo('tareas', () => all('ac_tareas'));
+export const reuniones = () => memo('reuniones', () => all('ac_reuniones'));
+export const temas = () => memo('temas', () => all('ac_reunion_temas'));
 export const documentos = () => memo('documentos', () => all('ac_documentos'));
 // compañeros de equipo (para asignar tareas): lo devuelve una función del servidor porque un usuario normal solo puede leer su propio perfil
 export const usuarios = () => memo('usuarios', async () => chk(await supabase.rpc('equipo_tareas')));

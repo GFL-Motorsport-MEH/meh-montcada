@@ -183,3 +183,22 @@ table.ac-parrilla td { vertical-align: top; }
 .ac-chipt.hecha { text-decoration: line-through; opacity: .6; }
 @media (max-width: 1100px) { .ac-semana { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); } }
 @media (max-width: 760px) { .ac-matriz-w { overflow-x: auto; } .ac-matriz { min-width: 640px; } }
+
+/* reuniones */
+.ac-reu-sel { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.ac-reu-sel select { min-width: 220px; width: auto; }
+.ac-reu-cuerpo { display: flex; flex-direction: column; gap: 10px; }
+.ac-reu-card { padding: 0; overflow: hidden; }
+.ac-reu-pad { padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+.ac-reu-pad .field textarea, .ac-reu-notas { width: 100%; }
+.ac-tema { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--border); padding-top: 6px; }
+.ac-tema-l1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ac-tema .ac-tema-t { flex: 1 1 260px; min-width: 0; font: inherit; font-weight: 600; border: 1px solid transparent; background: transparent; padding: 3px 4px; color: var(--text-primary); }
+.ac-tema .ac-tema-t:hover, .ac-tema .ac-tema-t:focus { border-color: var(--border); background: var(--surface); }
+.ac-tema.hecho .ac-tema-t { text-decoration: line-through; color: var(--text-muted); }
+.ac-tema-n { margin-left: 26px; width: calc(100% - 26px); font: inherit; font-size: 12.5px; }
+.ac-reu-tarea, .ac-reu-acc { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ac-reu-form { margin-left: 26px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.ac-reu-form input[type="text"] { flex: 1 1 240px; }
+.ac-tema input[type="checkbox"] { width: auto; flex: none; }
+.ac-tarea .ac-reu-ref { white-space: nowrap; }

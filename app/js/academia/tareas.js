@@ -4,13 +4,14 @@
 import { h, clear, cargando, toast, confirmar, hoyISO, normalizar } from '../ui.js';
 import * as api from './api.js';
 import { cabecera, refrescar } from './kit.js';
+import { renderReuniones, llevarAReunion, nombreReunion, proxima, fechaCorta as fechaReu } from './reuniones.js';
 
 const PRIO = ['Normal', 'Importante', 'Urgente'];
 const AREAS = { aca: 'Académica', centro: 'Centro', conta: 'Contabilidad', pagos: 'Domiciliaciones y pagos' };
 const AREAS_DINERO = ['conta', 'pagos'];
 const ESTADOS = { pend: 'Pendiente', curso: 'En curso', hecha: 'Hecha' };
 const GRUPOS = [['venc', 'Vencidas'], ['hoy', 'Hoy'], ['sem', 'Próximos 7 días'], ['des', 'Más adelante'], ['sin', 'Sin fecha'], ['hecha', 'Hechas']];
-const S = { quien: 'todas', area: 'all', vista: 'lista', q: '', hechas: false, spec: null, sem: 0 };
+const S = { seccion: 'tareas', quien: 'todas', area: 'all', vista: 'lista', q: '', hechas: false, spec: null, sem: 0 };
 const VISTAS = [['lista', 'Lista del día'], ['persona', 'Por persona'], ['semana', 'Semana'], ['matriz', 'Persona y fecha'], ['estado', 'Tablero']];
 const COL_AREA = { aca: '#2a5bd7', centro: '#5a6b2a', conta: '#7a3fc0', pagos: '#a65f08' };
 const DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
@@ -41,9 +42,18 @@ function grupo(t, hoy) {
 const orden = (a, b) => (b.prioridad - a.prioridad) || (a.vence || '9999').localeCompare(b.vence || '9999') || b.created_at.localeCompare(a.created_at);
 const sel = (opciones, valor, extra = {}) => h('select', extra, opciones.map(([v, l]) => h('option', { value: v, selected: v === valor }, l)));
 
+// Tareas y Reuniones comparten pantalla: un conmutador arriba cambia de una a otra
 export async function renderTareas(view, ctx) {
+  const ir = (seccion, q) => { S.seccion = seccion; if (q != null) { S.q = q; S.hechas = true; S.quien = 'todas'; S.area = 'all'; S.spec = null; } refrescar(); };
+  const conmutador = h('div', { class: 'segmented', role: 'group', 'aria-label': 'Sección' }, [['tareas', 'Tareas'], ['reuniones', 'Reuniones']].map(([k, l]) =>
+    h('button', { class: 'seg-btn', type: 'button', 'aria-selected': String(S.seccion === k), onclick: () => ir(k) }, l)));
+  if (S.seccion === 'reuniones') return renderReuniones(view, ctx, { conmutador, verTarea: (titulo) => ir('tareas', titulo) });
+  return renderLista(view, ctx, conmutador);
+}
+
+async function renderLista(view, ctx, conmutador) {
   clear(view, cargando());
-  const [tareas, usuarios] = await Promise.all([api.tareas(), api.usuarios().catch(() => [])]);
+  const [tareas, usuarios, reunionesDb, temasDb] = await Promise.all([api.tareas(), api.usuarios().catch(() => []), api.reuniones().catch(() => []), api.temas().catch(() => [])]);
   const yo = ctx.state.perfil;
   const miNombre = primerNombre(yo.nombre || yo.email);
   SIGLAS.clear();
@@ -161,7 +171,9 @@ export async function renderTareas(view, ctx) {
         g === 'venc' ? h('span', { class: 'ac-aviso' }, 'Vencida') : g === 'hoy' ? h('span', { class: 'ac-aviso hoy' }, 'Hoy') : null,
         sel(PRIO.map((p, i) => [String(i), p]), String(t.prioridad), { disabled: dis, 'aria-label': 'Prioridad', onchange: (e) => guardar(t, { prioridad: Number(e.target.value) }) }),
         sel([['', 'No se repite'], ['semanal', 'Cada semana'], ['mensual', 'Cada mes']], t.repite || '', { disabled: dis, 'aria-label': 'Repetición', onchange: (e) => guardar(t, { repite: e.target.value || null }) }),
-        h('input', { type: 'text', class: 'ac-etq', value: t.etiqueta || '', placeholder: 'Etiqueta', disabled: dis, 'aria-label': 'Etiqueta', onchange: (e) => guardar(t, { etiqueta: e.target.value.trim() || null }) })),
+        h('input', { type: 'text', class: 'ac-etq', value: t.etiqueta || '', placeholder: 'Etiqueta', disabled: dis, 'aria-label': 'Etiqueta', onchange: (e) => guardar(t, { etiqueta: e.target.value.trim() || null }) }),
+        enReunion(t),
+        dis ? null : reunionSel(t)),
       h('textarea', { class: 'ac-t-notas', rows: lineasNotas, placeholder: 'Notas…', disabled: dis, 'aria-label': 'Notas', onchange: (e) => guardar(t, { notas: e.target.value.trim() || null }) }, t.notas || ''),
       items.length || editor ? h('div', { class: 'ac-t-items' },
         items.map((it, i) => h('div', { class: 'ac-item' + (it.ok ? ' hecho' : '') },
@@ -203,6 +215,22 @@ export async function renderTareas(view, ctx) {
         sinPersona ? null : h('span', { class: 'ac-quien' }, avatar(nombre), h('span', {}, nombre ? primerNombre(nombre) : 'Sin asignar'))));
   }
   const tarea = (t, tarjeta, sinPersona) => (abiertas.has(t.id) ? bloque(t, tarjeta) : resumen(t, tarjeta, sinPersona));
+
+  // enlace con las reuniones: temas que apuntan a esta tarea y botón para llevarla a la próxima reunión
+  function enReunion(t) {
+    const ls = temasDb.filter((x) => x.tarea_id === t.id).map((x) => ({ x, r: reunionesDb.find((r) => r.id === x.reunion_id) })).filter((e) => e.r);
+    return ls.length ? h('span', { class: 'ac-reu-ref muted small', title: 'Reuniones donde se habla de esta tarea' }, '🗓 ' + ls.map((e) => `${nombreReunion(e.r.tipo)} ${fechaReu(e.r.fecha)}`).join(' · ')) : null;
+  }
+  function reunionSel(t) {
+    const opts = [['coordinacion', proxima('coordinacion')], ['profesoras', proxima('profesoras')]].filter(([, f]) => f);
+    if (!opts.length) return null;
+    const s = sel([['', 'Llevar a reunión…'], ...opts.map(([k, f]) => [k, `${nombreReunion(k)} · ${fechaReu(f)}`])], '', { 'aria-label': 'Llevar a reunión' });
+    s.addEventListener('change', async () => {
+      if (!s.value) return;
+      try { const f = await llevarAReunion(s.value, t); toast(`Apuntada en la reunión de ${nombreReunion(s.value)} del ${fechaReu(f)}`); recargar(); } catch (ex) { toast(ex.message, 'error'); s.value = ''; }
+    });
+    return s;
+  }
 
   function columna(titulo, total, tareasCol, onDrop, extra, sinPersona, clase) {
     const col = h('div', { class: 'ac-col' + (clase ? ' ' + clase : '') }, h('div', { class: 'ac-grupo-h' }, h('span', { class: 'ac-col-t' }, extra, titulo), h('span', {}, total)), tareasCol.map((t) => tarea(t, true, sinPersona)));
@@ -290,7 +318,7 @@ export async function renderTareas(view, ctx) {
   ayuda.hidden = !ayudaAbierta();
   const btnAyuda = h('button', { class: 'btn small', type: 'button', 'aria-expanded': String(!ayuda.hidden), onclick: () => { ayuda.hidden = !ayuda.hidden; btnAyuda.setAttribute('aria-expanded', String(!ayuda.hidden)); guardarAyuda(!ayuda.hidden); } }, '? Cómo funciona');
 
-  clear(view, cabecera('Tareas', `${tareas.filter((t) => t.estado !== 'hecha').length} pendientes`, btnAyuda),
+  clear(view, cabecera('Tareas', `${tareas.filter((t) => t.estado !== 'hecha').length} pendientes`, conmutador, btnAyuda),
     ayuda, tiles,
     h('div', { class: 'ac-nueva' }, nueva, nuevaResp, nuevaArea, nuevaFecha, h('button', { class: 'btn primary', type: 'button', disabled: !editor, onclick: crear }, 'Añadir')),
     h('div', { class: 'ac-filtros' }, barraResp, chips, h('input', { type: 'search', placeholder: 'Buscar…', 'aria-label': 'Buscar tareas', value: S.q, oninput: (e) => { S.q = e.target.value; pintar(); } }),
@@ -306,6 +334,7 @@ function leyenda(areasPropias, miNombre) {
     h('ul', { class: 'small' },
       p('Crear.', 'Escribe el título, elige responsable, área y fecha (opcional) y pulsa Intro o «Añadir».'),
       p('Todo en la propia tarea.', 'Cambia estado, área, fecha, prioridad, repetición, notas y lista de comprobación directamente en su fila; se guarda solo. El botón «Comentar» abre la caja para escribir un comentario.'),
+      p('Reuniones.', 'Arriba, «Reuniones»: cada lunes Coordinación y cada martes Profesoras (del 1 de septiembre al 20 de junio), más reuniones sueltas. Apunta temas a tratar; de cada tema puedes crear una tarea o enlazar una existente. Desde una tarea abierta, «Llevar a reunión…» la apunta en la próxima.'),
       p('Una línea por tarea.', 'Pulsa el título para abrirla y editarlo todo en su sitio; «Cerrar» la vuelve a plegar. El círculo de la izquierda la marca como hecha.'),
       p('Vistas.', 'Lista del día (Vencidas, Hoy, Próximos 7 días…), Por persona (una columna por responsable), Semana (calendario), Persona y fecha (quién y cuándo a la vez) y Tablero (Pendiente → En curso → Hecha). Arrastra con ⋮⋮ para reasignar, cambiar de día o de estado.'),
       p('Tareas hechas.', 'No se borran: quedan guardadas con su fecha. Marca «Ver hechas» para consultarlas (aparecen en el grupo «Hechas» y en la columna Hecha del tablero).'),
