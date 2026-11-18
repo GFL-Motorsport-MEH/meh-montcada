@@ -116,7 +116,7 @@ export function tabla(cols, filas, { onClick, vacio = 'Sin datos todavía.', cla
   }
   pinta();
   return h('div', { class: 'table-wrap card-tabla' }, nota, h('table', { class: 'data ac-tabla ' + clase },
-    h('thead', {}, h('tr', {}, ths), util && filtrable.some(Boolean) ? h('tr', { class: 'ac-filtros' }, controles) : null), tbody));
+    h('thead', {}, h('tr', {}, ths), util && filtrable.some(Boolean) ? h('tr', { class: 'ac-fila-filtros' }, controles) : null), tbody));
 }
 
 export const pill = (texto, tipo = 'off') => h('span', { class: `pill ${tipo}` }, texto);
