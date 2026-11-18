@@ -33,7 +33,7 @@ export async function renderBiblioteca(view, ctx) {
       { t: 'Salida', v: (p) => fmtFecha(p.fecha_salida) },
       { t: 'Devolución', v: (p) => (p.fecha_devolucion ? fmtFecha(p.fecha_devolucion) : pill(tarde(p) ? `fuera ${dias(p)} d` : 'fuera', tarde(p) ? 'bad' : 'warn')) },
       { t: 'Estado', v: (p) => p.condiciones || '' },
-    ], filas.slice(0, 500), { onClick: (p) => abrir(p, { alumnos, ctx, recargar }), vacio: 'No hay préstamos con este filtro.' }));
+    ], filas.slice(0, 3000), { onClick: (p) => abrir(p, { alumnos, ctx, recargar }), vacio: 'No hay préstamos con este filtro.' }));
   }
   clear(view, cabecera('Biblioteca', 'Libros y mascotas viajeras que se llevan los alumnos',
     h('a', { class: 'btn small', href: '#/ac_biblioteca_importar' }, 'Importar del Excel'), editor ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrir(null, { alumnos, ctx, recargar }) }, '+ Nuevo préstamo') : null),
