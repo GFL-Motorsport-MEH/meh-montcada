@@ -37,6 +37,7 @@ export async function renderUsuarios(view, ctx) {
   const contador = h('div', { class: 'count' });
 
   // Una profesora ve «lo suyo» (grupos, tutorías, alumnos) a través de su ficha en Academia > Profesoras.
+  // Cualquier rol puede tener ficha (p. ej. coordinación que además da clase): en su caso no limita lo que ve, solo la identifica como profesora.
   function fichaSelect(p) {
     const actual = fichasProf.find((f) => f.profile_id === p.id);
     const sel = h('select', { 'aria-label': `Ficha de profesora de ${p.email || p.nombre}`, class: 'ficha-prof' },
@@ -57,7 +58,7 @@ export async function renderUsuarios(view, ctx) {
       } catch (ex) { toast(ex.message, 'error'); }
     } }, 'Crear ficha');
     return h('div', { class: 'ficha-vinculo' }, h('div', { class: 'small muted' }, 'Ficha de profesora'), sel,
-      actual ? null : h('div', {}, h('span', { class: 'pill warn', title: 'Sin ficha no ve sus grupos, tutorías ni alumnos' }, 'Sin ficha: no verá nada suyo'), ' ', crear));
+      actual ? null : h('div', {}, p.rol === 'profesora' ? h('span', { class: 'pill warn', title: 'Sin ficha no ve sus grupos, tutorías ni alumnos' }, 'Sin ficha: no verá nada suyo') : null, ' ', crear));
   }
 
   const EMAIL_OK = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -134,7 +135,7 @@ export async function renderUsuarios(view, ctx) {
     return h('tr', { class: p.activo ? '' : 'inactivo' },
       h('td', {}, nombre, siglas),
       h('td', {}, email, esYo ? h('span', { class: 'line2' }, '(tú)') : null),
-      h('td', {}, rol, p.rol === 'profesora' ? ficha : null),
+      h('td', {}, rol, ficha),
       h('td', {}, estado),
       h('td', { class: 'small' }, sinAcceso ? h('span', { class: 'muted' }, '—') : p.debe_cambiar_password ? h('span', { class: 'pill warn', title: 'Todavía no ha cambiado la contraseña provisional' }, 'Provisional') : h('span', { class: 'muted' }, 'Propia')),
       h('td', { class: 'small muted' }, fmtFecha(p.created_at)),

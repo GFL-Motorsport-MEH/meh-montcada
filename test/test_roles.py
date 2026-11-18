@@ -109,6 +109,12 @@ try:
         pg.locator(".dialog").get_by_role("button", name="Eliminar para siempre").click()
         pg.wait_for_timeout(400)
         check(pg.evaluate("window.__mock.db.profiles.some(p => p.nombre === 'Aroa Egea')") is False, "eliminar el usuario")
+        pg.get_by_label("Nombre del usuario nuevo").fill("Paula Alcala")
+        pg.get_by_label("Rol del usuario nuevo").select_option("coordinacion")
+        pg.get_by_role("button", name="Crear usuario").click()
+        fp = pg.locator("table.tabla-usuarios tbody tr").filter(has=pg.locator("input[aria-label*='paula' i]"))
+        expect(fp.get_by_role("button", name="Crear ficha")).to_be_visible()
+        check(fp.get_by_text("Sin ficha: no verá nada suyo").count() == 0, "coordinación puede tener ficha de profesora, sin el aviso de «no verá nada»")
         yo_fila = pg.locator("table.tabla-usuarios tbody tr").first
         check(yo_fila.get_by_role("button", name="Eliminar").count() == 0 and yo_fila.get_by_role("button", name="Bloquear").count() == 0, "uno mismo no puede bloquearse ni eliminarse")
         pg.close()
