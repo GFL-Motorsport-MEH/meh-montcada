@@ -15,20 +15,44 @@
 .kpi-link { text-decoration: none; color: inherit; }
 .kpi-link:hover { background: var(--surface-2); }
 
-/* pagos: matriz alumno × mes sin scroll lateral */
-table.ac-matriz { min-width: 0; table-layout: fixed; font-size: 12px; }
-table.ac-matriz th, table.ac-matriz td { padding: 3px 4px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-table.ac-matriz th:first-child, table.ac-matriz td.ac-nom { text-align: left; width: 18%; }
-table.ac-matriz th:nth-child(2), table.ac-matriz th:nth-child(3) { width: 6.5%; }
-table.ac-matriz td.ac-nom { font-size: 12px; }
-table.ac-matriz tfoot th { font-size: 11px; }
+/* pagos: una fila por alumno; por mes, cuantía + pagado + recibo hecho */
+table.ac-pg { min-width: 0; width: 100%; table-layout: fixed; font-size: 11.5px; border-collapse: collapse; }
+table.ac-pg th, table.ac-pg td { padding: 2px 2px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.ac-pg th.l, table.ac-pg td.ac-nom { text-align: left; }
+table.ac-pg th:nth-child(1), table.ac-pg td.ac-id { width: 30px; }
+table.ac-pg th:nth-child(2) { width: 13%; }
+table.ac-pg th:nth-child(3) { width: 5%; }
+table.ac-pg th:nth-child(4) { width: 7.5%; }
+table.ac-pg th:nth-child(5) { width: 4.5%; }
+table.ac-pg td.ac-nom a { color: inherit; text-decoration: none; }
+table.ac-pg td.ac-nom a:hover { text-decoration: underline; }
+table.ac-pg td.ac-niv, table.ac-pg td.ac-modo { font-size: 11px; color: var(--text-secondary); }
+table.ac-pg tfoot th { font-size: 10.5px; }
+table.ac-pg .ac-sub { font-weight: 400; font-size: 9.5px; color: var(--text-muted); letter-spacing: .02em; }
 .ac-imp { width: 100%; min-width: 0; text-align: right; padding: 2px 3px; font-size: 11.5px; box-sizing: border-box; }
-.ac-pago { width: 100%; min-width: 24px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); font: 600 11px var(--font-body); padding: 2px 0; cursor: pointer; color: var(--text-secondary); }
-.ac-pago.pendiente { background: color-mix(in oklab, var(--warning) 16%, var(--surface)); border-color: color-mix(in oklab, var(--warning) 45%, var(--border)); color: var(--warning); }
-.ac-pago.pagado { background: color-mix(in oklab, var(--good) 16%, var(--surface)); border-color: color-mix(in oklab, var(--good) 45%, var(--border)); color: var(--good); }
-.ac-pago.devuelto { background: color-mix(in oklab, var(--critical) 14%, var(--surface)); border-color: color-mix(in oklab, var(--critical) 45%, var(--border)); color: var(--critical); }
-.ac-pago[disabled] { cursor: default; }
-.ac-cel.vacia { color: var(--text-muted); }
+table.ac-pg td.ac-cel { display: table-cell; cursor: cell; user-select: none; border-left: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+table.ac-pg td.ac-cel { overflow: visible; text-overflow: clip; white-space: nowrap; padding: 2px 0; font-size: 0; }
+td.ac-cel > * { vertical-align: middle; }
+td.ac-cel.pendiente { background: color-mix(in oklab, var(--warning) 14%, var(--surface)); }
+td.ac-cel.pagado { background: color-mix(in oklab, var(--good) 14%, var(--surface)); }
+td.ac-cel.devuelto { background: color-mix(in oklab, var(--critical) 14%, var(--surface)); }
+td.ac-cel.exento { background: var(--surface-2); color: var(--text-muted); }
+td.ac-cel.sel { outline: 2px solid var(--accent); outline-offset: -2px; }
+.pc-imp { display: inline-block; min-width: 20px; text-align: right; margin-right: 2px; font-weight: 600; font-size: 11.5px; }
+.pc-imp.manual { text-decoration: underline dotted; }
+.pc-edit { width: 52px; padding: 0 2px; font-size: 11.5px; box-sizing: border-box; }
+.pc-chk { width: 14px; height: 14px; padding: 0; margin-left: 1px; border: 1px solid var(--border-strong); border-radius: 3px; background: var(--surface); font: 700 10px/12px var(--font-body); cursor: pointer; color: #fff; text-align: center; }
+.pc-chk.pc-p.pagado { background: var(--good); border-color: var(--good); }
+.pc-chk.pc-p.devuelto { background: var(--critical); border-color: var(--critical); }
+.pc-chk.pc-p.exento { background: var(--text-muted); border-color: var(--text-muted); }
+.pc-chk.pc-r.on { background: var(--accent); border-color: var(--accent); }
+.pc-chk[disabled] { cursor: default; }
+.pc-vacio { color: var(--text-muted); font-size: 11px; }
+.ac-pg-chk { display: block; margin: 6px 0; }
+.ac-pg-barra { position: sticky; bottom: 8px; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: 0 4px 18px rgba(0, 0, 0, .18); }
+.ac-pg-barra[hidden] { display: none; }
+.ac-pg-precios { display: grid; gap: 8px; }
+.ac-pg-nuevo { display: grid; grid-template-columns: 2fr 1fr; gap: 6px; }
 
 /* horarios */
 table.ac-parrilla { min-width: 0; table-layout: fixed; }
@@ -286,7 +310,7 @@ td.ac-pcelda.drop, .ac-cal-ses.arrastrando { background: color-mix(in oklab, var
 .ac-ano-tramo { cursor: pointer; }
 .ac-ano-tramo:hover { background: var(--surface-2); }
 
-.ac-pago.cambio { outline: 2px solid var(--warning); outline-offset: -2px; }
+td.ac-cel.cambio { outline: 2px solid var(--warning); outline-offset: -2px; }
 .ac-busca-cargo { width: 100%; max-width: 420px; }
 
 
@@ -358,3 +382,5 @@ td.ac-pcelda.drop, .ac-cal-ses.arrastrando { background: color-mix(in oklab, var
 .ac-coment.tiene { opacity: 1; filter: none; }
 .ac-tabla.ac-editando td { padding-top: 2px; padding-bottom: 2px; }
 .banner.warn { border-color: #b26a00; }
+
+@media (max-width: 1150px) { table.ac-pg { min-width: 1060px; } }

@@ -1,85 +1,255 @@
-// Pagos: matriz alumno × mes del curso (welcome pack + 12 mensualidades). Sustituye a la pestaña PAGOS del Excel.
-import { h, clear, cargando, toast, fmtEUR, fmtEUR2, hoyISO, normalizar, MESES, MESES_CORTO, capitalizar } from '../ui.js';
+// Pagos: una fila por alumno y, por cada mes (y el welcome pack), la cuantía + «pagado» + «recibo hecho», como la hoja PAGOS del Excel.
+// Se pueden seleccionar varias celdas (arrastrando, Ctrl/Cmd+clic o Mayús+clic) y cambiarlas de una vez desde la barra inferior.
+import { h, clear, cargando, toast, fmtEUR2, hoyISO, normalizar, MESES, MESES_CORTO, capitalizar } from '../ui.js';
 import * as api from './api.js';
-import { cabecera, sel, nombreAlumno, refrescar } from './kit.js';
+import { cabecera, sel, nombreAlumno, refrescar, drawer, numero, guardarBoton } from './kit.js';
+import { abrirFicha } from './alumnos.js';
 
 const mesActual = () => ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'][new Date().getMonth()];
+const COLS = [{ c: 'welcome_pack', m: '', t: 'WP' }, ...MESES.map((m, i) => ({ c: 'mensualidad', m, t: MESES_CORTO[i] }))];
+const fmtN = (n) => Number(n || 0).toLocaleString('es-ES', { maximumFractionDigits: 2 });
+const norm = (s) => normalizar(String(s || '').trim());
+const SIMBOLO = { pagado: '✓', devuelto: '↩', exento: '–', pendiente: '' };
 
 export async function renderPagos(view, ctx) {
   clear(view, cargando());
   const curso = ctx.cursoActual();
-  const [alumnos, insc, cuotas, remesas] = await Promise.all([api.alumnos(), api.inscripciones(curso.id), api.cuotas(curso.id), api.remesas(curso.id)]);
+  const [alumnos, insc, cuotas, precios, remesas] = await Promise.all([api.alumnos(), api.inscripciones(curso.id), api.cuotas(curso.id), api.wpPrecios(curso.id), api.remesas(curso.id)]);
   const remPor = new Map(remesas.map((r) => [r.id, r]));
   const dondeCargo = (c) => { const r = remPor.get(c.remesa_id); return r ? ` · en ${r.nombre || capitalizar(r.mes)}${r.banco ? ' (' + r.banco + ')' : ''}` : (c.concepto === 'mensualidad' ? ' · sin remesa' : ''); };
   const inscPor = new Map(insc.map((i) => [i.alumno_id, i]));
   const cuotaPor = new Map(cuotas.map((c) => [`${c.alumno_id}|${c.concepto}|${c.mes}`, c]));
   const editor = ctx.edita('ac_pagos');
-  const f = { q: '', soloPend: false };
+  const f = { q: '', soloPend: false, modo: '', nivel: '', recibo: '' };
   const filasBase = alumnos.filter((a) => (inscPor.get(a.id)?.activa && a.estado !== 'baja') || (a.estado === 'inscrito' && inscPor.has(a.id)) || cuotas.some((c) => c.alumno_id === a.id));
   const sinInsc = alumnos.filter((a) => a.estado === 'inscrito' && !inscPor.has(a.id)).length;
+  const precioWp = (a) => { const p = precios.find((x) => norm(x.nivel) === norm(a.nivel) && norm(a.nivel)); return p ? Number(p.importe) : null; };
+  const importeDefecto = (a, col) => (col.c === 'welcome_pack' ? precioWp(a) ?? Number(inscPor.get(a.id)?.welcome_pack || 0) : Number(inscPor.get(a.id)?.cuota_mensual || 0));
+  const cuotaDe = (a, ci) => cuotaPor.get(`${a.id}|${COLS[ci].c}|${COLS[ci].m}`);
 
+  let rows = []; const celdas = new Map(); const seleccion = new Set();
+  let ancla = null; let arrastrando = false;
+
+  // ---------- totales ----------
   const totales = (c) => ({ pagado: c.filter((x) => x.estado === 'pagado').reduce((s, x) => s + Number(x.importe), 0), total: c.filter((x) => x.estado !== 'exento').reduce((s, x) => s + Number(x.importe), 0) });
-  const kpis = totales(cuotas);
-  const kpi = (l, v, sub) => h('div', { class: 'card kpi' }, h('div', { class: 'label' }, l), h('div', { class: 'value' }, v), sub ? h('div', { class: 'sub' }, sub) : null);
+  const kv = {};
+  const kpi = (k, l, sub) => { kv[k] = h('div', { class: 'value' }); return h('div', { class: 'card kpi' }, h('div', { class: 'label' }, l), kv[k], sub ? h('div', { class: 'sub' }, sub) : null); };
+  const kpisEl = h('div', { class: 'kpi-row kpi-4' }, kpi('cob', 'Cobrado'), kpi('pen', 'Pendiente', 'Cuotas generadas aún sin cobrar'), kpi('rec', 'Recibos por hacer', 'Cobradas sin «recibo hecho»'), kpi('al', 'Alumnos'));
+  function pintarKpis() {
+    const t = totales(cuotas);
+    kv.cob.textContent = fmtEUR2(t.pagado); kv.pen.textContent = fmtEUR2(t.total - t.pagado);
+    kv.rec.textContent = String(cuotas.filter((c) => c.estado === 'pagado' && !c.recibo_hecho).length); kv.al.textContent = String(filasBase.length);
+  }
+  const pie = h('tfoot');
+  function pintarPie() {
+    const col = (c) => { const t = totales(c); return h('th', { class: 'num', title: `Cobrado ${fmtEUR2(t.pagado)} de ${fmtEUR2(t.total)}` }, fmtN(t.pagado), h('div', { class: 'muted small' }, `de ${fmtN(t.total)}`)); };
+    clear(pie, h('tr', {}, h('th', { colspan: 5 }, 'Cobrado / total (€)'), COLS.map((k) => col(cuotas.filter((c) => c.concepto === k.c && c.mes === k.m)))));
+  }
 
+  // ---------- celdas ----------
+  const claveSel = (a, ci) => `${a.id}|${ci}`;
+  function pintaCelda(a, ci) {
+    const td = celdas.get(claveSel(a, ci)); if (!td) return;
+    const c = cuotaDe(a, ci);
+    td.className = 'ac-cel' + (c ? ' ' + c.estado + (c.nota_cambio ? ' cambio' : '') : ' vacia') + (seleccion.has(claveSel(a, ci)) ? ' sel' : '');
+    clear(td);
+    if (!c) { td.append(h('span', { class: 'pc-vacio' }, '·')); return; }
+    const tip = `${COLS[ci].c === 'welcome_pack' ? 'Welcome pack' : capitalizar(c.mes)} · ${fmtEUR2(c.importe)} · ${c.estado}${dondeCargo(c)}${c.nota_cambio ? '\n⚠ ' + c.nota_cambio : ''}${c.nivel ? ' · nivel ' + c.nivel : ''}${c.importe_manual ? ' · importe manual' : ''}${editor ? ' · doble clic para cambiar el importe' : ''}`;
+    const imp = h('span', { class: 'pc-imp' + (c.importe_manual ? ' manual' : ''), title: tip }, fmtN(c.importe));
+    if (editor) imp.addEventListener('dblclick', (e) => { e.stopPropagation(); editarInline(a, ci, imp); });
+    const p = h('button', { type: 'button', class: `pc-chk pc-p ${c.estado}`, disabled: !editor, title: c.estado === 'pagado' ? 'Pagado (clic: quitar)' : c.estado === 'devuelto' ? 'Devuelto (clic: marcar pagado)' : c.estado === 'exento' ? 'Exento (clic: marcar pagado)' : 'Sin pagar (clic: marcar pagado)', 'aria-label': 'Pagado' }, SIMBOLO[c.estado]);
+    const r = h('button', { type: 'button', class: 'pc-chk pc-r' + (c.recibo_hecho ? ' on' : ''), disabled: !editor, title: c.recibo_hecho ? 'Recibo hecho (clic: quitar)' : 'Recibo sin hacer (clic: marcar hecho)', 'aria-label': 'Recibo hecho' }, c.recibo_hecho ? '✓' : '');
+    p.addEventListener('click', (e) => { e.stopPropagation(); aplicarA(a, ci, (l) => ponEstado(l, c.estado === 'pagado' ? 'pendiente' : 'pagado')); });
+    r.addEventListener('click', (e) => { e.stopPropagation(); aplicarA(a, ci, (l) => ponRecibo(l, !c.recibo_hecho)); });
+    td.append(imp, p, r);
+  }
+  const repintar = (lista) => { const ids = new Set(lista.map((c) => c.id)); for (const a of rows) COLS.forEach((_, ci) => { const c = cuotaDe(a, ci); if (c && ids.has(c.id)) pintaCelda(a, ci); }); pintarPie(); pintarKpis(); };
+
+  // ---------- acciones (sobre una celda o sobre toda la selección) ----------
+  const selCuotas = () => [...seleccion].map((k) => { const [id, ci] = k.split('|'); return cuotaPor.get(`${id}|${COLS[ci].c}|${COLS[ci].m}`); }).filter(Boolean);
+  async function aplicarA(a, ci, fn) {
+    const c = cuotaDe(a, ci); if (!c) return;
+    const lista = seleccion.has(claveSel(a, ci)) && seleccion.size > 1 ? selCuotas() : [c];
+    try { await fn(lista); } catch (ex) { toast(ex.message, 'error'); }
+  }
+  async function ponEstado(lista, estado) {
+    const hechos = lista.filter((c) => c.estado !== estado); if (!hechos.length) return;
+    const parche = { estado, fecha_pago: estado === 'pagado' ? hoyISO() : null };
+    await api.updMany('ac_cuotas', hechos.map((c) => c.id), parche);
+    hechos.forEach((c) => Object.assign(c, parche)); repintar(hechos); pintarBarra();
+  }
+  async function ponRecibo(lista, v) {
+    const hechos = lista.filter((c) => !!c.recibo_hecho !== v); if (!hechos.length) return;
+    await api.updMany('ac_cuotas', hechos.map((c) => c.id), { recibo_hecho: v });
+    hechos.forEach((c) => { c.recibo_hecho = v; }); repintar(hechos); pintarBarra();
+  }
+  async function ponImporte(lista, valor) {
+    await api.updMany('ac_cuotas', lista.map((c) => c.id), { importe: valor, importe_manual: true });
+    lista.forEach((c) => { c.importe = valor; c.importe_manual = true; }); repintar(lista); pintarBarra();
+  }
+  async function crearCeldas() {
+    const nuevas = [];
+    for (const k of seleccion) {
+      const [id, ci] = k.split('|'); const a = rows.find((x) => x.id === id); const col = COLS[ci];
+      if (!a || cuotaPor.has(`${id}|${col.c}|${col.m}`)) continue;
+      nuevas.push({ alumno_id: id, curso_id: curso.id, concepto: col.c, mes: col.m, importe: importeDefecto(a, col), metodo_pago: a.metodo_pago || null, nivel: col.c === 'welcome_pack' ? a.nivel || null : null });
+    }
+    if (!nuevas.length) return;
+    const creadas = await api.insMany('ac_cuotas', nuevas, { onConflict: 'alumno_id,curso_id,concepto,mes', ignorar: true });
+    for (const c of creadas) { cuotas.push(c); cuotaPor.set(`${c.alumno_id}|${c.concepto}|${c.mes}`, c); }
+    for (const a of rows) COLS.forEach((_, ci) => { if (seleccion.has(claveSel(a, ci))) pintaCelda(a, ci); });
+    pintarPie(); pintarKpis(); pintarBarra(); toast(`${creadas.length} cuota${creadas.length === 1 ? '' : 's'} creada${creadas.length === 1 ? '' : 's'}.`);
+  }
+  function editarInline(a, ci, span) {
+    const c = cuotaDe(a, ci); if (!c) return;
+    const inp = h('input', { type: 'number', step: '0.01', class: 'pc-edit', value: c.importe, 'aria-label': 'Importe' });
+    let hecho = false;
+    const fin = async (guardar) => {
+      if (hecho) return; hecho = true;
+      const v = Number(inp.value);
+      if (guardar && inp.value !== '' && !Number.isNaN(v) && v !== Number(c.importe)) { try { await ponImporte([c], v); return; } catch (ex) { toast(ex.message, 'error'); } }
+      pintaCelda(a, ci);
+    };
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') fin(true); else if (e.key === 'Escape') { e.stopPropagation(); fin(false); } });
+    inp.addEventListener('blur', () => fin(true)); inp.addEventListener('mousedown', (e) => e.stopPropagation());
+    span.replaceWith(inp); inp.focus(); inp.select();
+  }
+  function pedirImporte(lista) {
+    const d = drawer({ titulo: `Cambiar importe de ${lista.length} cuota${lista.length === 1 ? '' : 's'}`, ancho: 380 });
+    const n = numero(lista.length === 1 ? lista[0].importe : '', { placeholder: '€' });
+    d.cuerpo.append(h('label', { class: 'field' }, h('span', {}, 'Nuevo importe (€)'), n), h('p', { class: 'small muted' }, 'Queda marcado como importe manual: ni el cambio de nivel ni los precios del welcome pack lo vuelven a tocar. Vale también para cuotas ya pagadas.'));
+    d.pie.append(h('span'), guardarBoton('Aplicar', async () => {
+      if (n.value === '' || Number.isNaN(Number(n.value))) { toast('Escribe un importe.', 'error'); return; }
+      try { await ponImporte(lista, Number(n.value)); d.cerrar(); } catch (ex) { toast(ex.message, 'error'); }
+    }));
+    setTimeout(() => n.focus(), 50);
+  }
+
+  // ---------- barra inferior de selección ----------
+  const barra = h('div', { class: 'ac-pg-barra', hidden: true });
+  function pintarBarra() {
+    const l = selCuotas(); const vacias = seleccion.size - l.length;
+    barra.hidden = !seleccion.size;
+    if (!seleccion.size) return;
+    const b = (t, fn, cls = '') => h('button', { type: 'button', class: 'btn small ' + cls, disabled: !editor, onclick: async () => { try { await fn(); } catch (ex) { toast(ex.message, 'error'); } } }, t);
+    clear(barra,
+      h('strong', {}, `${seleccion.size} celda${seleccion.size === 1 ? '' : 's'}`), h('span', { class: 'muted small' }, ` · ${fmtEUR2(l.reduce((s, c) => s + Number(c.importe), 0))}${vacias ? ` · ${vacias} sin cuota` : ''}`),
+      l.length ? [b('Pagado', () => ponEstado(l, 'pagado'), 'primary'), b('Sin pagar', () => ponEstado(l, 'pendiente')), b('Recibo hecho', () => ponRecibo(l, true)), b('Sin recibo', () => ponRecibo(l, false)),
+        b('Devuelto', () => ponEstado(l, 'devuelto')), b('Exento', () => ponEstado(l, 'exento')), b('Importe…', () => pedirImporte(l))] : null,
+      vacias ? b(`Crear ${vacias} cuota${vacias === 1 ? '' : 's'}`, crearCeldas) : null,
+      h('button', { type: 'button', class: 'btn small ghost', onclick: () => setSel(new Set()) }, 'Quitar selección (Esc)'));
+  }
+
+  // ---------- selección con el ratón ----------
+  function setSel(nuevo) {
+    const antes = new Set(seleccion); seleccion.clear(); nuevo.forEach((k) => seleccion.add(k));
+    for (const k of new Set([...antes, ...seleccion])) if (antes.has(k) !== seleccion.has(k)) celdas.get(k)?.classList.toggle('sel', seleccion.has(k));
+    pintarBarra();
+  }
+  const rect = (r1, c1, r2, c2) => { const s = new Set(); for (let r = Math.min(r1, r2); r <= Math.max(r1, r2); r++) for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++) if (rows[r]) s.add(claveSel(rows[r], c)); return s; };
+  const posDe = (td) => ({ r: Number(td.dataset.r), c: Number(td.dataset.c) });
+  const onUp = () => { arrastrando = false; };
+  const onKey = (e) => { if (e.key === 'Escape' && seleccion.size && !document.querySelector('.overlay') && e.target.tagName !== 'INPUT') setSel(new Set()); };
+  document.addEventListener('mouseup', onUp); document.addEventListener('keydown', onKey);
+  const quitar = new MutationObserver(() => { if (!view.isConnected && !barra.isConnected) { document.removeEventListener('mouseup', onUp); document.removeEventListener('keydown', onKey); quitar.disconnect(); } });
+  const cuerpo = h('tbody');
+  cuerpo.addEventListener('mousedown', (e) => {
+    if (e.button !== 0 || e.target.closest('button,input,a')) return;
+    const td = e.target.closest('td.ac-cel'); if (!td) return;
+    const { r, c } = posDe(td); const k = claveSel(rows[r], c);
+    if (e.shiftKey && ancla) setSel(rect(ancla.r, ancla.c, r, c));
+    else if (e.ctrlKey || e.metaKey) { const n = new Set(seleccion); if (n.has(k)) n.delete(k); else n.add(k); ancla = { r, c }; setSel(n); }
+    else { ancla = { r, c }; arrastrando = true; setSel(new Set([k])); }
+    e.preventDefault();
+  });
+  cuerpo.addEventListener('mouseover', (e) => {
+    if (!arrastrando) return; const td = e.target.closest('td.ac-cel'); if (!td) return;
+    const { r, c } = posDe(td); setSel(rect(ancla.r, ancla.c, r, c));
+  });
+
+  // ---------- filtros y tabla ----------
+  const modos = [...new Set(filasBase.map((a) => a.metodo_pago).filter(Boolean))].sort();
+  const niveles = [...new Set(filasBase.map((a) => a.nivel).filter(Boolean))].sort((x, y) => x.localeCompare(y, 'es', { numeric: true }));
+  function pintar() {
+    const q = normalizar(f.q); const mi = MESES.indexOf(mesActual());
+    rows = filasBase.filter((a) => (!q || normalizar(nombreAlumno(a)).includes(q) || String(a.num || '') === f.q.trim())
+      && (!f.modo || a.metodo_pago === f.modo) && (!f.nivel || a.nivel === f.nivel)
+      && (!f.soloPend || cuotas.some((c) => c.alumno_id === a.id && c.estado === 'pendiente' && (c.mes === '' || MESES.indexOf(c.mes) <= mi)))
+      && (!f.recibo || cuotas.some((c) => c.alumno_id === a.id && c.estado === 'pagado' && !c.recibo_hecho)))
+      .sort((x, y) => (x.apellidos || '').localeCompare(y.apellidos || '', 'es') || (x.nombre || '').localeCompare(y.nombre || '', 'es'));
+    celdas.clear(); seleccion.clear(); ancla = null; pintarBarra();
+    clear(cuerpo, rows.map((a, r) => h('tr', {},
+      h('td', { class: 'ac-id muted' }, a.num ? String(Math.round(a.num)) : ''),
+      h('td', { class: 'ac-nom', title: nombreAlumno(a) }, h('a', { href: '#', onclick: (e) => { e.preventDefault(); abrirFicha(a, ctx, refrescar); } }, nombreAlumno(a))),
+      h('td', { class: 'ac-niv', title: [a.modalidad, a.nivel].filter(Boolean).join(' · ') }, a.nivel || ''),
+      h('td', { class: 'ac-modo', title: a.metodo_pago || '' }, a.metodo_pago || ''),
+      cuotaMensual(a),
+      COLS.map((_, ci) => { const td = h('td', { class: 'ac-cel', 'data-r': String(r), 'data-c': String(ci) }); celdas.set(claveSel(a, ci), td); return td; }))));
+    rows.forEach((a) => COLS.forEach((_, ci) => pintaCelda(a, ci)));
+    if (!rows.length) clear(cuerpo, h('tr', {}, h('td', { colspan: 18, class: 'empty' }, 'No hay alumnos con estos filtros. Fija la cuota de cada alumno en su fila y genera las mensualidades.')));
+  }
+  function cuotaMensual(a) {
+    const i = inscPor.get(a.id);
+    const inp = h('input', { type: 'number', step: '0.01', class: 'cell ac-imp', value: i?.cuota_mensual || '', disabled: !editor, title: 'Cuota mensual pactada (las cuotas ya generadas no cambian: selecciónalas y usa «Importe…»)', 'aria-label': `Cuota de ${nombreAlumno(a)}` });
+    inp.addEventListener('change', async () => {
+      const v = Number(inp.value || 0);
+      try {
+        if (i) Object.assign(i, await api.upd('ac_inscripciones', i.id, { cuota_mensual: v }));
+        else inscPor.set(a.id, await api.ins('ac_inscripciones', { alumno_id: a.id, curso_id: curso.id, cuota_mensual: v }));
+        inp.classList.add('saved'); setTimeout(() => inp.classList.remove('saved'), 800);
+        { // el servidor deja una nota en la cuota del mes en curso si aún no está pagada
+          const nuevas = await api.cuotas(curso.id); let avisos = 0;
+          for (const n of nuevas) { const c = cuotaPor.get(`${n.alumno_id}|${n.concepto}|${n.mes}`); if (c && n.nota_cambio !== c.nota_cambio) { Object.assign(c, n); avisos++; } }
+          if (avisos) { toast('Cuota cambiada: se ha dejado una nota en el cargo de este mes para cuadrar importes.'); rows.forEach((x) => COLS.forEach((_, ci) => pintaCelda(x, ci))); }
+        }
+      } catch (ex) { toast(ex.message, 'error'); }
+    });
+    return h('td', { class: 'num' }, inp);
+  }
+
+  // ---------- cabecera ----------
   const mesSel = sel(MESES.map((m) => [m, capitalizar(m)]), mesActual());
   const btnGen = h('button', { class: 'btn small', type: 'button', disabled: !editor, onclick: async () => {
     try { const n = await api.generarCuotas(curso.id, mesSel.value); toast(n ? `${n} mensualidades de ${mesSel.value} creadas.` : `No faltaba ninguna cuota de ${mesSel.value}.`); refrescar(); } catch (ex) { toast(ex.message, 'error'); }
   } }, 'Generar mensualidad');
   const btnWp = h('button', { class: 'btn small', type: 'button', disabled: !editor, onclick: async () => {
-    const filas = insc.filter((i) => i.activa && Number(i.welcome_pack) > 0).map((i) => ({ alumno_id: i.alumno_id, curso_id: curso.id, concepto: 'welcome_pack', mes: '', importe: i.welcome_pack }));
+    const filas = insc.filter((i) => i.activa).map((i) => { const a = alumnos.find((x) => x.id === i.alumno_id); const imp = a ? precioWp(a) ?? Number(i.welcome_pack) : Number(i.welcome_pack); return { alumno_id: i.alumno_id, curso_id: curso.id, concepto: 'welcome_pack', mes: '', importe: imp, nivel: a?.nivel || null }; }).filter((x) => x.importe > 0);
     try { const r = await api.insMany('ac_cuotas', filas, { onConflict: 'alumno_id,curso_id,concepto,mes', ignorar: true }); toast(r.length ? `${r.length} welcome packs creados.` : 'Todos los welcome packs ya estaban creados.'); refrescar(); } catch (ex) { toast(ex.message, 'error'); }
   } }, 'Generar welcome pack');
-
-  const cuerpo = h('tbody'); const pie = h('tfoot');
-  const celda = (a, concepto, mes) => {
-    const c = cuotaPor.get(`${a.id}|${concepto}|${mes}`);
-    if (!c) return h('td', { class: 'ac-cel vacia' }, '·');
-    const b = h('button', { type: 'button', class: `ac-pago ${c.estado}${c.nota_cambio ? ' cambio' : ''}`, title: `${fmtEUR2(c.importe)} · ${c.estado}${dondeCargo(c)}${c.nota_cambio ? '\n⚠ ' + c.nota_cambio : ''}${editor ? ' · clic: pagado/pendiente · Alt+clic: devuelto · Mayús+clic: exento' : ''}`, disabled: !editor }, c.estado === 'pagado' ? '✓' : c.estado === 'devuelto' ? '↩' : c.estado === 'exento' ? '–' : fmtEUR(c.importe).replace(/\s?€/, ''));
-    b.addEventListener('click', async (e) => {
-      const nuevo = e.altKey ? 'devuelto' : e.shiftKey ? 'exento' : c.estado === 'pagado' ? 'pendiente' : 'pagado';
-      b.disabled = true;
-      try { Object.assign(c, await api.upd('ac_cuotas', c.id, { estado: nuevo, fecha_pago: nuevo === 'pagado' ? hoyISO() : null })); b.className = `ac-pago ${c.estado}${c.nota_cambio ? ' cambio' : ''}`; b.textContent = c.estado === 'pagado' ? '✓' : c.estado === 'devuelto' ? '↩' : c.estado === 'exento' ? '–' : fmtEUR(c.importe).replace(/\s?€/, ''); pintarPie(); } catch (ex) { toast(ex.message, 'error'); } finally { b.disabled = !editor; }
-    });
-    return h('td', { class: 'ac-cel' }, b);
-  };
-  const inputCuota = (a, campo) => {
-    const i = inscPor.get(a.id);
-    const inp = h('input', { type: 'number', step: '0.01', class: 'cell ac-imp', value: i?.[campo] || '', disabled: !editor, 'aria-label': `${campo} de ${nombreAlumno(a)}` });
-    inp.addEventListener('change', async () => {
-      const v = Number(inp.value || 0);
+  const btnPrecios = h('button', { class: 'btn small', type: 'button', onclick: () => abrirPrecios() }, 'Precios WP por nivel');
+  function abrirPrecios() {
+    const d = drawer({ titulo: `Welcome pack por nivel · ${curso.nombre}`, ancho: 420 });
+    const nivs = [...new Set([...niveles, ...precios.map((p) => p.nivel)])].sort((x, y) => x.localeCompare(y, 'es', { numeric: true }));
+    const campos = nivs.map((n) => { const p = precios.find((x) => norm(x.nivel) === norm(n)); return { n, p, inp: numero(p?.importe ?? '', { placeholder: '—', disabled: !editor }) }; });
+    const nuevoN = h('input', { type: 'text', placeholder: 'Nuevo nivel (p. ej. Level 3)' }); const nuevoI = numero('', { placeholder: '€' });
+    d.cuerpo.append(h('p', { class: 'small muted' }, 'El welcome pack depende del nivel del alumno. Al cambiar de nivel, su WP sin pagar pasa al precio del nuevo nivel; uno ya pagado no cambia nunca. Al guardar un precio se actualizan los WP sin pagar de ese nivel (salvo importes manuales).'),
+      h('div', { class: 'ac-pg-precios' }, campos.map((c) => h('label', { class: 'field' }, h('span', {}, c.n), c.inp)), editor ? h('div', { class: 'ac-pg-nuevo' }, nuevoN, nuevoI) : null));
+    d.pie.append(h('span'), guardarBoton('Guardar precios', async () => {
       try {
-        const cur = inscPor.get(a.id);
-        if (cur) Object.assign(cur, await api.upd('ac_inscripciones', cur.id, { [campo]: v }));
-        else inscPor.set(a.id, await api.ins('ac_inscripciones', { alumno_id: a.id, curso_id: curso.id, [campo]: v }));
-        inp.classList.add('saved'); setTimeout(() => inp.classList.remove('saved'), 800);
-        if (campo === 'cuota_mensual') { // el servidor deja una nota en la cuota del mes en curso si aún no está pagada
-          const nuevas = await api.cuotas(curso.id); let avisos = 0;
-          for (const n of nuevas) { const c = cuotaPor.get(`${n.alumno_id}|${n.concepto}|${n.mes}`); if (c && n.nota_cambio !== c.nota_cambio) { Object.assign(c, n); avisos++; } }
-          if (avisos) { toast('Cuota cambiada: se ha dejado una nota en el cargo de este mes para cuadrar importes.'); pintar(); }
+        const todos = campos.map((c) => ({ n: c.n, p: c.p, v: c.inp.value })); if (nuevoN.value.trim() && nuevoI.value !== '') todos.push({ n: nuevoN.value.trim(), p: null, v: nuevoI.value });
+        for (const x of todos) {
+          if (x.v === '' || Number.isNaN(Number(x.v)) || (x.p && Number(x.p.importe) === Number(x.v))) continue;
+          if (x.p) await api.upd('ac_wp_precios', x.p.id, { importe: Number(x.v) }); else await api.ins('ac_wp_precios', { curso_id: curso.id, nivel: x.n, importe: Number(x.v) });
         }
+        toast('Precios guardados.'); d.cerrar(); refrescar();
       } catch (ex) { toast(ex.message, 'error'); }
-    });
-    return h('td', { class: 'num' }, inp);
-  };
-  function pintarPie() {
-    const col = (c) => { const t = totales(c); return h('th', { class: 'num', title: `Cobrado ${fmtEUR2(t.pagado)} de ${fmtEUR2(t.total)}` }, fmtEUR(t.pagado), h('div', { class: 'muted small' }, `de ${fmtEUR(t.total)}`)); };
-    clear(pie, h('tr', {}, h('th', { colspan: 3 }, 'Cobrado / total'), col(cuotas.filter((c) => c.concepto === 'welcome_pack')), MESES.map((m) => col(cuotas.filter((c) => c.concepto === 'mensualidad' && c.mes === m)))));
+    }));
   }
-  function pintar() {
-    const q = normalizar(f.q);
-    const filas = filasBase.filter((a) => (!q || normalizar(nombreAlumno(a)).includes(q)) && (!f.soloPend || cuotas.some((c) => c.alumno_id === a.id && c.estado === 'pendiente' && (c.mes === '' || MESES.indexOf(c.mes) <= MESES.indexOf(mesActual())))));
-    clear(cuerpo, filas.map((a) => h('tr', {}, h('td', { class: 'ac-nom' }, nombreAlumno(a)), inputCuota(a, 'cuota_mensual'), inputCuota(a, 'welcome_pack'), celda(a, 'welcome_pack', ''), MESES.map((m) => celda(a, 'mensualidad', m)))));
-    if (!filas.length) clear(cuerpo, h('tr', {}, h('td', { colspan: 16, class: 'empty' }, 'No hay alumnos con cuotas en este curso. Fija la cuota de cada alumno en su ficha (o aquí) y genera las mensualidades.')));
-  }
-  const tb = h('table', { class: 'data ac-matriz' },
-    h('thead', {}, h('tr', {}, h('th', {}, 'Alumno'), h('th', { class: 'num' }, 'Cuota'), h('th', { class: 'num' }, 'WP'), h('th', {}, 'WP'), MESES_CORTO.map((m) => h('th', {}, m)))), cuerpo, pie);
-  pintar(); pintarPie();
+
+  const th = (t, cls) => h('th', { class: cls || '' }, t);
+  const tb = h('table', { class: 'data ac-pg' },
+    h('thead', {}, h('tr', {}, th('ID'), th('Alumno', 'l'), th('Nivel'), th('Modo pago'), th('Cuota', 'num'),
+      COLS.map((k) => h('th', { class: 'ac-mes' }, k.t, h('div', { class: 'ac-sub' }, '€ · P · R')))), ), cuerpo, pie);
+  pintar(); pintarPie(); pintarKpis();
   clear(view,
-    cabecera(`Pagos · ${curso.nombre}`, 'Cuota pactada por alumno y cobro de cada mensualidad', mesSel, btnGen, btnWp, h('a', { class: 'btn small', href: '#/ac_pagos_importar' }, 'Importar del CRM'), ctx.veAlgo('fact') ? h('a', { class: 'btn small', href: '#/ingresos', title: 'Compara lo cobrado aquí con la cuadrícula de Ingresos' }, 'Ver en Ingresos →') : null),
+    cabecera(`Pagos · ${curso.nombre}`, 'Por mes: cuantía · P (pagado) · R (recibo hecho). Arrastra o usa Ctrl/Mayús+clic para elegir varias celdas.', mesSel, btnGen, btnWp, btnPrecios, h('a', { class: 'btn small', href: '#/ac_pagos_importar' }, 'Importar del CRM'), ctx.veAlgo('fact') ? h('a', { class: 'btn small', href: '#/ingresos', title: 'Compara lo cobrado aquí con la cuadrícula de Ingresos' }, 'Ver en Ingresos →') : null),
     sinInsc ? h('div', { class: 'banner warn' }, `${sinInsc} alumnos inscritos todavía no tienen cuota fijada en este curso: escribe su cuota en la fila (si no aparecen aquí, ábrelos desde Alumnos).`) : null,
-    h('div', { class: 'kpi-row' }, kpi('Cobrado', fmtEUR2(kpis.pagado)), kpi('Pendiente', fmtEUR2(kpis.total - kpis.pagado), 'Cuotas generadas aún sin cobrar'), kpi('Alumnos', String(filasBase.length))),
-    h('div', { class: 'filters filters-2' }, h('input', { type: 'search', placeholder: 'Buscar alumno…', oninput: (e) => { f.q = e.target.value; pintar(); } }),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', onchange: (e) => { f.soloPend = e.target.checked; pintar(); } }), ' Solo con pagos pendientes hasta este mes')),
-    h('div', { class: 'table-wrap card-tabla' }, tb));
+    kpisEl,
+    h('div', { class: 'filters filters-4' }, h('input', { type: 'search', placeholder: 'Buscar alumno o ID…', oninput: (e) => { f.q = e.target.value; pintar(); } }),
+      sel([['', 'Todos los modos de pago'], ...modos.map((m) => [m, m])], '', { onchange: (e) => { f.modo = e.target.value; pintar(); } }),
+      sel([['', 'Todos los niveles'], ...niveles.map((n) => [n, n])], '', { onchange: (e) => { f.nivel = e.target.value; pintar(); } }),
+      sel([['', 'Todos los recibos'], ['sin', 'Cobrados sin recibo hecho']], '', { onchange: (e) => { f.recibo = e.target.value; pintar(); } })),
+    h('label', { class: 'check ac-pg-chk' }, h('input', { type: 'checkbox', onchange: (e) => { f.soloPend = e.target.checked; pintar(); } }), ' Solo con pagos pendientes hasta este mes'),
+    h('div', { class: 'table-wrap card-tabla' }, tb), barra);
+  quitar.observe(document.body, { childList: true, subtree: true });
 }

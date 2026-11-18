@@ -201,8 +201,20 @@ try:
         check(len([c for c in db(page, "ac_cuotas") if c["concepto"] == "welcome_pack"]) == 1, "welcome pack creado")
         page.get_by_role("button", name="Generar mensualidad").click(); page.wait_for_timeout(400)
         check(len([c for c in db(page, "ac_cuotas") if c["mes"] == "noviembre"]) == 1, "generar dos veces no duplica")
-        page.locator("button.ac-pago.pendiente").last.click(); page.wait_for_timeout(400)
+        page.locator("td.ac-cel.pendiente .pc-p").last.click(); page.wait_for_timeout(400)
         check(len([c for c in db(page, "ac_cuotas") if c["estado"] == "pagado"]) == 1, "clic en la cuota la marca como pagada")
+        check(page.locator("td.ac-cel.pagado .pc-imp").count() == 1 and page.locator("td.ac-cel.pagado .pc-imp").inner_text().strip() == "65", "la cantidad sigue visible al marcar el pago")
+        page.locator("td.ac-cel.pagado .pc-r").click(); page.wait_for_timeout(300)
+        check(len([c for c in db(page, "ac_cuotas") if c.get("recibo_hecho")]) == 1, "recibo hecho se guarda")
+        # selección múltiple: arrastrar de la celda WP a la de noviembre y marcar todo como pagado
+        celdas = page.locator("td.ac-cel"); a, z = celdas.nth(0).bounding_box(), celdas.nth(3).bounding_box()
+        page.mouse.move(a["x"] + 3, a["y"] + 3); page.mouse.down(); page.mouse.move(z["x"] + 3, z["y"] + 3, steps=4); page.mouse.up()
+        expect(page.locator(".ac-pg-barra")).to_contain_text("4 celdas")
+        page.locator(".ac-pg-barra").get_by_role("button", name="Pagado").click(); page.wait_for_timeout(400)
+        check(len([c for c in db(page, "ac_cuotas") if c["estado"] == "pagado"]) == 2, "pago múltiple: marca varias celdas de una vez")
+        page.locator(".ac-pg-barra").get_by_role("button", name="Importe…").click(); page.locator(".drawer input[type=number]").fill("70"); page.get_by_role("button", name="Aplicar").click(); page.wait_for_timeout(400)
+        check(all(c["importe"] == 70 and c["importe_manual"] for c in db(page, "ac_cuotas")), "importe cambiado a mano (queda como manual)")
+        page.keyboard.press("Escape")
         page.screenshot(path=str(SHOTS / "ac_pagos.png"))
 
         print("7b. vínculo Pagos ↔ Ingresos")
@@ -224,7 +236,7 @@ try:
         page.wait_for_timeout(400)
         check(len(db(page, "ac_remesas")) == 0, "no crea remesa si no hay cuotas pendientes")
         ir(page, "ac_pagos")
-        page.locator("button.ac-pago.pagado").first.click(); page.wait_for_timeout(400)   # vuelve a pendiente
+        page.locator("td.ac-cel.pagado .pc-p").last.click(); page.wait_for_timeout(400)   # noviembre vuelve a pendiente
         ir(page, "ac_remesas")
         page.locator(".section-actions select").first.select_option("noviembre")
         page.get_by_role("button", name="Crear remesa del mes").click(); page.wait_for_timeout(300)
