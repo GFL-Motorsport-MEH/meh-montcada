@@ -1,7 +1,7 @@
 // Grupos y horarios: grupos del curso con sus sesiones semanales y alumnos; parrilla semanal; profesoras y aulas.
 import { h, clear, cargando, toast, confirmar, normalizar } from '../ui.js';
 import * as api from './api.js';
-import { campo, txt, area, numero, sel, drawer, cabecera, tabla, pill, nombreAlumno, hhmm, DIAS, DIAS_CORTO, guardarBoton, buscadorAlumno, refrescar } from './kit.js';
+import { colorGrupo, campo, txt, area, numero, sel, drawer, cabecera, tabla, pill, nombreAlumno, hhmm, DIAS, DIAS_CORTO, guardarBoton, buscadorAlumno, refrescar } from './kit.js';
 
 let vistaActual = 'lista';
 export const sesionesTexto = (g) => (g.sesiones || []).slice().sort((a, b) => a.dia - b.dia || a.hora_inicio.localeCompare(b.hora_inicio)).map((s) => `${DIAS_CORTO[s.dia]} ${hhmm(s.hora_inicio)}-${hhmm(s.hora_fin)}`).join(' · ');
@@ -43,7 +43,7 @@ function parrilla(grupos, pPor) {
   if (!filas.size) return h('div', { class: 'card empty' }, 'Añade sesiones a los grupos para ver la parrilla.');
   const dias = [1, 2, 3, 4, 5, 6];
   const quien = (g, s) => pPor.get(s.profesora_id || g.profesora_id);
-  const chip = ({ g, s }) => h('span', { class: 'ac-chip', style: `--c:${quien(g, s)?.color || '#8c8a81'}`, title: `${g.nombre} ${hhmm(s.hora_inicio)}-${hhmm(s.hora_fin)} · ${quien(g, s)?.nombre || 'sin profesora'}` }, g.nombre);
+  const chip = ({ g, s }) => h('span', { class: 'ac-chip', style: `--c:${colorGrupo(g)}`, title: `${g.nombre} ${hhmm(s.hora_inicio)}-${hhmm(s.hora_fin)} · ${quien(g, s)?.nombre || 'sin profesora'}` }, g.nombre);
   const fila = (k) => h('tr', {}, h('th', {}, k), dias.map((d) => h('td', {}, (filas.get(k).get(d) || []).map(chip))));
   return h('div', { class: 'table-wrap card-tabla' }, h('table', { class: 'data ac-parrilla' },
     h('thead', {}, h('tr', {}, h('th', {}, 'Hora'), dias.map((d) => h('th', {}, DIAS[d])))),
@@ -61,6 +61,7 @@ function recursos(profes, aulas, editor, recargar) {
     lista('Profesoras', profes, null, (p) => h('div', { class: 'ac-fila' },
       h('input', { type: 'color', value: p.color, disabled: !editor, onchange: (e) => guardarCampo('ac_profesoras', p.id, { color: e.target.value }), 'aria-label': `Color de ${p.nombre}` }),
       h('input', { type: 'text', class: 'cell cell-text', value: p.nombre, disabled: !editor, onchange: (e) => guardarCampo('ac_profesoras', p.id, { nombre: e.target.value.trim() || p.nombre }) }),
+      h('input', { type: 'number', step: '0.5', class: 'cell ac-imp', value: p.horas_semana ?? '', placeholder: 'h/sem', title: 'Horas semanales de contrato', disabled: !editor, onchange: (e) => guardarCampo('ac_profesoras', p.id, { horas_semana: e.target.value ? Number(e.target.value) : null }) }),
       h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: p.activa, disabled: !editor, onchange: (e) => guardarCampo('ac_profesoras', p.id, { activa: e.target.checked }) }), ' activa')), nuevoP),
     lista('Aulas', aulas, null, (a) => h('div', { class: 'ac-fila' },
       h('input', { type: 'text', class: 'cell cell-text', value: a.nombre, disabled: !editor, onchange: (e) => guardarCampo('ac_aulas', a.id, { nombre: e.target.value.trim() || a.nombre }) }),

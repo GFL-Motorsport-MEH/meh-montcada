@@ -65,3 +65,14 @@ table.ac-parrilla td { vertical-align: top; }
 .ac-doc-item:hover { background: var(--surface-2); }
 .ac-doc h3 { margin: 12px 0 4px; } .ac-doc h4 { margin: 10px 0 4px; } .ac-doc p { margin: 6px 0; } .ac-doc ul, .ac-doc ol { margin: 6px 0 6px 20px; }
 .buscador-alumno input { min-width: 240px; }
+
+/* calendario editable */
+.ac-cal-vacio { border-top: 1px solid var(--border); min-height: 20px; }
+.ac-cal-vacio.ed { cursor: copy; }
+.ac-cal-vacio.ed:hover { background: color-mix(in oklab, var(--accent, #4f7cff) 10%, var(--surface)); }
+.ac-cal-vacio.drop { background: color-mix(in oklab, var(--good) 22%, var(--surface)); }
+.ac-cal-ses { z-index: 1; }
+.ac-cal-ses.ed { cursor: grab; }
+.ac-cal-ses.ed:active { cursor: grabbing; }
+.ac-horas { margin-left: 10px; font-weight: 500; color: var(--text-secondary); }
+.ac-leyenda { display: flex; gap: 12px; flex-wrap: wrap; margin: 2px 0 8px; }

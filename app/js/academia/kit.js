@@ -4,6 +4,12 @@ import { h, clear, normalizar } from '../ui.js';
 export const DIAS = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 export const DIAS_CORTO = ['', 'L', 'M', 'X', 'J', 'V', 'S', 'D'];
 export const esVerdad = (v) => v === true || /^(true|1|x|si|sí|verdadero)$/i.test(String(v ?? '').trim());
+// color de cada modalidad (como en el horario en papel: KIDS amarillo, TEENS naranja, ADULTS rosa…)
+export const COLORES_MODALIDAD = [['baby', '#5aa469'], ['kids', '#d9b72e'], ['teen', '#e08a3c'], ['adult', '#d76f9a'], ['1 to 1', '#4f7cff'], ['one to one', '#4f7cff'], ['extra', '#8c6bc8'], ['speaking', '#26a69a'], ['empresa', '#7a8a99']];
+export function colorGrupo(g) {
+  const t = `${g.modalidad || ''} ${g.nombre || ''}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return (COLORES_MODALIDAD.find(([k]) => t.includes(k)) || [0, '#8c8a81'])[1];
+}
 export const nombreAlumno = (a) => (a ? `${a.apellidos}, ${a.nombre}` : '—');
 export const hhmm = (t) => (t || '').slice(0, 5);
 

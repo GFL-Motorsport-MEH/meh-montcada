@@ -43,7 +43,7 @@ try:
         check(page.locator(".tabs .tab").count() >= 12, "12 pestañas de Academia")
 
         print("2. todas las pestañas cargan sin error")
-        for r in ["academia", "ac_alumnos", "ac_pagos", "ac_remesas", "ac_seguimiento", "ac_tutorias", "ac_bajas", "ac_grupos", "ac_calendario", "ac_tareas", "ac_biblioteca", "ac_documentos", "ac_importar"]:
+        for r in ["academia", "ac_alumnos", "ac_pagos", "ac_remesas", "ac_seguimiento", "ac_tutorias", "ac_bajas", "ac_grupos", "ac_calendario", "ac_recogidas", "ac_tareas", "ac_biblioteca", "ac_documentos", "ac_importar"]:
             ir(page, r)
             check(page.locator(".banner.error").count() == 0, f"{r} sin errores")
         ir(page, "ac_biblioteca")
@@ -147,6 +147,19 @@ try:
         ir(page, "ac_alumnos"); ir(page, "ac_calendario"); page.wait_for_timeout(300)
         check(page.locator(".ac-cal-ses.choque").count() >= 2 or page.locator(".banner.warn").count() >= 1, "detecta solape de profesora")
         page.screenshot(path=str(SHOTS / "ac_calendario.png"))
+        n0 = len(db(page, "ac_sesiones"))
+        page.locator(".ac-cal-vacio.ed[data-dia='3'][data-min='1140']").first.click()
+        page.locator(".drawer select").first.select_option(index=1)
+        page.get_by_role("button", name="Guardar").click(); page.wait_for_timeout(600)
+        nuevas = db(page, "ac_sesiones")
+        check(len(nuevas) == n0 + 1 and [x for x in nuevas if x["dia"] == 3 and x["hora_inicio"].startswith("19:00")], "clic en hueco crea sesión (miércoles 19:00)")
+        page.locator(".ac-cal-ses").first.click()
+        check(page.locator(".drawer").get_by_role("button", name="Quitar sesión").count() == 1, "clic en sesión abre su edición")
+        page.keyboard.press("Escape")
+        check("h" in page.locator(".ac-horas").first.inner_text(), "horas semanales por profesora")
+        ses = db(page, "ac_sesiones")[-1]; dia0 = ses["dia"]
+        page.locator(f".ac-cal-ses").last.drag_to(page.locator(".ac-cal-vacio.ed[data-dia='5'][data-min='990']").first); page.wait_for_timeout(700)
+        check(any(x["id"] == ses["id"] and x["dia"] == 5 for x in db(page, "ac_sesiones")), "arrastrar mueve la sesión al viernes")
 
         print("10. tutoría hecha deja anotación; baja")
         ir(page, "ac_tutorias")
@@ -222,8 +235,30 @@ try:
         page.get_by_role("button", name="Marcar devuelto hoy").click(); page.wait_for_timeout(700)
         check(len([x for x in db(page, "ac_prestamos") if not x["fecha_devolucion"]]) == 0, "marcar devuelto")
 
+        print("12c. recogidas: importar con mapeo, hoja del día y autorizados")
+        ir(page, "ac_recogidas_importar")
+        hoja = {"RECOGIDAS": [["Alumnos Apellidos", "Nombre", "Colegio", "Dias", "Hora", "Autorizado 1", "Autorizado 2", "Sale solo", "Observaciones"],
+                              ["Bueno Foz", "Alba", "Mas Rampinyo", "L-X", "16:30", "Anna Foz (madre) 600111222", "Pepe Foz (abuelo)", "NO", "Alergia a frutos secos"],
+                              ["Foz Bueno", "Martí", "Elvira Cuyas", "Lunes y miércoles", 0.7083333333333334, "Anna Foz (madre)", None, "SI", None],
+                              ["Nadie", "Desconocido", "FEDAC", "M-J", "17:00", None, None, None, None]]}
+        f3 = pathlib.Path(tempfile.mkdtemp()) / "recogidas.xlsx"; f3.write_text(json.dumps(hoja), encoding="utf-8")
+        page.locator("input[type=file]").set_input_files(str(f3))
+        expect(page.get_by_text("Importar 2 recogidas")).to_be_visible(timeout=8000)
+        check("1 filas sin alumno" in page.locator("main").inner_text().replace("\n", " ") or "1 filas sin alumno" in page.locator("main").inner_text(), "recogidas: 1 fila sin alumno en la base de datos")
+        page.get_by_role("button", name="Importar 2 recogidas").click(); page.wait_for_timeout(1200)
+        rc = db(page, "ac_recogidas"); au = db(page, "ac_autorizados")
+        check(len(rc) == 2 and sorted([r for r in rc if r["centro"] == "Mas Rampinyo"][0]["dias"]) == [1, 3] and [r for r in rc if r["centro"] == "Elvira Cuyas"][0]["hora_recogida"] == "17:00" and [r for r in rc if r["centro"] == "Elvira Cuyas"][0]["sale_solo"], "recogidas importadas: días L-X, hora desde número de Excel, sale solo")
+        check(len(au) == 3 and [a for a in au if a["parentesco"] == "madre"][0]["telefono"] == "600111222", "autorizados importados por alumno, con parentesco y teléfono")
+        ir(page, "ac_recogidas")
+        page.locator(".filters select").nth(0).select_option("1"); page.wait_for_timeout(300)
+        print("   filas:", page.locator("main tbody tr").count(), page.locator("main .filters").inner_text()[:80].replace("\n"," "))
+        check(page.locator("main tbody tr").count() == 2 and "Alergia a frutos secos" in page.locator("main").inner_text(), "hoja del lunes: 2 recogidas con notas")
+        page.locator("main tbody tr").first.click()
+        check("Anna Foz" in page.locator(".drawer").inner_text(), "ficha de recogida muestra a los autorizados")
+        page.keyboard.press("Escape")
+
         print("13. sin scroll lateral en las pantallas con tablas")
-        for r in ["ac_alumnos", "ac_pagos", "ac_grupos", "ac_calendario", "ac_tareas", "ac_biblioteca"]:
+        for r in ["ac_alumnos", "ac_pagos", "ac_grupos", "ac_calendario", "ac_tareas", "ac_biblioteca", "ac_recogidas"]:
             ir(page, r)
             check(page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), f"{r}: sin scroll lateral en 1280 px")
         check(not [e for e in errores if "favicon" not in e and "ERR_FAILED" not in e], "sin errores de consola: " + "; ".join(errores[:3]))
