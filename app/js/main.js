@@ -10,7 +10,7 @@ import { renderBalance } from './views/balance.js';
 import { renderFacturacion } from './views/facturacion.js';
 import { renderControl } from './views/control.js';
 import { renderConfig } from './views/config.js';
-import { RUTAS_ACADEMIA, TABS_ACADEMIA } from './academia/index.js';
+import { RUTAS_ACADEMIA, TABS_ACADEMIA, TABS_COBROS } from './academia/index.js';
 import { renderEscanerVista } from './views/escaner-vista.js';
 import * as historial from './deshacer.js';
 import './views/config-listas.js';
@@ -87,8 +87,8 @@ const ctx = {
 // ---------- módulos y rutas ----------
 // Dos módulos principales: Facturación (contabilidad, en uso) y Academia (gestión diaria, en desarrollo).
 const MODULOS = [
-  { id: 'facturacion', titulo: 'Facturación', sub: 'Contabilidad y control', inicio: 'panel' },
-  { id: 'academia', titulo: 'Academia', sub: 'Alumnos, horarios y pagos', inicio: 'academia' },
+  { id: 'facturacion', titulo: 'Facturación', sub: 'Contabilidad, cobros y control', inicio: 'panel' },
+  { id: 'academia', titulo: 'Academia', sub: 'Alumnos, horarios y seguimiento', inicio: 'ac_alumnos' },
 ];
 const RUTAS = {
   panel: { titulo: 'Panel', render: renderPanel, modulo: 'facturacion' },
@@ -104,7 +104,8 @@ const RUTAS = {
 };
 const LS_RUTA = 'meh.ruta.';
 function rutaActual() {
-  const r = (window.location.hash.match(/^#\/(\w+)/) || [])[1];
+  let r = (window.location.hash.match(/^#\/(\w+)/) || [])[1];
+  if (r === 'academia') r = 'ac_alumnos'; // enlace antiguo: el Resumen pasó a Facturación
   if (ctx.esEscaner()) return 'escaner'; // el usuario del escáner solo tiene esta pantalla
   if (!RUTAS[r] || (RUTAS[r].admin && !ctx.esAdmin())) return 'panel';
   return r;
@@ -259,7 +260,7 @@ function pintarTabs(actual) {
   }
   if (ctx.esEscaner()) { clear(tabsEl, tab('escaner', 'Escáner')); return; }
   const badge = h('span', { class: 'tab-badge tab-badge-gastos', hidden: !state.pendientes, title: `${state.pendientes || 0} gastos pendientes de revisar` }, state.pendientes ? String(state.pendientes) : '');
-  clear(tabsEl, tab('panel', 'Panel'), h('a', { class: 'tab', href: '#/gastos', 'aria-current': actual === 'gastos' ? 'page' : false }, 'Gastos', badge), ctx.soloLectura() ? null : tab('escaner', 'Escáner'), tab('ingresos', 'Ingresos'), tab('balance', 'Balance'), tab('facturacion', 'Facturación'), tab('control', 'Control'), ctx.soloLectura() ? null : tab('config', 'Configuración'),
+  clear(tabsEl, tab('panel', 'Panel'), h('a', { class: 'tab', href: '#/gastos', 'aria-current': actual === 'gastos' ? 'page' : false }, 'Gastos', badge), ctx.soloLectura() ? null : tab('escaner', 'Escáner'), tab('ingresos', 'Ingresos'), TABS_COBROS.map(([id, label]) => tab(id, label)), tab('balance', 'Balance'), tab('facturacion', 'Facturación'), tab('control', 'Control'), ctx.soloLectura() ? null : tab('config', 'Configuración'),
     ctx.esAdmin() ? tab('usuarios', 'Usuarios') : null);
 }
 

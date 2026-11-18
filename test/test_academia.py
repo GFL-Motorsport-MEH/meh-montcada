@@ -37,13 +37,20 @@ try:
         page.on("dialog", lambda d: d.accept())
 
         print("1. arranque y resumen")
-        page.goto(URL + "#/academia")
+        page.goto(URL + "#/ac_resumen")
         expect(page.get_by_role("heading", name=re.compile("Academia ·"))).to_be_visible(timeout=10000)
         check(page.locator(".banner.warn").count() == 1, "sin alumnos: aviso de importar")
-        check(page.locator(".tabs .tab").count() >= 12, "12 pestañas de Academia")
+        tabs_fact = page.locator(".tabs .tab").all_inner_texts()
+        check(all(any(t.startswith(n) for t in tabs_fact) for n in ["Resumen", "Pagos", "Remesas"]), "Resumen, Pagos y Remesas están en las pestañas de Facturación")
+        check(page.evaluate("document.body.dataset.modulo") == "facturacion", "el Resumen se muestra en el módulo Facturación")
+        page.goto(URL + "#/academia")
+        expect(page.locator(".tabs .tab[aria-current=page]")).to_have_text("Alumnos", timeout=10000)
+        tabs_ac = page.locator(".tabs .tab").all_inner_texts()
+        check(len(tabs_ac) >= 10 and not any(t.startswith(n) for t in tabs_ac for n in ["Resumen", "Pagos", "Remesas"]), "Academia ya no tiene Resumen, Pagos ni Remesas")
+        check(page.evaluate("document.body.dataset.modulo") == "academia", "#/academia abre el módulo Academia")
 
         print("2. todas las pestañas cargan sin error")
-        for r in ["academia", "ac_alumnos", "ac_pagos", "ac_pagos_importar", "ac_remesas", "ac_seguimiento", "ac_tutorias", "ac_bajas", "ac_grupos", "ac_calendario", "ac_recogidas", "ac_tareas", "ac_biblioteca", "ac_documentos", "ac_importar"]:
+        for r in ["ac_resumen", "ac_alumnos", "ac_pagos", "ac_pagos_importar", "ac_remesas", "ac_seguimiento", "ac_tutorias", "ac_bajas", "ac_grupos", "ac_calendario", "ac_recogidas", "ac_tareas", "ac_biblioteca", "ac_documentos", "ac_importar"]:
             ir(page, r)
             check(page.locator(".banner.error").count() == 0, f"{r} sin errores")
         ir(page, "ac_biblioteca")
@@ -305,7 +312,7 @@ try:
         check(any(p["nombre"] == "Nuria" for p in db(page, "ac_profesoras")), "profesora Nuria creada")
 
         print("13. sin scroll lateral en las pantallas con tablas")
-        for r in ["ac_alumnos", "ac_pagos", "ac_grupos", "ac_calendario", "ac_tareas", "ac_biblioteca", "ac_recogidas"]:
+        for r in ["ac_resumen", "ac_remesas", "ac_alumnos", "ac_pagos", "ac_grupos", "ac_calendario", "ac_tareas", "ac_biblioteca", "ac_recogidas"]:
             ir(page, r)
             check(page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), f"{r}: sin scroll lateral en 1280 px")
         check(not [e for e in errores if "favicon" not in e and "ERR_FAILED" not in e], "sin errores de consola: " + "; ".join(errores[:3]))
