@@ -35,7 +35,7 @@ export async function renderAlumnos(view, ctx) {
       { t: 'Teléfono', v: (a) => a.responsable?.telefono || '' },
       { t: 'Modalidad · nivel', v: (a) => [a.modalidad, a.nivel].filter(Boolean).join(' · ') },
       { t: 'Grupos', v: (a) => (gruposAl.get(a.id) || []).map((g) => g.nombre).join(', ') },
-      { t: 'Cuota', num: true, v: (a) => (inscPor.get(a.id)?.cuota_mensual ? fmtEUR2(inscPor.get(a.id).cuota_mensual) : '') },
+      ...(ctx.ve('ac_pagos') ? [{ t: 'Cuota', num: true, v: (a) => (inscPor.get(a.id)?.cuota_mensual ? fmtEUR2(inscPor.get(a.id).cuota_mensual) : '') }] : []),
       { t: 'Estado', v: (a) => pillEstado(a.estado) },
     ], filas.slice(0, 400), { onClick: (a) => abrirFicha(a, ctx, recargar), vacio: alumnos.length ? 'Ningún alumno coincide con el filtro.' : 'Todavía no hay alumnos. Usa «Importar del Excel» o «Nuevo alumno».' }));
     if (filas.length > 400) contenedor.append(h('div', { class: 'small muted', style: 'padding:6px' }, `Mostrando 400 de ${filas.length}: afina el filtro.`));
@@ -43,7 +43,7 @@ export async function renderAlumnos(view, ctx) {
   const recargar = () => { api.invalidar(); refrescar(); };
   const buscar = h('input', { type: 'search', placeholder: 'Buscar por alumno, responsable, teléfono o nº…', 'aria-label': 'Buscar', oninput: (e) => { f.q = e.target.value; pintar(); } });
   clear(view,
-    cabecera('Alumnos', null, h('a', { class: 'btn small', href: '#/ac_importar' }, 'Importar del Excel'), h('button', { class: 'btn primary small', type: 'button', onclick: () => abrirFicha(null, ctx, recargar) }, '+ Nuevo alumno')),
+    cabecera('Alumnos', null, ctx.edita('ac_alumnos') ? h('a', { class: 'btn small', href: '#/ac_importar' }, 'Importar del Excel') : null, ctx.edita('ac_alumnos') ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrirFicha(null, ctx, recargar) }, '+ Nuevo alumno') : null),
     contador,
     h('div', { class: 'filters filters-4' },
       buscar,
@@ -63,7 +63,8 @@ export async function abrirFicha(alumno, ctx, onCambio) {
   const miInsc = alumno ? insc.find((i) => i.alumno_id === alumno.id) : null;
   const r = a.responsable || {};
   let priv = null;
-  if (alumno?.responsable_id && ctx.puedeEditar()) priv = (await api.privados([alumno.responsable_id]))[0] || null;
+  const verPagos = ctx.ve('ac_pagos'); const editaPagos = ctx.edita('ac_pagos'); const editaAl = ctx.edita('ac_alumnos');
+  if (alumno?.responsable_id && verPagos) priv = (await api.privados([alumno.responsable_id]))[0] || null;
   const d = drawer({ titulo: nuevo ? 'Nuevo alumno' : nombreAlumno(a), ancho: 760 });
   const cambio = () => { api.invalidar(); onCambio?.(); };
 
@@ -75,7 +76,7 @@ export async function abrirFicha(alumno, ctx, onCambio) {
     conocio: txt(a.como_nos_conocio, { list: 'dl-conocio' }), intol: txt(a.intolerancias), info: area(a.info), cp: txt(a.codigo_postal),
     rrss: h('input', { type: 'checkbox', checked: !!a.autoriza_rrss }),
     rApe: txt(r.apellidos), rNom: txt(r.nombre), rMail: txt(r.email, { type: 'email' }), rTel: txt(r.telefono),
-    rDni: txt(priv?.dni, { disabled: !ctx.puedeEditar() }), rIban: txt(priv?.iban, { disabled: !ctx.puedeEditar(), placeholder: ctx.puedeEditar() ? '' : 'Sin permiso' }),
+    rDni: txt(priv?.dni, { disabled: !editaPagos }), rIban: txt(priv?.iban, { disabled: !editaPagos }),
     cuota: numero(miInsc?.cuota_mensual ?? ''), wp: numero(miInsc?.welcome_pack ?? ''), desc: sel(ls.descuento || [], miInsc?.descuento, { vacio: 'Sin descuento' }),
   };
   const colegios = h('datalist', { id: 'dl-colegio' }, [...new Set((await api.alumnos()).map((x) => x.colegio).filter(Boolean))].sort().map((c) => h('option', { value: c })));
@@ -91,10 +92,11 @@ export async function abrirFicha(alumno, ctx, onCambio) {
     h('label', { class: 'check full' }, F.rrss, ' Autoriza imágenes en redes sociales'), colegios, conocios);
   const secResp = h('div', { class: 'form-section' }, h('h3', {}, 'Responsable (padre / madre / tutor)'),
     campo('Apellidos', F.rApe), campo('Nombre', F.rNom), campo('Email', F.rMail), campo('Teléfono', F.rTel),
-    campo('DNI', F.rDni), campo('IBAN de cargo', F.rIban),
-    h('div', { class: 'small muted full' }, ctx.puedeEditar() ? 'DNI e IBAN solo los ven administración y gestión (no el rol Consulta).' : 'DNI e IBAN solo los ven administración y gestión.'));
-  const secInsc = h('div', { class: 'form-section' }, h('h3', {}, `Inscripción del curso ${curso.nombre}`),
-    campo('Cuota mensual (€)', F.cuota), campo('Welcome pack (€)', F.wp), campo('Descuento', F.desc), campo('Método de pago', F.metodo));
+    verPagos ? campo('DNI', F.rDni) : null, verPagos ? campo('IBAN de cargo', F.rIban) : null,
+    verPagos ? h('div', { class: 'small muted full' }, 'DNI e IBAN solo los ven los roles con permiso de Pagos.') : null);
+  // la cuota y el método de pago son dinero: solo con permiso de Pagos
+  const secInsc = verPagos ? h('div', { class: 'form-section' }, h('h3', {}, `Inscripción del curso ${curso.nombre}`),
+    campo('Cuota mensual (€)', F.cuota), campo('Welcome pack (€)', F.wp), campo('Descuento', F.desc), campo('Método de pago', F.metodo)) : null;
 
   async function guardar() {
     if (!F.apellidos.value.trim() || !F.nombre.value.trim()) { toast('Faltan apellidos y nombre.', 'error'); return false; }
@@ -103,7 +105,7 @@ export async function abrirFicha(alumno, ctx, onCambio) {
       const rd = { apellidos: F.rApe.value.trim(), nombre: F.rNom.value.trim(), email: F.rMail.value.trim() || null, telefono: F.rTel.value.trim() || null };
       if (rd.apellidos || rd.nombre || rd.telefono || rd.email) {
         respId = respId ? (await api.upd('ac_responsables', respId, rd)).id : (await api.ins('ac_responsables', rd)).id;
-        if (ctx.puedeEditar() && (F.rDni.value.trim() || F.rIban.value.trim() || priv)) {
+        if (editaPagos && (F.rDni.value.trim() || F.rIban.value.trim() || priv)) {
           await api.guardarPrivados(respId, { dni: F.rDni.value.trim() || null, iban: F.rIban.value.replace(/\s+/g, '').toUpperCase() || null });
         }
       }
@@ -115,7 +117,7 @@ export async function abrirFicha(alumno, ctx, onCambio) {
       };
       const guardado = alumno ? await api.upd('ac_alumnos', alumno.id, fila) : await api.ins('ac_alumnos', fila);
       const cuota = Number(F.cuota.value || 0), wp = Number(F.wp.value || 0);
-      if (miInsc || cuota || wp) {
+      if (editaPagos && (miInsc || cuota || wp)) {
         const base = { cuota_mensual: cuota, welcome_pack: wp, descuento: F.desc.value || null };
         if (miInsc) await api.upd('ac_inscripciones', miInsc.id, base); else await api.ins('ac_inscripciones', { alumno_id: guardado.id, curso_id: curso.id, ...base });
       }
@@ -125,12 +127,12 @@ export async function abrirFicha(alumno, ctx, onCambio) {
     } catch (ex) { toast('No se ha guardado: ' + ex.message, 'error'); return false; }
   }
 
-  d.cuerpo.append(secDatos, secResp, secInsc);
+  d.cuerpo.append(...[secDatos, secResp, secInsc].filter(Boolean));
   if (!nuevo) {
     const sec = (t, ...c) => h('div', { class: 'form-section ac-sec-completa' }, h('h3', {}, t), h('div', { class: 'full' }, ...c));
     const cont = { grupos: h('div'), cuotas: h('div'), notas: h('div'), tut: h('div') };
-    d.cuerpo.append(sec('Grupos del curso', cont.grupos), sec('Cuotas del curso', cont.cuotas), sec('Anotaciones de seguimiento', cont.notas), sec('Tutorías', cont.tut));
-    pintarGrupos(cont.grupos); pintarCuotas(cont.cuotas); pintarNotas(cont.notas); pintarTutorias(cont.tut);
+    d.cuerpo.append(...[sec('Grupos del curso', cont.grupos), verPagos ? sec('Cuotas del curso', cont.cuotas) : null, sec('Anotaciones de seguimiento', cont.notas), sec('Tutorías', cont.tut)].filter(Boolean));
+    pintarGrupos(cont.grupos); if (verPagos) pintarCuotas(cont.cuotas); pintarNotas(cont.notas); pintarTutorias(cont.tut);
   }
 
   function pintarGrupos(el) {
@@ -142,10 +144,10 @@ export async function abrirFicha(alumno, ctx, onCambio) {
       try { await api.ins('ac_alumno_grupo', { alumno_id: alumno.id, grupo_id: s.value }); toast('Añadido al grupo'); cambio(); d.cerrar(); abrirFicha((await api.alumnos()).find((x) => x.id === alumno.id), ctx, onCambio); } catch (ex) { toast(ex.message, 'error'); }
     });
     clear(el, mios.length ? mios.map((g) => h('div', { class: 'ac-fila' }, h('strong', {}, g.nombre), h('span', { class: 'muted small' }, ` ${[g.nivel, resumenSesiones(g)].filter(Boolean).join(' · ')}`),
-      ctx.puedeEditar() ? h('button', { class: 'btn small ghost', type: 'button', onclick: async () => {
+      editaAl ? h('button', { class: 'btn small ghost', type: 'button', onclick: async () => {
         const m = g.miembros.find((x) => x.alumno_id === alumno.id && !x.fecha_baja);
         try { await api.upd('ac_alumno_grupo', m.id, { fecha_baja: hoyISO() }); toast('Quitado del grupo'); cambio(); d.cerrar(); } catch (ex) { toast(ex.message, 'error'); }
-      } }, 'Quitar') : null)) : h('div', { class: 'muted small' }, 'Sin grupo este curso.'), ctx.puedeEditar() ? s : null);
+      } }, 'Quitar') : null)) : h('div', { class: 'muted small' }, 'Sin grupo este curso.'), editaAl ? s : null);
   }
 
   async function pintarCuotas(el) {
@@ -167,10 +169,10 @@ export async function abrirFicha(alumno, ctx, onCambio) {
       if (!t.value.trim()) return;
       try { await api.ins('ac_anotaciones', { alumno_id: alumno.id, tipo: tipo.value, texto: t.value.trim() }); t.value = ''; await pintarNotas(el); } catch (ex) { toast(ex.message, 'error'); }
     });
-    clear(el, ctx.puedeEditar() ? h('div', { class: 'ac-nueva-nota' }, t, h('div', { class: 'ac-fila' }, tipo, add)) : null,
+    clear(el, editaAl ? h('div', { class: 'ac-nueva-nota' }, t, h('div', { class: 'ac-fila' }, tipo, add)) : null,
       lista.sort((x, y) => (y.fecha + y.created_at).localeCompare(x.fecha + x.created_at)).map((n) => h('div', { class: 'ac-nota' },
         h('div', { class: 'small muted' }, `${fmtFecha(n.fecha)} · `, pill(n.tipo), n.profesora ? ` · ${n.profesora.nombre}` : ''), h('div', {}, n.texto),
-        ctx.puedeEditar() ? h('button', { class: 'btn small ghost', type: 'button', onclick: async () => { if (await confirmar({ titulo: 'Borrar anotación', texto: '¿Seguro?', ok: 'Borrar', peligro: true })) { await api.del('ac_anotaciones', n.id); await pintarNotas(el); } } }, 'Borrar') : null)),
+        editaAl ? h('button', { class: 'btn small ghost', type: 'button', onclick: async () => { if (await confirmar({ titulo: 'Borrar anotación', texto: '¿Seguro?', ok: 'Borrar', peligro: true })) { await api.del('ac_anotaciones', n.id); await pintarNotas(el); } } }, 'Borrar') : null)),
       lista.length ? null : h('div', { class: 'muted small' }, 'Sin anotaciones.'));
   }
 
@@ -181,6 +183,6 @@ export async function abrirFicha(alumno, ctx, onCambio) {
   }
 
   const btnGuardar = guardarBoton(nuevo ? 'Crear alumno' : 'Guardar cambios', async () => { const r2 = await guardar(); if (r2) d.cerrar(); });
-  const btnBaja = !nuevo && a.estado !== 'baja' && ctx.puedeEditar() ? h('a', { class: 'btn danger', href: '#/ac_bajas', onclick: () => { try { sessionStorage.setItem('ac.baja.alumno', alumno.id); } catch { /* */ } d.cerrar(); } }, 'Dar de baja…') : h('span');
-  d.pie.append(btnBaja, h('div', { class: 'ac-fila' }, h('button', { class: 'btn', type: 'button', onclick: d.cerrar }, 'Cerrar'), ctx.puedeEditar() ? btnGuardar : null));
+  const btnBaja = !nuevo && a.estado !== 'baja' && ctx.edita('ac_bajas') ? h('a', { class: 'btn danger', href: '#/ac_bajas', onclick: () => { try { sessionStorage.setItem('ac.baja.alumno', alumno.id); } catch { /* */ } d.cerrar(); } }, 'Dar de baja…') : h('span');
+  d.pie.append(btnBaja, h('div', { class: 'ac-fila' }, h('button', { class: 'btn', type: 'button', onclick: d.cerrar }, 'Cerrar'), editaAl ? btnGuardar : null));
 }

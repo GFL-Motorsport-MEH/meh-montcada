@@ -62,6 +62,23 @@ export async function cambiarPassword(password) {
 export async function getPerfil(userId) {
   return check(await supabase.from('profiles').select('*').eq('id', userId).maybeSingle());
 }
+// roles y permisos (tablas roles / rol_permisos). Si todavía no existen, se devuelven vacíos y solo el administrador tiene acceso.
+export async function getRoles() {
+  const r = await supabase.from('roles').select('*').order('orden');
+  return r.error ? [] : r.data;
+}
+export async function getPermisosRoles() {
+  const r = await supabase.from('rol_permisos').select('*');
+  return r.error ? [] : r.data;
+}
+// guarda de golpe los cambios de la matriz: [{rol, permiso, valor}] (valor '' = quitar el permiso)
+export async function guardarPermisos(cambios) {
+  const quitar = cambios.filter((c) => !c.valor);
+  const poner = cambios.filter((c) => c.valor).map((c) => { const [alcance, e] = c.valor.split(':'); return { rol: c.rol, permiso: c.permiso, alcance, editar: e === '1' }; });
+  for (const q of quitar) check(await supabase.from('rol_permisos').delete().eq('rol', q.rol).eq('permiso', q.permiso));
+  if (poner.length) check(await supabase.from('rol_permisos').upsert(poner, { onConflict: 'rol,permiso' }));
+}
+
 export async function getCursos() {
   return check(await supabase.from('cursos').select('*').order('fecha_inicio', { ascending: true }));
 }

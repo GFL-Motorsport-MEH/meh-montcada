@@ -9,7 +9,7 @@ export const permanencia = (a, b) => { const m = meses(a, b); return m === null 
 export async function renderBajas(view, ctx) {
   clear(view, cargando());
   const [bajas, alumnos, ls] = await Promise.all([api.bajas(), api.alumnos(), api.listas()]);
-  const editor = ctx.puedeEditar();
+  const editor = ctx.edita('ac_bajas');
   const recargar = () => { api.invalidar(); refrescar(); };
   const porMotivo = new Map();
   for (const b of bajas) { const m = b.motivo || 'Sin motivo'; porMotivo.set(m, (porMotivo.get(m) || 0) + 1); }

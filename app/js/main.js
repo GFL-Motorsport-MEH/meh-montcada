@@ -13,6 +13,7 @@ import { renderConfig } from './views/config.js';
 import { RUTAS_ACADEMIA, TABS_ACADEMIA, TABS_COBROS } from './academia/index.js';
 import { renderEscanerVista } from './views/escaner-vista.js';
 import * as historial from './deshacer.js';
+import { crearPermisos } from './permisos.js';
 import './views/config-listas.js';
 import './views/config-centros.js';
 import './views/plantillas.js';
@@ -28,6 +29,7 @@ const LS_CENTRO = 'meh.centro';
 const state = {
   session: null, perfil: null, cursos: [], cursosVisibles: [], taxonomia: [], cursoId: null, centros: [], centroId: '',
   gastos: new Map(), ingresos: new Map(), sugerencias: null, arrancado: false,
+  roles: [], permisos: crearPermisos(null, []),
 };
 
 // ---------- contexto que reciben las vistas ----------
@@ -36,9 +38,17 @@ const ctx = {
   cursoActual: () => state.cursos.find((c) => c.id === state.cursoId),
   esAdmin: () => state.perfil?.rol === 'admin' && state.perfil?.activo,
   rol: () => (state.perfil?.activo ? state.perfil.rol : null),
-  puedeEditar: () => ['admin', 'empleado'].includes(ctx.rol()),
-  esEscaner: () => ctx.rol() === 'escaner',
-  soloLectura: () => ctx.rol() === 'consulta',
+  // permisos del rol (se cargan al entrar; ver permisos.js). ve = ve todo · propio = solo lo suyo · veAlgo = lo suyo o todo
+  alcance: (k) => state.permisos.alcance(k),
+  ve: (k) => state.permisos.ve(k),
+  propio: (k) => state.permisos.propio(k),
+  veAlgo: (k) => state.permisos.veAlgo(k),
+  edita: (k) => state.permisos.edita(k),
+  puedeEditar: () => ctx.edita('fact'), // contabilidad (Facturación)
+  soloEscaner: () => ctx.veAlgo('escaner') && !ctx.veAlgo('fact') && !state.permisos.algunoAcademia(),
+  soloLectura: () => ctx.veAlgo('fact') && !ctx.edita('fact'),
+  // la ficha de profesora enlazada a este usuario (para «lo suyo»)
+  miProfesora: (profes) => (profes || []).find((p) => p.profile_id === state.perfil?.id) || null,
   async gastos(cursoId) {
     if (!state.gastos.has(cursoId)) state.gastos.set(cursoId, await db.getGastos(cursoId));
     return state.gastos.get(cursoId);
@@ -90,31 +100,49 @@ const MODULOS = [
   { id: 'facturacion', titulo: 'Facturación', sub: 'Contabilidad, cobros y control', inicio: 'panel' },
   { id: 'academia', titulo: 'Academia', sub: 'Alumnos, horarios y seguimiento', inicio: 'ac_alumnos' },
 ];
+// perm = permiso que da acceso a la pantalla (ver permisos.js); edita = hace falta poder editar
+async function renderSinAcceso(view) {
+  clear(view, h('div', { class: 'card empty' }, h('h3', {}, 'Todavía no tienes secciones asignadas'),
+    h('p', {}, 'Tu rol no tiene ningún permiso activo. Pide a un administrador que lo configure en Usuarios > Permisos de los roles.')));
+}
 const RUTAS = {
-  panel: { titulo: 'Panel', render: renderPanel, modulo: 'facturacion' },
-  gastos: { titulo: 'Gastos', render: renderGastos, modulo: 'facturacion' },
-  escaner: { titulo: 'Escáner', render: renderEscanerVista, modulo: 'facturacion' },
-  ingresos: { titulo: 'Ingresos', render: renderIngresos, modulo: 'facturacion' },
-  balance: { titulo: 'Balance', render: renderBalance, modulo: 'facturacion' },
-  facturacion: { titulo: 'Facturación', render: renderFacturacion, modulo: 'facturacion' },
-  control: { titulo: 'Control', render: renderControl, modulo: 'facturacion' },
-  config: { titulo: 'Configuración', render: renderConfig, modulo: 'facturacion' },
+  panel: { titulo: 'Panel', render: renderPanel, modulo: 'facturacion', perm: 'fact' },
+  gastos: { titulo: 'Gastos', render: renderGastos, modulo: 'facturacion', perm: 'fact' },
+  escaner: { titulo: 'Escáner', render: renderEscanerVista, modulo: 'facturacion', perm: 'escaner' },
+  ingresos: { titulo: 'Ingresos', render: renderIngresos, modulo: 'facturacion', perm: 'fact' },
+  balance: { titulo: 'Balance', render: renderBalance, modulo: 'facturacion', perm: 'fact' },
+  facturacion: { titulo: 'Facturación', render: renderFacturacion, modulo: 'facturacion', perm: 'fact' },
+  control: { titulo: 'Control', render: renderControl, modulo: 'facturacion', perm: 'fact' },
+  config: { titulo: 'Configuración', render: renderConfig, modulo: 'facturacion', perm: 'fact', edita: true },
   usuarios: { titulo: 'Usuarios', render: renderUsuarios, admin: true, modulo: 'facturacion' },
+  sin_acceso: { titulo: 'Sin acceso', render: renderSinAcceso, modulo: 'facturacion' },
   ...RUTAS_ACADEMIA, // módulo Academia (todo su código está en js/academia/)
 };
+function puedeRuta(r) {
+  const x = RUTAS[r];
+  if (!x) return false;
+  if (x.admin) return ctx.esAdmin();
+  if (!x.perm) return true;
+  return x.edita ? ctx.edita(x.perm) : ctx.veAlgo(x.perm);
+}
+// primera pantalla de un módulo a la que este usuario puede entrar
+function primeraRuta(modulo) {
+  const orden = modulo === 'academia' ? TABS_ACADEMIA.map((t) => t[0]) : ['panel', 'gastos', 'escaner', 'ingresos', 'ac_resumen', 'ac_pagos', 'ac_remesas', 'balance', 'facturacion', 'control', 'config', 'usuarios'];
+  return orden.find(puedeRuta) || null;
+}
+const modulosVisibles = () => MODULOS.filter((m) => primeraRuta(m.id));
 const LS_RUTA = 'meh.ruta.';
 function rutaActual() {
   let r = (window.location.hash.match(/^#\/(\w+)/) || [])[1];
   if (r === 'academia') r = 'ac_alumnos'; // enlace antiguo: el Resumen pasó a Facturación
-  if (ctx.esEscaner()) return 'escaner'; // el usuario del escáner solo tiene esta pantalla
-  if (!RUTAS[r] || (RUTAS[r].admin && !ctx.esAdmin())) return 'panel';
-  return r;
+  if (RUTAS[r] && puedeRuta(r)) return r;
+  // sin permiso (o ruta que no existe): a la primera pantalla que le toca
+  return (ctx.veAlgo('fact') && primeraRuta('facturacion')) || primeraRuta('academia') || primeraRuta('facturacion') || 'sin_acceso';
 }
 function irAModulo(id) {
-  const m = MODULOS.find((x) => x.id === id);
-  let destino = m.inicio;
-  try { const g = localStorage.getItem(LS_RUTA + id); if (RUTAS[g]?.modulo === id) destino = g; } catch { /* */ }
-  window.location.hash = `#/${destino}`;
+  let destino = primeraRuta(id);
+  try { const g = localStorage.getItem(LS_RUTA + id); if (RUTAS[g]?.modulo === id && puedeRuta(g)) destino = g; } catch { /* */ }
+  if (destino) window.location.hash = `#/${destino}`;
 }
 
 let viewEl, tabsEl, cursoSel, modulosEl;
@@ -132,12 +160,12 @@ function pintarShell() {
     h('header', { class: 'topbar' },
       h('div', { class: 'brand' }, h('div', { class: 'brand-mark', 'aria-hidden': 'true' }, 'M'),
         h('div', {}, h('div', { class: 'brand-name' }, h('span', { class: 'nombre-largo' }, 'My English House — Montcada'), h('span', { class: 'nombre-corto' }, 'MEH Montcada')), h('div', { class: 'brand-sub' }, 'Gestión y contabilidad'))),
-      ctx.esEscaner() ? null : modulosEl,
-      h('div', { class: 'header-controls' }, ctx.esEscaner() ? null : centroSelect(), ctx.esEscaner() ? null : cursoSel,
-        ctx.esEscaner() ? null : resumenEl,
+      ctx.soloEscaner() ? null : modulosEl,
+      h('div', { class: 'header-controls' }, ctx.soloEscaner() ? null : centroSelect(), ctx.soloEscaner() ? null : cursoSel,
+        ctx.veAlgo('fact') ? resumenEl : null,
         ctx.puedeEditar() ? botonDeshacer() : null,
         h('div', { class: 'user-chip' }, h('span', { class: 'dot', 'aria-hidden': 'true' }, inicial),
-          h('span', { title: NOMBRE_ROL[p.rol] || p.rol }, `${p.nombre || p.email}${['consulta', 'escaner'].includes(p.rol) ? ' · ' + NOMBRE_ROL[p.rol].toLowerCase() : ''}`),
+          h('span', { title: nombreRol(p.rol) }, `${p.nombre || p.email}${p.rol !== 'admin' ? ' · ' + nombreRol(p.rol).toLowerCase() : ''}`),
           h('button', { class: 'btn ghost', onclick: () => renderNuevaPassword(root, { titulo: 'Cambiar contraseña', onDone: async () => { toast('Contraseña cambiada'); await arrancar(); }, onCancel: () => { pintarShell(); pintarVista(); } }) }, 'Contraseña'),
           botonTema(),
           h('button', { class: 'btn ghost', onclick: salir }, 'Salir')))),
@@ -147,7 +175,7 @@ function pintarShell() {
 }
 
 // ---------- deshacer (botón y Ctrl+Z) ----------
-export const NOMBRE_ROL = { admin: 'Administrador', empleado: 'Gestión', consulta: 'Consulta', escaner: 'Solo escáner' };
+const nombreRol = (rol) => state.roles.find((r) => r.rol === rol)?.nombre || (rol === 'admin' ? 'Administrador' : rol);
 let quitarDeshacer = null;
 function botonDeshacer() {
   const b = h('button', { class: 'btn ghost btn-deshacer', type: 'button', onclick: () => ejecutarDeshacer() }, '↶ Deshacer');
@@ -185,7 +213,7 @@ document.addEventListener('keydown', (e) => {
 // ---------- miniresumen del curso junto al selector de curso ----------
 const resumenEl = h('div', { class: 'mini-resumen', 'aria-label': 'Resumen de gastos del curso' });
 async function refrescarResumen() {
-  if (!state.cursoId || ctx.esEscaner()) return;
+  if (!state.cursoId || !ctx.veAlgo('fact')) return;
   let l;
   try { l = ctx.filtrarCentro(await ctx.gastos(state.cursoId)); } catch { return; }
   const si = (v) => /^(true|1|x|verdadero|s[ií])$/i.test(String(v ?? '').trim());
@@ -203,7 +231,7 @@ ctx.refrescarResumen = refrescarResumen;
 
 // ---------- gastos pendientes de revisar (aviso en la pestaña) ----------
 async function actualizarPendientes() {
-  if (!ctx.puedeEditar() && !ctx.soloLectura()) return;
+  if (!ctx.veAlgo('fact')) return;
   const n = await db.contarPendientes().catch(() => 0);
   state.pendientes = n;
   document.querySelectorAll('.tab-badge-gastos').forEach((el) => { el.textContent = n ? String(n) : ''; el.hidden = !n; el.title = `${n} gastos pendientes de revisar`; });
@@ -250,17 +278,22 @@ ctx.repintarCabecera = () => { pintarShell(); pintarVista(); };
 function pintarTabs(actual) {
   const modulo = RUTAS[actual].modulo;
   try { localStorage.setItem(LS_RUTA + modulo, actual); } catch { /* */ }
-  clear(modulosEl, MODULOS.map((m) => h('button', { type: 'button', class: 'modulo', 'aria-pressed': String(m.id === modulo), title: m.sub, onclick: () => irAModulo(m.id) },
+  const mods = modulosVisibles();
+  modulosEl.hidden = mods.length < 2;
+  clear(modulosEl, mods.map((m) => h('button', { type: 'button', class: 'modulo', 'aria-pressed': String(m.id === modulo), title: m.sub, onclick: () => irAModulo(m.id) },
     h('span', { class: 'modulo-titulo' }, m.titulo), m.id === 'academia' ? h('span', { class: 'soon' }, 'en desarrollo') : null)));
   const tab = (id, label) => h('a', { class: 'tab', href: `#/${id}`, 'aria-current': id === actual ? 'page' : false }, label);
   const proximamente = (label) => h('span', { class: 'tab disabled', title: 'Próximamente' }, label, h('span', { class: 'soon' }, 'pronto'));
   if (modulo === 'academia') {
-    clear(tabsEl, TABS_ACADEMIA.map(([id, label]) => tab(id, label)), proximamente('Asistencia'));
+    clear(tabsEl, TABS_ACADEMIA.filter(([id]) => puedeRuta(id)).map(([id, label]) => tab(id, label)), ctx.ve('ac_alumnos') ? proximamente('Asistencia') : null);
     return;
   }
-  if (ctx.esEscaner()) { clear(tabsEl, tab('escaner', 'Escáner')); return; }
+  if (ctx.soloEscaner()) { clear(tabsEl, tab('escaner', 'Escáner')); return; }
+  const fact = ctx.veAlgo('fact');
   const badge = h('span', { class: 'tab-badge tab-badge-gastos', hidden: !state.pendientes, title: `${state.pendientes || 0} gastos pendientes de revisar` }, state.pendientes ? String(state.pendientes) : '');
-  clear(tabsEl, tab('panel', 'Panel'), h('a', { class: 'tab', href: '#/gastos', 'aria-current': actual === 'gastos' ? 'page' : false }, 'Gastos', badge), ctx.soloLectura() ? null : tab('escaner', 'Escáner'), tab('ingresos', 'Ingresos'), TABS_COBROS.map(([id, label]) => tab(id, label)), tab('balance', 'Balance'), tab('facturacion', 'Facturación'), tab('control', 'Control'), ctx.soloLectura() ? null : tab('config', 'Configuración'),
+  clear(tabsEl, fact ? tab('panel', 'Panel') : null, fact ? h('a', { class: 'tab', href: '#/gastos', 'aria-current': actual === 'gastos' ? 'page' : false }, 'Gastos', badge) : null, ctx.veAlgo('escaner') ? tab('escaner', 'Escáner') : null,
+    fact ? tab('ingresos', 'Ingresos') : null, TABS_COBROS.filter(([id]) => puedeRuta(id)).map(([id, label]) => tab(id, label)),
+    fact ? tab('balance', 'Balance') : null, fact ? tab('facturacion', 'Facturación') : null, fact ? tab('control', 'Control') : null, ctx.edita('fact') ? tab('config', 'Configuración') : null,
     ctx.esAdmin() ? tab('usuarios', 'Usuarios') : null);
 }
 
@@ -283,7 +316,7 @@ async function pintarVista() {
   clear(viewEl, cargando());
   try {
     await RUTAS[r].render(tmp, ctx);
-    if (id === renderId) { clear(viewEl, ...tmp.childNodes); if (ctx.soloLectura()) bloquearEdicion(viewEl); refrescarResumen(); }
+    if (id === renderId) { clear(viewEl, ...tmp.childNodes); if (ctx.soloLectura() && RUTAS[r].modulo === 'facturacion' && !r.startsWith('ac_')) bloquearEdicion(viewEl); refrescarResumen(); }
   } catch (ex) {
     if (id !== renderId) return;
     console.error(ex);
@@ -299,6 +332,7 @@ function leerCurso() { try { return localStorage.getItem(LS_CURSO); } catch { re
 async function elegirCurso() {
   const guardado = leerCurso();
   if (state.cursosVisibles.some((c) => c.id === guardado)) return guardado;
+  if (!ctx.veAlgo('fact')) { const hoy = hoyISO(); return (state.cursosVisibles.find((c) => c.fecha_inicio <= hoy && hoy <= c.fecha_fin) || state.cursosVisibles.at(-1))?.id; } // sin contabilidad no hay gastos que mirar
   // el curso más reciente que ya tenga gastos (el actual puede estar vacío al empezar)
   for (const c of [...state.cursosVisibles].reverse()) {
     if ((await ctx.gastos(c.id)).length) return c.id;
@@ -317,6 +351,9 @@ async function arrancar() {
     return renderPendiente(root, { email: session.user.email, onReintentar: arrancar });
   }
   state.perfil = perfil;
+  const [roles, filasPermisos] = await Promise.all([db.getRoles(), db.getPermisosRoles()]);
+  state.roles = roles;
+  state.permisos = crearPermisos(perfil.rol, filasPermisos);
   if (perfil.debe_cambiar_password) {
     return renderNuevaPassword(root, {
       titulo: 'Tu contraseña es provisional: elige una nueva',
@@ -324,7 +361,7 @@ async function arrancar() {
     });
   }
   document.body.classList.toggle('solo-lectura', ctx.soloLectura());
-  document.body.classList.toggle('rol-escaner', ctx.esEscaner());
+  document.body.classList.toggle('rol-escaner', ctx.soloEscaner());
   const [cursos, taxonomia, centros] = await Promise.all([db.getCursos(), db.getTaxonomia(), db.getCentros().catch(() => [])]);
   state.centros = centros;
   try { const c = localStorage.getItem(LS_CENTRO); state.centroId = centros.some((x) => x.id === c) ? c : ''; } catch { state.centroId = ''; }
@@ -333,7 +370,7 @@ async function arrancar() {
   state.cursosVisibles = cursos.filter((c) => !c.fecha_inicio || c.fecha_inicio <= hoy);
   if (!state.cursosVisibles.length) state.cursosVisibles = cursos;
   state.taxonomia = taxonomia;
-  state.cursoId = ctx.esEscaner() ? (cursos.find((c) => c.fecha_inicio <= hoy && hoy <= c.fecha_fin) || state.cursosVisibles.at(-1))?.id : await elegirCurso();
+  state.cursoId = ctx.soloEscaner() ? (cursos.find((c) => c.fecha_inicio <= hoy && hoy <= c.fecha_fin) || state.cursosVisibles.at(-1))?.id : await elegirCurso();
   state.arrancado = true;
   historial.vaciar();
   if (/access_token=|type=/.test(window.location.hash)) history.replaceState(null, '', '#/panel');
@@ -347,7 +384,7 @@ async function salir() {
 }
 
 function reiniciarEstado() {
-  Object.assign(state, { session: null, perfil: null, cursos: [], cursosVisibles: [], taxonomia: [], cursoId: null, sugerencias: null, empresas: null, centros: [], centroId: '', arrancado: false });
+  Object.assign(state, { session: null, perfil: null, roles: [], permisos: crearPermisos(null, []), cursos: [], cursosVisibles: [], taxonomia: [], cursoId: null, sugerencias: null, empresas: null, centros: [], centroId: '', arrancado: false });
   state.gastos.clear(); state.ingresos.clear();
 }
 

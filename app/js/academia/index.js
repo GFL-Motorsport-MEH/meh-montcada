@@ -28,29 +28,30 @@ function estilos(render) {
   };
 }
 
-const R = (titulo, render, modulo = 'academia') => ({ titulo, render: estilos(render), modulo });
+// perm = permiso (ver permisos.js) que da acceso a la pantalla; edita = además hace falta poder editar (pantallas de importar)
+const R = (titulo, render, perm, edita = false, modulo = 'academia') => ({ titulo, render: estilos(render), modulo, perm, edita });
 // Resumen, Pagos y Remesas (y el importador de pagos) viven en el módulo de Facturación; su código sigue aquí porque usa las tablas ac_*.
 // El Resumen debería desaparecer cuando Ingresos cubra lo mismo.
-const F = (titulo, render) => R(titulo, render, 'facturacion');
+const F = (titulo, render, perm, edita = false) => R(titulo, render, perm, edita, 'facturacion');
 export const RUTAS_ACADEMIA = {
-  ac_resumen: F('Resumen', renderResumen),
-  ac_pagos: F('Pagos', renderPagos),
-  ac_remesas: F('Remesas', renderRemesas),
-  ac_pagos_importar: F('Importar pagos', renderImportarPagos),
-  ac_alumnos: R('Alumnos', renderAlumnos),
-  ac_seguimiento: R('Seguimiento', renderSeguimiento),
-  ac_tutorias: R('Tutorías', renderTutorias),
-  ac_bajas: R('Bajas', renderBajas),
-  ac_grupos: R('Grupos y horarios', renderHorarios),
-  ac_calendario: R('Calendario', renderCalendario),
-  ac_horarios_importar: R('Importar horarios', renderImportarHorarios),
-  ac_tareas: R('Tareas', renderTareas),
-  ac_recogidas: R('Recogidas', renderRecogidas),
-  ac_recogidas_importar: R('Importar recogidas', renderImportarRecogidas),
-  ac_biblioteca: R('Biblioteca', renderBiblioteca),
-  ac_biblioteca_importar: R('Importar biblioteca', renderImportarBiblioteca),
-  ac_documentos: R('Protocolos', renderDocumentos),
-  ac_importar: R('Importar del Excel', renderImportar),
+  ac_resumen: F('Resumen', renderResumen, 'ac_resumen'),
+  ac_pagos: F('Pagos', renderPagos, 'ac_pagos'),
+  ac_remesas: F('Remesas', renderRemesas, 'ac_remesas'),
+  ac_pagos_importar: F('Importar pagos', renderImportarPagos, 'ac_pagos', true),
+  ac_alumnos: R('Alumnos', renderAlumnos, 'ac_alumnos'),
+  ac_seguimiento: R('Seguimiento', renderSeguimiento, 'ac_seguimiento'),
+  ac_tutorias: R('Tutorías', renderTutorias, 'ac_tutorias'),
+  ac_bajas: R('Bajas', renderBajas, 'ac_bajas'),
+  ac_grupos: R('Grupos y horarios', renderHorarios, 'ac_grupos'),
+  ac_calendario: R('Calendario', renderCalendario, 'ac_calendario'),
+  ac_horarios_importar: R('Importar horarios', renderImportarHorarios, 'ac_grupos', true),
+  ac_tareas: R('Tareas', renderTareas, 'ac_tareas'),
+  ac_recogidas: R('Recogidas', renderRecogidas, 'ac_recogidas'),
+  ac_recogidas_importar: R('Importar recogidas', renderImportarRecogidas, 'ac_recogidas', true),
+  ac_biblioteca: R('Biblioteca', renderBiblioteca, 'ac_biblioteca'),
+  ac_biblioteca_importar: R('Importar biblioteca', renderImportarBiblioteca, 'ac_biblioteca', true),
+  ac_documentos: R('Protocolos', renderDocumentos, 'ac_documentos'),
+  ac_importar: R('Importar del Excel', renderImportar, 'ac_alumnos', true),
 };
 // pestañas visibles (ac_importar se abre desde el botón de Alumnos)
 export const TABS_ACADEMIA = [

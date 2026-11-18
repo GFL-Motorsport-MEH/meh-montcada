@@ -4,7 +4,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 const ORIGENES = ['https://meh-montcada.netlify.app', 'http://127.0.0.1:8765', 'http://localhost:8765'];
-const ROLES = ['admin', 'empleado', 'consulta', 'escaner'];
 
 function cors(req: Request) {
   const o = req.headers.get('origin') || '';
@@ -36,7 +35,10 @@ Deno.serve(async (req) => {
     if (body.accion === 'crear') {
       const email = String(body.email || '').trim().toLowerCase();
       const nombre = String(body.nombre || '').trim() || email.split('@')[0];
-      const rol = ROLES.includes(body.rol) ? body.rol : 'empleado';
+      // los roles válidos son los de la tabla «roles» (se gestionan en la web)
+      const { data: roles } = await admin.from('roles').select('rol');
+      const rol = String(body.rol || '');
+      if (!(roles || []).some((r: { rol: string }) => r.rol === rol)) return json({ error: 'Rol no válido' }, 400);
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: 'Email no válido' }, 400);
       if (!pass) return json({ error: 'Falta la contraseña provisional' }, 400);
       const { data, error } = await admin.auth.admin.createUser({ email, password: pass, email_confirm: true, user_metadata: { nombre } });

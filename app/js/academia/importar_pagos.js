@@ -50,7 +50,7 @@ export function agruparRecibos(filas) {
 }
 
 export async function renderImportarPagos(view, ctx) {
-  const editor = ctx.puedeEditar(); const salida = h('div');
+  const editor = ctx.edita('ac_pagos'); const salida = h('div');
   const input = h('input', { type: 'file', accept: '.xlsx,.xls,.csv', disabled: !editor, 'aria-label': 'Archivo Excel de pagos' });
   const chkRemesas = h('input', { type: 'checkbox', checked: true });
   input.addEventListener('change', async () => {

@@ -10,12 +10,17 @@ const activos = (g) => g.miembros.filter((m) => !m.fecha_baja);
 export async function renderHorarios(view, ctx) {
   clear(view, cargando());
   const curso = ctx.cursoActual();
-  const [grupos, profes, aulas, alumnos, ls] = await Promise.all([api.grupos(curso.id), api.profesoras(), api.aulas(), api.alumnos(), api.listas()]);
+  const [todosGrupos, profes, aulas, alumnos, ls] = await Promise.all([api.grupos(curso.id), api.profesoras(), api.aulas(), api.alumnos(), api.listas()]);
+  // con el permiso «lo suyo» solo se enseñan los grupos de esta profesora (la base de datos ya limita los alumnos)
+  const propio = !ctx.ve('ac_grupos');
+  const yo = propio ? ctx.miProfesora(profes) : null;
+  const grupos = propio ? todosGrupos.filter((g) => yo && (g.profesora_id === yo.id || g.sesiones.some((s) => s.profesora_id === yo.id))) : todosGrupos;
   const pPor = new Map(profes.map((p) => [p.id, p])); const aPor = new Map(aulas.map((a) => [a.id, a]));
-  const editor = ctx.puedeEditar();
+  const editor = ctx.edita('ac_grupos');
   const recargar = () => { api.invalidar(); refrescar(); };
   const cont = h('div');
-  const seg = h('div', { class: 'segmented', role: 'tablist' }, [['lista', 'Grupos'], ['parrilla', 'Parrilla semanal'], ['recursos', 'Profesoras y aulas']].map(([k, l]) =>
+  if (propio && vistaActual === 'recursos') vistaActual = 'lista';
+  const seg = h('div', { class: 'segmented', role: 'tablist' }, [['lista', 'Grupos'], ['parrilla', 'Parrilla semanal'], ...(propio ? [] : [['recursos', 'Profesoras y aulas']])].map(([k, l]) =>
     h('button', { class: 'seg-btn', role: 'tab', type: 'button', 'aria-selected': String(vistaActual === k), onclick: () => { vistaActual = k; seg.querySelectorAll('.seg-btn').forEach((b) => b.setAttribute('aria-selected', String(b.textContent === l))); pintar(); } }, l)));
 
   function pintar() {
@@ -32,7 +37,8 @@ export async function renderHorarios(view, ctx) {
     } else if (vistaActual === 'parrilla') clear(cont, parrilla(grupos, pPor));
     else clear(cont, recursos(profes, aulas, editor, recargar));
   }
-  clear(view, cabecera(`Grupos y horarios · ${curso.nombre}`, `${grupos.length} grupos`, seg, editor ? h('a', { class: 'btn small', href: '#/ac_horarios_importar' }, 'Importar del Excel') : null, editor ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrirGrupo(null, { ctx, curso, profes, aulas, alumnos, ls, recargar }) }, '+ Nuevo grupo') : null), cont);
+  clear(view, cabecera(`Grupos y horarios · ${curso.nombre}`, propio ? `${grupos.length} grupos tuyos` : `${grupos.length} grupos`, seg, editor && !propio ? h('a', { class: 'btn small', href: '#/ac_horarios_importar' }, 'Importar del Excel') : null, editor && !propio ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrirGrupo(null, { ctx, curso, profes, aulas, alumnos, ls, recargar }) }, '+ Nuevo grupo') : null),
+    propio && !yo ? h('div', { class: 'banner warn' }, 'Tu usuario todavía no está enlazado a una ficha de profesora, así que no se te asigna ningún grupo. Pide a un administrador que lo enlace en Usuarios.') : null, cont);
   pintar();
 }
 
@@ -71,7 +77,7 @@ function recursos(profes, aulas, editor, recargar) {
 
 // ---------- ficha del grupo ----------
 function abrirGrupo(g, { ctx, curso, profes, aulas, alumnos, ls, recargar }) {
-  const editor = ctx.puedeEditar();
+  const editor = ctx.edita('ac_grupos');
   const d = drawer({ titulo: g ? `Grupo ${g.nombre}` : 'Nuevo grupo', ancho: 720 });
   const F = {
     nombre: txt(g?.nombre, { placeholder: 'KIDS 1, TEENS 5, ADULTS 6…' }), modalidad: sel(ls.modalidad || [], g?.modalidad, { vacio: '—' }), nivel: txt(g?.nivel, { placeholder: 'L1, A2, B1…' }),

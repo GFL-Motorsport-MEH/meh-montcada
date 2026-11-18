@@ -1,24 +1,9 @@
 // Panel de usuarios (solo administradores): altas, roles, activar/desactivar y contraseñas provisionales.
 // Los permisos de cada rol se aplican en la base de datos (RLS), no solo en la app.
 import { h, clear, toast, cargando, fmtFecha, confirmar } from '../ui.js';
-import { getPerfiles, actualizarPerfil, adminUsuarios } from '../db.js';
-
-const ROLES = [
-  ['admin', 'Administrador', 'Todo, incluidos usuarios y borrar.'],
-  ['empleado', 'Gestión', 'Ve y edita toda la contabilidad. No borra ni gestiona usuarios.'],
-  ['consulta', 'Consulta', 'Solo ve. No puede cambiar nada.'],
-  ['escaner', 'Solo escáner', 'Solo la pantalla del escáner: añade gastos (quedan en amarillo hasta que los revises) y ve los suyos pendientes.'],
-];
-const PERMISOS = [
-  ['Ver gastos, ingresos, balances y facturación', [1, 1, 1, 0]],
-  ['Escanear facturas y añadir gastos', [1, 1, 0, 1]],
-  ['Editar gastos, ingresos, facturación y control', [1, 1, 0, 0]],
-  ['Revisar los gastos del escáner', [1, 1, 0, 0]],
-  ['Configuración (empresas, plantillas…)', [1, 1, 0, 0]],
-  ['Listas, categorías, centros, cursos y cuentas', [1, 0, 0, 0]],
-  ['Borrar datos', [1, 0, 0, 0]],
-  ['Gestionar usuarios', [1, 0, 0, 0]],
-];
+import { getPerfiles, actualizarPerfil, adminUsuarios, getRoles } from '../db.js';
+import * as ac from '../academia/api.js';
+import { renderPermisosRoles } from './permisos-roles.js';
 
 // contraseña provisional legible (sin 0/O, 1/l/I)
 function generarPassword(n = 12) {
@@ -42,10 +27,38 @@ function mostrarPassword({ titulo, email, pass }) {
 
 export async function renderUsuarios(view, ctx) {
   clear(view, cargando());
-  let perfiles = await getPerfiles();
+  const [perfilesIni, rolesDb, fichas] = await Promise.all([getPerfiles(), getRoles(), ac.profesoras().catch(() => [])]);
+  let perfiles = perfilesIni;
+  let fichasProf = fichas;
+  const ROLES = (rolesDb.length ? rolesDb : [{ rol: 'admin', nombre: 'Administrador' }]).map((r) => [r.rol, r.nombre, r.descripcion || '']);
+  const nombreDe = (v) => ROLES.find((x) => x[0] === v)?.[1] || v;
   const yo = ctx.state.perfil.id;
   const tbody = h('tbody');
   const contador = h('div', { class: 'count' });
+
+  // Una profesora ve «lo suyo» (grupos, tutorías, alumnos) a través de su ficha en Academia > Profesoras.
+  function fichaSelect(p) {
+    const actual = fichasProf.find((f) => f.profile_id === p.id);
+    const sel = h('select', { 'aria-label': `Ficha de profesora de ${p.email}`, class: 'ficha-prof' },
+      h('option', { value: '' }, actual ? '— quitar ficha —' : '— sin ficha de profesora —'),
+      fichasProf.filter((f) => !f.profile_id || f.profile_id === p.id).map((f) => h('option', { value: f.id, selected: actual?.id === f.id }, f.nombre)));
+    sel.addEventListener('change', async () => {
+      try {
+        if (actual) await ac.upd('ac_profesoras', actual.id, { profile_id: null });
+        if (sel.value) await ac.upd('ac_profesoras', sel.value, { profile_id: p.id });
+        fichasProf = await ac.profesoras();
+        toast('Ficha actualizada'); pintar();
+      } catch (ex) { toast(ex.message, 'error'); }
+    });
+    const crear = h('button', { class: 'btn small ghost', type: 'button', title: 'Crea una ficha de profesora con su nombre y la vincula', onclick: async () => {
+      try {
+        await ac.ins('ac_profesoras', { nombre: p.nombre || (p.email || '').split('@')[0], profile_id: p.id });
+        fichasProf = await ac.profesoras(); toast('Ficha creada'); pintar();
+      } catch (ex) { toast(ex.message, 'error'); }
+    } }, 'Crear ficha');
+    return h('div', { class: 'ficha-vinculo' }, h('div', { class: 'small muted' }, 'Ficha de profesora'), sel,
+      actual ? null : h('div', {}, h('span', { class: 'pill warn', title: 'Sin ficha no ve sus grupos, tutorías ni alumnos' }, 'Sin ficha: no verá nada suyo'), ' ', crear));
+  }
 
   function fila(p) {
     const esYo = p.id === yo;
@@ -53,6 +66,7 @@ export async function renderUsuarios(view, ctx) {
     const rol = h('select', { 'aria-label': `Rol de ${p.email}`, disabled: esYo }, ROLES.map(([v, t]) => h('option', { value: v, selected: p.rol === v }, t)));
     const activo = h('input', { type: 'checkbox', checked: p.activo, disabled: esYo, 'aria-label': `Activo ${p.email}` });
     const sinDinero = h('input', { type: 'checkbox', checked: !!p.sin_dinero, 'aria-label': `Sin acceso a dinero ${p.email}` });
+    const ficha = fichaSelect(p);
     const btn = h('button', { class: 'btn small', disabled: true }, 'Guardar');
     const marcar = () => { btn.disabled = false; btn.classList.add('primary'); };
     nombre.addEventListener('input', marcar); rol.addEventListener('change', marcar); activo.addEventListener('change', marcar); sinDinero.addEventListener('change', marcar);
@@ -80,7 +94,7 @@ export async function renderUsuarios(view, ctx) {
     return h('tr', { class: p.activo ? '' : 'inactivo' },
       h('td', {}, nombre),
       h('td', {}, p.email || '—', esYo ? h('span', { class: 'line2' }, '(tú)') : null),
-      h('td', {}, rol),
+      h('td', {}, rol, p.rol === 'profesora' ? ficha : null),
       h('td', {}, h('label', { class: 'check' }, activo, p.activo ? 'Activo' : h('span', { class: 'pill warn' }, 'Desactivado')),
         h('label', { class: 'check small', title: 'No ve las tareas de Contabilidad ni de Domiciliaciones y pagos' }, sinDinero, ' Sin dinero')),
       h('td', { class: 'small' }, p.debe_cambiar_password ? h('span', { class: 'pill warn', title: 'Todavía no ha cambiado la contraseña provisional' }, 'Provisional') : h('span', { class: 'muted' }, 'Propia')),
@@ -109,27 +123,33 @@ export async function renderUsuarios(view, ctx) {
       perfiles = [...perfiles, r.perfil];
       pintar();
       aNombre.value = ''; aEmail.value = '';
-      await mostrarPassword({ titulo: `Usuario creado: ${ROLES.find((x) => x[0] === r.perfil.rol)?.[1] || r.perfil.rol}`, email, pass });
+      await mostrarPassword({ titulo: `Usuario creado: ${nombreDe(r.perfil.rol)}`, email, pass });
     } catch (ex) { toast('No se ha creado: ' + ex.message, 'error'); }
     finally { aBtn.disabled = false; }
   } },
   h('label', { class: 'field' }, h('span', {}, 'Nombre'), aNombre), h('label', { class: 'field' }, h('span', {}, 'Email'), aEmail),
   h('label', { class: 'field' }, h('span', {}, 'Rol'), aRol), h('div'), aBtn);
 
-  const matriz = h('table', { class: 'data matriz-permisos' },
-    h('thead', {}, h('tr', {}, h('th', {}, 'Permiso'), ROLES.map(([, t]) => h('th', { class: 'center' }, t)))),
-    h('tbody', {}, PERMISOS.map(([t, v]) => h('tr', {}, h('td', {}, t), v.map((x) => h('td', { class: x ? 'si' : 'no' }, x ? '✓' : '—'))))));
+  const panelUsuarios = h('div', {},
+    h('div', { class: 'card' }, h('h3', {}, 'Dar de alta'),
+      h('p', { class: 'small muted' }, 'Se crea con una contraseña provisional que verás una sola vez para pasársela. Al entrar, la app le obliga a elegir la suya. Si es profesora, después vincúlala a su ficha.'),
+      alta),
+    h('div', { class: 'table-wrap' }, h('table', { class: 'data tabla-usuarios' },
+      h('thead', {}, h('tr', {}, ['Nombre', 'Email', 'Rol', 'Estado', 'Contraseña', 'Alta', ''].map((t) => h('th', { scope: 'col' }, t)))), tbody)));
+  const panelPermisos = h('div', { hidden: true });
+  let permisosCargados = false;
+  const seg = (txt, id) => h('button', { class: 'seg-btn', type: 'button', 'data-id': id, onclick: () => mostrar(id) }, txt);
+  const segUsuarios = seg('Usuarios', 'u'); const segPermisos = seg('Permisos de los roles', 'p');
+  function mostrar(id) {
+    segUsuarios.setAttribute('aria-selected', String(id === 'u')); segPermisos.setAttribute('aria-selected', String(id === 'p'));
+    panelUsuarios.hidden = id !== 'u'; panelPermisos.hidden = id !== 'p';
+    if (id === 'p' && !permisosCargados) { permisosCargados = true; renderPermisosRoles(panelPermisos, ctx); }
+  }
 
   clear(view,
     h('div', { class: 'section-head' }, h('div', {}, h('h2', {}, 'Usuarios y permisos'), contador)),
-    h('div', { class: 'card' }, h('h3', {}, 'Dar de alta'),
-      h('p', { class: 'small muted' }, 'Se crea con una contraseña provisional que verás una sola vez para pasársela. Al entrar, la app le obliga a elegir la suya.'),
-      alta),
-    h('div', { class: 'table-wrap' }, h('table', { class: 'data tabla-usuarios' },
-      h('thead', {}, h('tr', {}, ['Nombre', 'Email', 'Rol', 'Estado', 'Contraseña', 'Alta', ''].map((t) => h('th', { scope: 'col' }, t)))), tbody)),
-    h('div', { class: 'card' }, h('h3', {}, 'Qué puede hacer cada rol'),
-      h('p', { class: 'small muted' }, 'Se aplica en la base de datos: aunque alguien intentara saltarse la app, no podría ver ni cambiar lo que su rol no permite. Desactivar a alguien le quita el acceso al momento.'),
-      h('div', { class: 'table-wrap' }, matriz),
-      h('ul', { class: 'small muted' }, ROLES.map(([, t, d]) => h('li', {}, h('strong', {}, t), ': ', d)))));
+    h('div', { class: 'segmented', style: 'margin-bottom:12px' }, segUsuarios, segPermisos),
+    panelUsuarios, panelPermisos);
   pintar();
+  mostrar('u');
 }

@@ -8,11 +8,13 @@ let vista = 'contactos';
 export async function renderSeguimiento(view, ctx) {
   clear(view, cargando());
   const [contactos, anotaciones, alumnos, ls] = await Promise.all([api.contactos(), api.anotaciones(), api.alumnos(), api.listas()]);
-  const editor = ctx.puedeEditar();
+  const editor = ctx.edita('ac_seguimiento');
+  const verContactos = ctx.ve('ac_seguimiento'); // con «lo suyo» no hay contactos de captación, solo anotaciones de sus alumnos
+  if (!verContactos) vista = 'notas';
   const recargar = () => { api.invalidar(); refrescar(); };
   const cont = h('div');
   const f = { q: '', sit: '', tipo: '' };
-  const seg = h('div', { class: 'segmented', role: 'tablist' }, [['contactos', 'Contactos (captación)'], ['notas', 'Anotaciones de alumnos']].map(([k, l]) =>
+  const seg = h('div', { class: 'segmented', role: 'tablist' }, [...(verContactos ? [['contactos', 'Contactos (captación)']] : []), ['notas', 'Anotaciones de alumnos']].map(([k, l]) =>
     h('button', { class: 'seg-btn', role: 'tab', type: 'button', 'aria-selected': String(vista === k), onclick: () => { vista = k; seg.querySelectorAll('.seg-btn').forEach((b) => b.setAttribute('aria-selected', String(b.textContent === l))); f.q = ''; pintar(); } }, l)));
   const buscar = h('input', { type: 'search', placeholder: 'Buscar…', oninput: (e) => { f.q = e.target.value; pintarLista(); } });
   const filtroSel = h('span');
@@ -41,7 +43,7 @@ export async function renderSeguimiento(view, ctx) {
     pintarLista();
   }
   const nuevo = editor ? h('button', { class: 'btn primary small', type: 'button', onclick: () => (vista === 'contactos' ? abrirContacto(null, { ls, alumnos, ctx, recargar }) : abrirNota({ alumnos, ctx, recargar })) }, '+ Nuevo') : null;
-  clear(view, cabecera('Seguimiento', 'Captación de nuevos alumnos y notas del día a día', seg, nuevo), h('div', { class: 'filters filters-2' }, buscar, filtroSel), lista);
+  clear(view, cabecera('Seguimiento', verContactos ? 'Captación de nuevos alumnos y notas del día a día' : 'Notas del día a día de tus alumnos', verContactos ? seg : null, nuevo), h('div', { class: 'filters filters-2' }, buscar, filtroSel), lista);
   pintar();
 }
 
@@ -65,7 +67,7 @@ function abrirContacto(c, { ls, alumnos, ctx, recargar }) {
     const fila = { nombre: F.nombre.value.trim(), telefono: F.tel.value.trim() || null, edad: F.edad.value.trim() || null, nivel: F.nivel.value.trim() || null, como_nos_conocio: F.conocio.value.trim() || null, situacion: F.sit.value, fecha_contacto: F.fecha.value || null, comentarios: F.com.value.trim() || null };
     try { if (c) await api.upd('ac_contactos', c.id, fila); else await api.ins('ac_contactos', fila); toast('Guardado'); d.cerrar(); recargar(); } catch (ex) { toast(ex.message, 'error'); }
   });
-  guardar.disabled = !ctx.puedeEditar();
+  guardar.disabled = !ctx.edita('ac_seguimiento');
   const borrar = c && ctx.esAdmin() ? h('button', { class: 'btn danger', type: 'button', onclick: async () => { if (await confirmar({ titulo: 'Borrar contacto', texto: c.nombre, ok: 'Borrar', peligro: true })) { try { await api.del('ac_contactos', c.id); d.cerrar(); recargar(); } catch (ex) { toast(ex.message, 'error'); } } } }, 'Borrar') : h('span');
   d.pie.append(borrar, guardar);
 }

@@ -13,7 +13,7 @@ let vista = 'dia';
 
 export async function renderRecogidas(view, ctx) {
   clear(view, cargando());
-  const curso = ctx.cursoActual(); const editor = ctx.puedeEditar();
+  const curso = ctx.cursoActual(); const editor = ctx.edita('ac_recogidas');
   const [recs, alumnos, auts] = await Promise.all([api.recogidas(curso.id), api.alumnos(), api.autorizados()]);
   const autDe = new Map(); for (const a of auts) (autDe.get(a.alumno_id) || autDe.set(a.alumno_id, []).get(a.alumno_id)).push(a);
   const recargar = () => { api.invalidar(); refrescar(); };
@@ -49,7 +49,7 @@ export async function renderRecogidas(view, ctx) {
 }
 
 async function abrir(r, { alumnos, autDe, centros, curso, ctx, recargar }) {
-  const editor = ctx.puedeEditar();
+  const editor = ctx.edita('ac_recogidas');
   const d = drawer({ titulo: r ? `Recogida · ${nombreAlumno(r.alumno)}` : 'Nueva recogida', ancho: 640 });
   const dl = h('datalist', { id: 'dl-centros' }, centros.map((c) => h('option', { value: c })));
   const checks = [1, 2, 3, 4, 5].map((n) => h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: (r?.dias || []).includes(n), disabled: !editor }), ` ${DIAS_CORTO[n]}`));
@@ -128,7 +128,7 @@ export function parseAutorizado(v) {
 }
 
 export async function renderImportarRecogidas(view, ctx) {
-  const editor = ctx.puedeEditar(); const salida = h('div');
+  const editor = ctx.edita('ac_recogidas'); const salida = h('div');
   const input = h('input', { type: 'file', accept: '.xlsx,.xls', disabled: !editor, 'aria-label': 'Archivo Excel' });
   let libro = null;
   input.addEventListener('change', async () => {

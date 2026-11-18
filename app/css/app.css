@@ -602,6 +602,16 @@ body.rol-escaner .page { max-width: 1100px; }
 /* usuarios */
 .matriz-permisos { min-width: 0; font-size: 12px; }
 .matriz-permisos td.si { color: var(--good); font-weight: 600; text-align: center; } .matriz-permisos td.no { color: var(--text-muted); text-align: center; }
+table.matriz-roles { min-width: 0; font-size: 12.5px; }
+.matriz-roles th.rol-col { text-align: center; min-width: 130px; }
+.matriz-roles td.celda { text-align: center; padding: 3px 6px; }
+.matriz-roles td.celda select { width: 100%; font-size: 12px; padding: 3px 4px; }
+.matriz-roles td.rol-fijo { color: var(--good); font-weight: 600; }
+.matriz-roles td.celda.cambiado { background: color-mix(in oklab, var(--warning) 22%, transparent); box-shadow: inset 3px 0 0 var(--warning); }
+.matriz-roles tr.grupo td { background: var(--surface-2); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
+.matriz-roles td.permiso { min-width: 240px; }
+.ficha-vinculo { margin-top: 6px; display: grid; gap: 3px; }
+.ficha-vinculo select { width: 100%; font-size: 12px; }
 .alta-usuario { display: grid; grid-template-columns: 1.2fr 1.6fr 1fr 1fr auto; gap: 8px; align-items: end; }
 @media (max-width: 900px) { .alta-usuario { grid-template-columns: 1fr 1fr; } }
 .pass-provisional { font-family: ui-monospace, monospace; font-size: 14px; background: var(--surface-2); padding: 8px 10px; border-radius: 5px; user-select: all; }

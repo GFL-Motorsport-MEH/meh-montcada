@@ -13,7 +13,7 @@ let color = 'modalidad';
 export async function renderCalendario(view, ctx) {
   clear(view, cargando());
   const curso = ctx.cursoActual();
-  const editor = ctx.puedeEditar();
+  const editor = ctx.edita('ac_calendario');
   const [grupos, profes, aulas] = await Promise.all([api.grupos(curso.id), api.profesoras(), api.aulas()]);
   const pPor = new Map(profes.map((p) => [p.id, p])); const aPor = new Map(aulas.map((a) => [a.id, a]));
   const sesiones = grupos.filter((g) => g.activo).flatMap((g) => g.sesiones.map((s) => ({ g, s, prof: s.profesora_id || g.profesora_id || null, aula: s.aula_id || g.aula_id || null, ini: aMin(s.hora_inicio), fin: aMin(s.hora_fin) })));

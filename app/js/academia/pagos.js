@@ -11,7 +11,7 @@ export async function renderPagos(view, ctx) {
   const [alumnos, insc, cuotas] = await Promise.all([api.alumnos(), api.inscripciones(curso.id), api.cuotas(curso.id)]);
   const inscPor = new Map(insc.map((i) => [i.alumno_id, i]));
   const cuotaPor = new Map(cuotas.map((c) => [`${c.alumno_id}|${c.concepto}|${c.mes}`, c]));
-  const editor = ctx.puedeEditar();
+  const editor = ctx.edita('ac_pagos');
   const f = { q: '', soloPend: false };
   const filasBase = alumnos.filter((a) => (inscPor.get(a.id)?.activa && a.estado !== 'baja') || (a.estado === 'inscrito' && inscPor.has(a.id)) || cuotas.some((c) => c.alumno_id === a.id));
   const sinInsc = alumnos.filter((a) => a.estado === 'inscrito' && !inscPor.has(a.id)).length;

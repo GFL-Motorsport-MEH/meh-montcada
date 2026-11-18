@@ -39,8 +39,8 @@ export async function renderTareas(view, ctx) {
   const yo = ctx.state.perfil;
   const miNombre = primerNombre(yo.nombre || yo.email);
   const uPor = new Map([...usuarios, yo].filter(Boolean).map((u) => [u.id, u]));
-  const editor = ctx.puedeEditar();
-  const verDinero = yo.rol === 'admin' || !yo.sin_dinero;
+  const editor = ctx.edita('ac_tareas');
+  const verDinero = yo.rol === 'admin' || (ctx.ve('ac_pagos') && !yo.sin_dinero);
   const areasPropias = Object.keys(AREAS).filter((a) => verDinero || !AREAS_DINERO.includes(a));
   const recargar = () => { api.invalidar(); refrescar(); };
   const hoy = hoyISO();

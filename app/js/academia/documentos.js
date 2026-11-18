@@ -26,7 +26,7 @@ export function renderTexto(texto) {
 export async function renderDocumentos(view, ctx) {
   clear(view, cargando());
   const [docs, ls] = await Promise.all([api.documentos(), api.listas()]);
-  const editor = ctx.puedeEditar();
+  const editor = ctx.edita('ac_documentos');
   const recargar = () => { api.invalidar(); refrescar(); };
   const f = { q: '', cat: '', ver: 'vigente' };
   const cont = h('div');
@@ -47,7 +47,7 @@ export async function renderDocumentos(view, ctx) {
 
 function abrir(doc, { ls, ctx, recargar }) {
   const d = drawer({ titulo: doc ? doc.titulo : 'Nuevo documento', ancho: 760 });
-  const editor = ctx.puedeEditar();
+  const editor = ctx.edita('ac_documentos');
   let editando = !doc && editor;
   const F = { titulo: txt(doc?.titulo), cat: sel(ls.categoria_documento || [], doc?.categoria, { vacio: 'Sin categoría' }), estado: sel([['vigente', 'Vigente'], ['borrador', 'Borrador'], ['archivado', 'Archivado']], doc?.estado || 'vigente'), contenido: area(doc?.contenido, { rows: 18, placeholder: '# Título\n\n- Paso 1\n- Paso 2\n\n**Importante:** texto en negrita' }) };
   const pintar = () => {

@@ -57,8 +57,9 @@ export const autorizados = () => memo('autorizados', () => all('ac_autorizados')
 export const autorizadosPriv = (ids) => (ids?.length ? supabase.from('ac_autorizados_priv').select('*').in('autorizado_id', ids).then(chk) : Promise.resolve([]));
 export const tareas = () => memo('tareas', () => all('ac_tareas'));
 export const documentos = () => memo('documentos', () => all('ac_documentos'));
-export const usuarios = () => memo('usuarios', async () => chk(await supabase.from('profiles').select('id,nombre,email,activo,rol').eq('activo', true)));
-// DNI / IBAN: solo los devuelve la base de datos a admin y empleado
+// compañeros de equipo (para asignar tareas): lo devuelve una función del servidor porque un usuario normal solo puede leer su propio perfil
+export const usuarios = () => memo('usuarios', async () => chk(await supabase.rpc('usuarios_equipo')));
+// DNI / IBAN: solo los devuelve la base de datos a quien tiene el permiso de Pagos
 export const privados = (ids) => (ids?.length ? supabase.from('ac_responsables_priv').select('*').in('responsable_id', ids).then(chk) : Promise.resolve([]));
 
 // ---------- escrituras ----------

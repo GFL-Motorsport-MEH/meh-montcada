@@ -7,7 +7,9 @@ export async function renderTutorias(view, ctx) {
   clear(view, cargando());
   const curso = ctx.cursoActual();
   const [tutorias, alumnos, profes] = await Promise.all([api.tutorias(), api.alumnos(), api.profesoras()]);
-  const editor = ctx.puedeEditar();
+  const propio = !ctx.ve('ac_tutorias'); // con «lo suyo» solo ve y crea tutorías a su nombre, con sus alumnos
+  const yo = propio ? ctx.miProfesora(profes) : null;
+  const editor = ctx.edita('ac_tutorias') && (!propio || !!yo);
   const recargar = () => { api.invalidar(); refrescar(); };
   const f = { q: '', estado: 'pendiente' };
   const hoy = hoyISO();
@@ -21,15 +23,18 @@ export async function renderTutorias(view, ctx) {
       { t: 'Motivo', v: (t) => t.motivo || '' }, { t: 'Estado', v: (t) => pill(t.estado, t.estado === 'hecha' ? 'ok' : t.estado === 'cancelada' ? 'off' : 'warn') },
     ], filas, { onClick: (t) => abrir(t, { alumnos, profes, curso, ctx, recargar }), vacio: 'No hay tutorías con este filtro.' }));
   }
-  clear(view, cabecera('Tutorías', 'Reuniones con familias, enlazadas al seguimiento de cada alumno', editor ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrir(null, { alumnos, profes, curso, ctx, recargar }) }, '+ Nueva tutoría') : null),
+  clear(view, cabecera('Tutorías', propio ? 'Tus reuniones con familias' : 'Reuniones con familias, enlazadas al seguimiento de cada alumno', editor ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrir(null, { alumnos, profes, curso, ctx, recargar }) }, '+ Nueva tutoría') : null),
+    propio && !yo ? h('div', { class: 'banner warn' }, 'Tu usuario todavía no está enlazado a una ficha de profesora, así que no se te asigna ninguna tutoría. Pide a un administrador que lo enlace en Usuarios.') : null,
     h('div', { class: 'filters filters-2' }, h('input', { type: 'search', placeholder: 'Buscar alumno o motivo…', oninput: (e) => { f.q = e.target.value; pintar(); } }), sel([['', 'Todas'], ['pendiente', 'Pendientes'], ['hecha', 'Hechas'], ['cancelada', 'Canceladas']], f.estado, { onchange: (e) => { f.estado = e.target.value; pintar(); } })), cont);
   pintar();
 }
 
 function abrir(t, { alumnos, profes, curso, ctx, recargar }) {
   const d = drawer({ titulo: t ? `Tutoría · ${nombreAlumno(t.alumno)}` : 'Nueva tutoría', ancho: 580 });
+  const propio = !ctx.ve('ac_tutorias'); const yo = propio ? ctx.miProfesora(profes) : null; // con «lo suyo» la tutoría se guarda a su nombre
   const F = { al: buscadorAlumno(alumnos, { valorId: t?.alumno?.id }), fecha: fecha(t?.fecha || hoyISO()), hora: h('input', { type: 'time', value: hhmm(t?.hora) }),
-    prof: sel(profes.filter((p) => p.activa || p.id === t?.profesora?.id).map((p) => [p.id, p.nombre]), t?.profesora?.id, { vacio: '—' }), formato: sel([['presencial', 'Presencial'], ['telefono', 'Teléfono'], ['online', 'Online']], t?.formato || 'presencial'),
+    prof: propio ? sel(yo ? [[yo.id, yo.nombre]] : [], yo?.id, { disabled: true, title: 'Con tu rol las tutorías se guardan a tu nombre' })
+      : sel(profes.filter((p) => p.activa || p.id === t?.profesora?.id).map((p) => [p.id, p.nombre]), t?.profesora?.id, { vacio: '—' }), formato: sel([['presencial', 'Presencial'], ['telefono', 'Teléfono'], ['online', 'Online']], t?.formato || 'presencial'),
     estado: sel([['pendiente', 'Pendiente'], ['hecha', 'Hecha'], ['cancelada', 'Cancelada']], t?.estado || 'pendiente'), motivo: area(t?.motivo), acuerdos: area(t?.acuerdos), prox: fecha(t?.proxima_fecha) };
   d.cuerpo.append(h('div', { class: 'form-section' }, campo('Alumno', F.al, { full: true, req: true }), campo('Fecha', F.fecha), campo('Hora', F.hora), campo('Profesora', F.prof), campo('Formato', F.formato), campo('Estado', F.estado), campo('Próximo seguimiento', F.prox),
     campo('Motivo', F.motivo, { full: true }), campo('Acuerdos / resultado', F.acuerdos, { full: true })),
@@ -50,7 +55,7 @@ function abrir(t, { alumnos, profes, curso, ctx, recargar }) {
       toast('Tutoría guardada'); d.cerrar(); recargar();
     } catch (ex) { toast('No se ha guardado: ' + ex.message, 'error'); }
   });
-  guardar.disabled = !ctx.puedeEditar();
+  guardar.disabled = !ctx.edita('ac_tutorias') || (propio && !yo);
   const borrar = t && ctx.esAdmin() ? h('button', { class: 'btn danger', type: 'button', onclick: async () => { if (await confirmar({ titulo: 'Borrar tutoría', texto: nombreAlumno(t.alumno), ok: 'Borrar', peligro: true })) { try { await api.del('ac_tutorias', t.id); d.cerrar(); recargar(); } catch (ex) { toast(ex.message, 'error'); } } } }, 'Borrar') : h('span');
   d.pie.append(borrar, guardar);
 }

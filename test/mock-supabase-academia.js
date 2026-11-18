@@ -1,9 +1,19 @@
 // Supabase simulado para probar el módulo Academia (sin red). Un solo usuario admin ya con sesión.
 const hoy = new Date().toISOString().slice(0, 10);
-const ADMIN = { id: 'u-admin', email: 'admin@test.es', nombre: 'Admin Prueba', rol: 'admin', activo: true, debe_cambiar_password: false, created_at: hoy };
+const ADMIN = { id: 'u-admin', email: 'admin@test.es', nombre: 'Admin Prueba', rol: window.__ROL || 'admin', activo: true, debe_cambiar_password: false, created_at: hoy };
 const CURSOS = [{ id: 'c1', nombre: '2025.26', fecha_inicio: '2025-09-01', fecha_fin: '2026-08-31' }, { id: 'c2', nombre: '2026.27', fecha_inicio: '2026-09-01', fecha_fin: '2027-08-31' }];
 const L = (lista, ...vals) => vals.map((valor, i) => ({ id: `l-${lista}-${i}`, lista, valor, orden: i }));
+const ACAD = ['ac_alumnos', 'ac_pagos', 'ac_remesas', 'ac_seguimiento', 'ac_tutorias', 'ac_bajas', 'ac_grupos', 'ac_calendario', 'ac_recogidas', 'ac_tareas', 'ac_biblioteca', 'ac_documentos'];
+const P = (rol, permiso, alcance, editar) => ({ rol, permiso, alcance, editar });
+const ROLES_DB = [{ rol: 'admin', nombre: 'Administrador', descripcion: 'Todo', orden: 0 }, { rol: 'direccion', nombre: 'Dirección', descripcion: '', orden: 1 }, { rol: 'coordinacion', nombre: 'Coordinación', descripcion: '', orden: 2 }, { rol: 'profesora', nombre: 'Profesora', descripcion: '', orden: 3 }, { rol: 'escaner', nombre: 'Solo escáner', descripcion: '', orden: 4 }];
+const PERMISOS_DB = [
+  P('direccion', 'ac_resumen', 'todo', false), ...ACAD.map((k) => P('direccion', k, 'todo', true)), P('direccion', 'escaner', 'todo', true),
+  P('coordinacion', 'ac_resumen', 'todo', false), ...ACAD.filter((k) => !['ac_pagos', 'ac_remesas'].includes(k)).map((k) => P('coordinacion', k, 'todo', true)),
+  P('profesora', 'ac_grupos', 'propio', false), P('profesora', 'ac_calendario', 'todo', false), P('profesora', 'ac_tutorias', 'propio', true), P('profesora', 'ac_seguimiento', 'propio', true), P('profesora', 'ac_biblioteca', 'todo', true), P('profesora', 'ac_documentos', 'todo', false),
+  P('escaner', 'escaner', 'todo', true),
+];
 const db = {
+  roles: ROLES_DB, rol_permisos: PERMISOS_DB,
   profiles: [ADMIN], cursos: CURSOS, categorias: [], subcategorias: [], centros: [{ id: 'ce1', nombre: 'MONTCADA', principal: true, activo: true, orden: 0 }], gastos: [], listas: [], empresas: [],
   ac_listas: [...L('modalidad', 'Babies', 'Kids', 'Teens', 'Adults'), ...L('metodo_pago', 'Domiciliacion', 'Efectivo'), ...L('motivo_baja', 'Incompatibilidad horaria', 'Otros'), ...L('categoria_documento', 'Protocolo', 'Familias'), ...L('situacion_contacto', 'posible alumno', 'prueba', 'inscrito'), ...L('descuento', 'Hermanos')],
   ac_responsables: [], ac_responsables_priv: [], ac_profesoras: [], ac_aulas: [], ac_alumnos: [], ac_inscripciones: [], ac_grupos: [], ac_sesiones: [], ac_alumno_grupo: [], ac_remesas: [], ac_cuotas: [], ac_bajas: [], ac_contactos: [], ac_tutorias: [], ac_anotaciones: [], ac_tareas: [], ac_documentos: [], ac_prestamos: [], ac_recogidas: [], ac_autorizados: [], ac_autorizados_priv: [],
@@ -110,6 +120,7 @@ export function createClient() {
         }
         return { data: n, error: null };
       }
+      if (fn === 'usuarios_equipo') return { data: db.profiles.map((x) => ({ id: x.id, nombre: x.nombre, email: x.email, rol: x.rol })), error: null };
       return { data: null, error: { message: 'función desconocida' } };
     },
     auth: {

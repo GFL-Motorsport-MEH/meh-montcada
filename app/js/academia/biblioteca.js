@@ -8,12 +8,12 @@ const TIPOS = [['libro', 'Libro'], ['mascota', 'Mascota viajera']];
 const claveNombre = (s) => normalizar(String(s ?? '')).split(/\s+/).filter(Boolean).sort().join(' ');
 const t = (v) => (v === null || v === undefined ? '' : String(v).trim());
 const DIAS_PLAZO = 14;
-const quien = (p) => (p.alumno ? nombreAlumno(p.alumno) : p.alumno_texto || '—');
+const quien = (p) => (p.alumno ? nombreAlumno(p.alumno) : p.alumno_texto || (p.alumno_id ? 'Alumno de otro grupo' : '—'));
 
 export async function renderBiblioteca(view, ctx) {
   clear(view, cargando());
   const [prestamos, alumnos] = await Promise.all([api.prestamos(), api.alumnos()]);
-  const editor = ctx.puedeEditar();
+  const editor = ctx.edita('ac_biblioteca');
   const recargar = () => { api.invalidar(); refrescar(); };
   const hoy = hoyISO();
   const f = { q: '', tipo: '', estado: 'fuera' };
@@ -56,9 +56,9 @@ function abrir(p, { alumnos, ctx, recargar }) {
       fecha_salida: F.salida.value || null, fecha_devolucion: F.dev.value || null, condiciones: F.cond.value.trim() || null, notas: F.notas.value.trim() || null };
     try { p ? await api.upd('ac_prestamos', p.id, fila) : await api.ins('ac_prestamos', fila); toast('Préstamo guardado'); d.cerrar(); recargar(); } catch (ex) { toast('No se ha guardado: ' + ex.message, 'error'); }
   });
-  guardar.disabled = !ctx.puedeEditar();
-  const devolver = p && !p.fecha_devolucion && ctx.puedeEditar() ? h('button', { class: 'btn', type: 'button', onclick: async () => { try { await api.upd('ac_prestamos', p.id, { fecha_devolucion: hoyISO() }); d.cerrar(); recargar(); } catch (ex) { toast(ex.message, 'error'); } } }, 'Marcar devuelto hoy') : null;
-  const borrar = p && ctx.puedeEditar() ? h('button', { class: 'btn danger', type: 'button', onclick: async () => { if (await confirmar({ titulo: 'Borrar préstamo', texto: quien(p), ok: 'Borrar', peligro: true })) { try { await api.del('ac_prestamos', p.id); d.cerrar(); recargar(); } catch (ex) { toast(ex.message, 'error'); } } } }, 'Borrar') : h('span');
+  guardar.disabled = !ctx.edita('ac_biblioteca');
+  const devolver = p && !p.fecha_devolucion && ctx.edita('ac_biblioteca') ? h('button', { class: 'btn', type: 'button', onclick: async () => { try { await api.upd('ac_prestamos', p.id, { fecha_devolucion: hoyISO() }); d.cerrar(); recargar(); } catch (ex) { toast(ex.message, 'error'); } } }, 'Marcar devuelto hoy') : null;
+  const borrar = p && ctx.edita('ac_biblioteca') ? h('button', { class: 'btn danger', type: 'button', onclick: async () => { if (await confirmar({ titulo: 'Borrar préstamo', texto: quien(p), ok: 'Borrar', peligro: true })) { try { await api.del('ac_prestamos', p.id); d.cerrar(); recargar(); } catch (ex) { toast(ex.message, 'error'); } } } }, 'Borrar') : h('span');
   d.pie.append(borrar, devolver, guardar);
 }
 
@@ -75,7 +75,7 @@ function leerHojas(wb, XLSX) {
 const clavePrestamo = (p) => `${p.tipo}|${normalizar(p.alumno_texto || '')}|${normalizar(p.libro || p.nivel || '')}|${p.fecha_salida || ''}`;
 
 export async function renderImportarBiblioteca(view, ctx) {
-  const editor = ctx.puedeEditar(); const salida = h('div');
+  const editor = ctx.edita('ac_biblioteca'); const salida = h('div');
   const input = h('input', { type: 'file', accept: '.xlsx,.xls', disabled: !editor, 'aria-label': 'Archivo Excel' });
   input.addEventListener('change', async () => {
     const file = input.files[0]; if (!file) return;

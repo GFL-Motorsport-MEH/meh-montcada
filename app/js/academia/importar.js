@@ -133,7 +133,7 @@ function leerBajas(filas, alumnos) {
 }
 
 export async function renderImportar(view, ctx) {
-  const editor = ctx.puedeEditar();
+  const editor = ctx.edita('ac_alumnos') && ctx.edita('ac_pagos'); // el Excel incluye DNI e IBAN, que son de Pagos
   const salida = h('div');
   const estado = h('div', { class: 'small muted' });
   let libro = null;
@@ -179,6 +179,6 @@ export async function renderImportar(view, ctx) {
 
   clear(view, cabecera('Importar del Excel', 'Carga el Excel «Control Alumnos» una sola vez para llenar la base de datos', h('a', { class: 'btn small', href: '#/ac_alumnos' }, '← Volver a Alumnos')),
     h('div', { class: 'banner' }, h('strong', {}, 'Datos personales. '), 'El archivo se lee en tu navegador y se guarda directamente en la base de datos de la academia. Incluye DNI e IBAN de los responsables, que solo verán administración y gestión.'),
-    editor ? null : h('div', { class: 'banner warn' }, 'Tu rol no permite importar.'),
+    editor ? null : h('div', { class: 'banner warn' }, 'Para importar alumnos hace falta poder editar Alumnos y Pagos (el Excel incluye el IBAN de las familias). Tu rol no tiene los dos permisos.'),
     h('div', { class: 'card' }, h('p', { class: 'small' }, 'Elige el Excel «26/27 - Control Alumnos» (descárgalo de Drive: Archivo → Descargar → Microsoft Excel). Se leen las hojas DATABASE y BAJAS. Volver a importar no duplica alumnos: se actualizan por su número.'), input), estado, salida);
 }

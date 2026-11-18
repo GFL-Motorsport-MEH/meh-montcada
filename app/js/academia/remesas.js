@@ -13,7 +13,7 @@ export async function renderRemesas(view, ctx) {
   const alPor = new Map(alumnos.map((a) => [a.id, a]));
   const por = (r) => cuotas.filter((c) => c.remesa_id === r.id);
   const total = (l) => l.reduce((s, c) => s + Number(c.importe), 0);
-  const editor = ctx.puedeEditar();
+  const editor = ctx.edita('ac_remesas');
 
   const mesSel = sel(MESES.map((m) => [m, capitalizar(m)]), ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'][new Date().getMonth()]);
   const fechaCargo = fecha(hoyISO());
@@ -45,7 +45,7 @@ export async function renderRemesas(view, ctx) {
 
 async function abrirRemesa(r, cuotasR, alPor, ctx) {
   const d = drawer({ titulo: `${r.nombre || capitalizar(r.mes)} · ${fmtFecha(r.fecha_cargo)}`, ancho: 820 });
-  const editor = ctx.puedeEditar();
+  const editor = ctx.edita('ac_remesas');
   const respIds = [...new Set(cuotasR.map((c) => alPor.get(c.alumno_id)?.responsable_id).filter(Boolean))];
   const priv = new Map((await api.privados(respIds)).map((p) => [p.responsable_id, p]));
   // una línea por responsable (un solo cargo aunque tenga varios hijos)

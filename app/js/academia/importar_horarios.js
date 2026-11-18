@@ -20,7 +20,7 @@ function nombresUnicos(grupos) {
 }
 
 export async function renderImportarHorarios(view, ctx) {
-  const editor = ctx.puedeEditar(); const curso = ctx.cursoActual(); const salida = h('div');
+  const editor = ctx.edita('ac_grupos') && ctx.ve('ac_grupos'); const curso = ctx.cursoActual(); const salida = h('div');
   const input = h('input', { type: 'file', accept: '.xlsx,.xls', disabled: !editor, 'aria-label': 'Archivo Excel' });
   input.addEventListener('change', async () => {
     const file = input.files[0]; if (!file) return;
