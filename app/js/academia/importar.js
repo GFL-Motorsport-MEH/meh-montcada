@@ -10,7 +10,13 @@ export function parseFecha(v) {
   if (v instanceof Date) { const d = new Date(v.getTime() + 12 * 3600e3); return isNaN(d) ? null : d.toISOString().slice(0, 10); }
   const s = String(v).trim();
   let m = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})/);
-  if (m) { const y = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]); return `${y}-${String(m[2]).padStart(2, '0')}-${String(m[1]).padStart(2, '0')}`; }
+  if (m) {
+    const y = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+    let d = Number(m[1]); let mes = Number(m[2]);
+    if (mes > 12 && d <= 12) [d, mes] = [mes, d]; // formato mes/día (hojas de Google en inglés): 01/21/2025
+    if (mes < 1 || mes > 12 || d < 1 || d > 31) return null;
+    return `${y}-${String(mes).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
   m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
 }
@@ -31,14 +37,24 @@ async function leerLibro(file) {
   return { nombres: wb.SheetNames, hoja };
 }
 
+// la cabecera no siempre está en la primera fila (títulos encima): se busca entre las 15 primeras la que tiene todas las columnas pedidas
+function filaCabecera(filas, pruebas) {
+  for (let i = 0; i < Math.min(filas.length, 15); i++) {
+    const cab = (filas[i] || []).map((c) => normalizar(texto(c)));
+    if (pruebas.every((re) => cab.some((c) => re.test(c)))) return i;
+  }
+  return -1;
+}
+
 // ---- alumnos (DATABASE) ----
 function leerAlumnos(filas) {
   if (!filas?.length) return { error: 'No se ha encontrado la hoja DATABASE.' };
-  const cab = filas[0].map((c) => normalizar(texto(c)));
+  const h0 = Math.max(0, filaCabecera(filas, [/^apellidos$/, /^nombre$/, /^iban$|^dni$/]));
+  const cab = filas[h0].map((c) => normalizar(texto(c)));
   const todos = (re) => cab.map((c, i) => (re.test(c) ? i : -1)).filter((i) => i >= 0);
   const col = {
-    entrada: cab.findIndex((c) => /fecha entrada/.test(c)), inscrito: cab.findIndex((c) => c === 'inscrito'), num: todos(/^id$/)[0], ape: cab.findIndex((c) => /alumnos? apellidos/.test(c)),
-    nombre: todos(/^nombre$/)[0], nac: cab.findIndex((c) => /fecha nac/.test(c)), rApe: cab.findIndex((c) => /responsable apellidos/.test(c)), rNom: todos(/^nombre$/)[1], dni: cab.findIndex((c) => c === 'dni'),
+    entrada: cab.findIndex((c) => /fecha entrada/.test(c)), inscrito: cab.findIndex((c) => c === 'inscrito'), num: todos(/^id$/)[0], ape: todos(/^alumnos? apellidos$|^apellidos$/)[0] ?? -1,
+    nombre: todos(/^nombre$/)[0], nac: cab.findIndex((c) => /fecha nac/.test(c)), rApe: todos(/^responsable apellidos$|^apellidos$/).find((i) => i !== todos(/^alumnos? apellidos$|^apellidos$/)[0]) ?? -1, rNom: todos(/^nombre$/)[1], dni: cab.findIndex((c) => c === 'dni'),
     mail: cab.findIndex((c) => /^mail|email|correo/.test(c)), tel: cab.findIndex((c) => /^telefono|^tel/.test(c)), intol: cab.findIndex((c) => /intoler/.test(c)), colegio: cab.findIndex((c) => c === 'colegio'),
     iban: cab.findIndex((c) => c === 'iban'), modalidad: cab.findIndex((c) => c === 'modalidad'), nivel: cab.findIndex((c) => c === 'nivel'), pago: cab.findIndex((c) => /metodo pago/.test(c)),
     conocio: cab.findIndex((c) => /como nos conocio/.test(c)), info: cab.findIndex((c) => c === 'informacion'), rrss: cab.findIndex((c) => c === 'rrss'), cp: cab.findIndex((c) => /codigo postal/.test(c)),
@@ -46,7 +62,7 @@ function leerAlumnos(filas) {
   if (col.ape < 0 || col.nombre === undefined) return { error: 'La hoja DATABASE no tiene las columnas «Alumnos Apellidos» y «Nombre».' };
   const g = (f, k) => (col[k] >= 0 && col[k] !== undefined ? f[col[k]] : null);
   const out = [];
-  for (const f of filas.slice(1)) {
+  for (const f of filas.slice(h0 + 1)) {
     const ape = texto(g(f, 'ape')); const nom = texto(g(f, 'nombre'));
     if (!ape && !nom) continue;
     const num = Number(g(f, 'num')); const ins = g(f, 'inscrito');
@@ -95,14 +111,15 @@ async function importarAlumnos(filas, avance) {
 // ---- bajas (BAJAS) ----
 function leerBajas(filas, alumnos) {
   if (!filas?.length) return { error: 'No se ha encontrado la hoja BAJAS.' };
-  const cab = filas[0].map((c) => normalizar(texto(c)));
+  const h0 = Math.max(0, filaCabecera(filas, [/nombre/, /fecha baja/]));
+  const cab = filas[h0].map((c) => normalizar(texto(c)));
   const ix = (re) => cab.findIndex((c) => re.test(c));
   const col = { id: ix(/control bajas id|^id$/), nom: ix(/nombre/), alta: ix(/fecha alta/), baja: ix(/fecha baja/), motivo: ix(/motivo baja/), com: ix(/comentario/) };
   if (col.nom < 0 || col.baja < 0) return { error: 'La hoja BAJAS no tiene las columnas «Nombre» y «Fecha baja».' };
   const porNum = new Map(alumnos.filter((a) => a.num).map((a) => [a.num, a])); const porNombre = new Map();
   for (const a of alumnos) { const k = claveNombre(`${a.nombre} ${a.apellidos}`); porNombre.set(k, porNombre.has(k) ? null : a); }
   const ok = []; const sin = [];
-  for (const f of filas.slice(1)) {
+  for (const f of filas.slice(h0 + 1)) {
     const nom = texto(f[col.nom]); if (!nom) continue;
     const a = porNum.get(Number(f[col.id])) || porNombre.get(claveNombre(nom)) || null;
     const fila = { nombre: nom, alta: parseFecha(f[col.alta]), baja: parseFecha(f[col.baja]), motivo: col.motivo >= 0 ? texto(f[col.motivo]) || null : null, comentarios: col.com >= 0 ? texto(f[col.com]) || null : null };

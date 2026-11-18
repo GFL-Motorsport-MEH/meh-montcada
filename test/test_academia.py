@@ -198,10 +198,11 @@ try:
 
         print("12. importar Excel (alumnos y bajas)")
         ir(page, "ac_importar")
-        cab = ["Fecha entrada", "INSCRITO", "ID", "Alumnos Apellidos", "Nombre", "ID", "Fecha Nacimiento", "Edad", "Responsable Apellidos", "Nombre", "DNI", "Mail", "Telefono", "Intolerancias", "Colegio", "IBAN", "MODALIDAD", "Nivel", "Metodo pago", "MES NACIMIENTO", "Como nos conocio?", "Informacion", "RRSS", "Codigo Postal"]
+        cab = ["Fecha entrada", "INSCRITO", "ID", "Apellidos", "Nombre", "ID", "Fecha Nacimiento", "Edad", "Apellidos", "Nombre", "DNI", "Mail", "Telefono", "Intolerancias", "Colegio", "IBAN", "MODALIDAD", "Nivel", "Metodo pago", "MES NACIMIENTO", "Como nos conocio?", "Informacion", "RRSS", "Codigo Postal"]
         def fila(num, ape, nom, nac, rape, rnom, tel, ins="TRUE"): return ["01/09/2023", ins, num, ape, nom, num, nac, "", rape, rnom, "1111A", "a@b.es", tel, "", "Colegio X", "ES0000000000000000000001", "Kids", "Level 4", "Domiciliacion", "5", "Colegio", "", "TRUE", "08110"]
-        libro = {"DATABASE": [cab, fila(1, "Bueno Foz", "Alba", "29/05/2017", "Foz", "Anna", "600111222"), fila(2, "Bueno Foz", "Martí", "10/02/2019", "Foz", "Anna", "600111222"), fila(3, "López Ruiz", "Eva", "01/01/2018", "Ruiz", "Marta", "600333444", "FALSE")],
-                 "BAJAS": [["CONTROL BAJAS ID", "NOMBRE Y APELLIDOS ALUMNO", "NIVEL", "FECHA ALTA", "FECHA BAJA", "PERIODO EN ACADEMIA", "MOTIVO BAJA", "COMENTARIOS"], [3, "López Ruiz Eva", "L4", "01/09/2023", "30/06/2024", "", "Cambio de residencia", ""]]}
+        titulo = [None, None, None, "Alumnos", None, None, None, None, "Responsable"]  # como el Excel real: títulos encima de la cabecera
+        libro = {"DATABASE": [titulo, cab, fila(1, "Bueno Foz", "Alba", "05/29/2017", "Foz", "Anna", "600111222"), fila(2, "Bueno Foz", "Martí", "10/02/2019", "Foz", "Anna", "600111222"), fila(3, "López Ruiz", "Eva", "01/01/2018", "Ruiz", "Marta", "600333444", "FALSE")],
+                 "BAJAS": [["CONTROL BAJAS"], [], ["ID", "NOMBRE Y APELLIDOS", "NIVEL", "FECHA ALTA", "FECHA BAJA", "PERIODO EN ACADEMIA", "MOTIVO BAJA", "COMENTARIOS"], [3, "López Ruiz Eva", "L4", "01/09/2023", "30/06/2024", "", "Cambio de residencia", ""]]}
         f = pathlib.Path(tempfile.mkdtemp()) / "control.xlsx"; f.write_text(json.dumps(libro), encoding="utf-8")
         page.locator("input[type=file]").set_input_files(str(f))
         expect(page.get_by_text("Importar 3 alumnos")).to_be_visible(timeout=8000)
@@ -210,7 +211,7 @@ try:
         al = db(page, "ac_alumnos")
         check(len(al) == 3, "3 alumnos tras importar (sin duplicar el nº 1)")
         check(len(db(page, "ac_responsables")) == 2, "responsables repetidos se unen (Foz una sola vez)")
-        check([a for a in al if a["num"] == 1][0]["fecha_nacimiento"] == "2017-05-29" and [a for a in al if a["num"] == 3][0]["estado"] == "antiguo", "fechas dd/mm/aaaa y estado por INSCRITO")
+        check([a for a in al if a["num"] == 1][0]["fecha_nacimiento"] == "2017-05-29" and [a for a in al if a["num"] == 3][0]["estado"] == "antiguo", "fechas dd/mm/aaaa (y mm/dd/aaaa) y estado por INSCRITO")
         page.get_by_role("button", name="Importar 1 bajas").click(); page.wait_for_timeout(900)
         check(len(db(page, "ac_bajas")) == 2 and [a for a in db(page, "ac_alumnos") if a["num"] == 3][0]["estado"] == "baja", "bajas enlazadas por nº de alumno")
         page.get_by_role("button", name="Importar 3 alumnos").click(); page.wait_for_timeout(1000)
