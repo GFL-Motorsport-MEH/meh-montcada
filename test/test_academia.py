@@ -277,6 +277,26 @@ try:
         check([c for c in cu if c["concepto"] == "welcome_pack" and float(c["importe"]) == 65][0]["curso_id"] != m1[0]["curso_id"], "el welcome pack de junio pasa al curso siguiente")
         check(len(rm) >= 1 and all(c["remesa_id"] for c in cu if c["metodo_pago"] == "Domiciliacion" and c["concepto"] == "mensualidad" and c["mes"] == "junio"), "domiciliaciones agrupadas en remesas históricas")
 
+        print("12e. horarios: importar grupos, sesiones y alumnos")
+        ir(page, "ac_horarios_importar")
+        kids = [[None, "KIDS"], [], [None, "PRIMER TURNO"], [],
+                [None, "kids 91 ", "LUNES", "17:00-18:00", None, "kids 91", " MIERCOLES", "17:00-18:00"],
+                [None, "NURIA", "2017/2018", "Level: 3", None, "NURIA", "2017/2018", "Level: 3"],
+                [None, "NOMBRE", "Dias ", "Año nacimiento", None, "NOMBRE", "Dias ", "Año nacimiento"],
+                [None, "ALBA BUENO FOZ", "L-X", "2017", "1", "ALBA BUENO FOZ", "L-X", "2017"],
+                [None, "FOZ BUENO MARTI", "L-X", "2019", "2", "FOZ BUENO MARTI", "L-X", "2019"],
+                [None, "SIN EXISTIR NOMBRE", "L", "2019", "3", None, None, None]]
+        f5 = pathlib.Path(tempfile.mkdtemp()) / "horario.xlsx"; f5.write_text(json.dumps({"KIDS": kids}), encoding="utf-8")
+        page.locator("input[type=file]").set_input_files(str(f5))
+        expect(page.get_by_role("button", name="Crear 1 grupos")).to_be_visible(timeout=8000)
+        check("2 de 3" in page.locator("main").inner_text() and "Nuria" in page.locator("main").inner_text(), "horarios: alumnos enlazados sin importar el orden del nombre")
+        page.get_by_role("button", name="Crear 1 grupos").click(); page.wait_for_timeout(1500)
+        g91 = [g for g in db(page, "ac_grupos") if g["nombre"] == "KIDS 91"]
+        check(len(g91) == 1 and g91[0]["modalidad"] == "Kids" and g91[0]["nivel"] == "Level 3", "grupo KIDS 91 creado con modalidad y nivel")
+        check(len([x for x in db(page, "ac_sesiones") if x["grupo_id"] == g91[0]["id"]]) == 2, "dos sesiones (lunes y miércoles)")
+        check(len([x for x in db(page, "ac_alumno_grupo") if x["grupo_id"] == g91[0]["id"]]) == 2, "dos alumnos asignados")
+        check(any(p["nombre"] == "Nuria" for p in db(page, "ac_profesoras")), "profesora Nuria creada")
+
         print("13. sin scroll lateral en las pantallas con tablas")
         for r in ["ac_alumnos", "ac_pagos", "ac_grupos", "ac_calendario", "ac_tareas", "ac_biblioteca", "ac_recogidas"]:
             ir(page, r)

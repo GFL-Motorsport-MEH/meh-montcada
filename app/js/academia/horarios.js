@@ -32,7 +32,7 @@ export async function renderHorarios(view, ctx) {
     } else if (vistaActual === 'parrilla') clear(cont, parrilla(grupos, pPor));
     else clear(cont, recursos(profes, aulas, editor, recargar));
   }
-  clear(view, cabecera(`Grupos y horarios · ${curso.nombre}`, `${grupos.length} grupos`, seg, editor ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrirGrupo(null, { ctx, curso, profes, aulas, alumnos, ls, recargar }) }, '+ Nuevo grupo') : null), cont);
+  clear(view, cabecera(`Grupos y horarios · ${curso.nombre}`, `${grupos.length} grupos`, seg, editor ? h('a', { class: 'btn small', href: '#/ac_horarios_importar' }, 'Importar del Excel') : null, editor ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrirGrupo(null, { ctx, curso, profes, aulas, alumnos, ls, recargar }) }, '+ Nuevo grupo') : null), cont);
   pintar();
 }
 
