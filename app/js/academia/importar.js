@@ -74,7 +74,9 @@ function leerAlumnos(filas) {
       _resp: { apellidos: texto(g(f, 'rApe')), nombre: texto(g(f, 'rNom')), email: texto(g(f, 'mail')) || null, telefono: texto(g(f, 'tel')) || null, dni: texto(g(f, 'dni')) || null, iban: texto(g(f, 'iban')).replace(/\s+/g, '').toUpperCase() || null },
     });
   }
-  return { filas: out };
+  // el mismo ID dos veces en el Excel: se conserva la primera fila
+  const vistosNum = new Set(); const sinRepetir = out.filter((a) => { if (!a.num) return true; if (vistosNum.has(a.num)) return false; vistosNum.add(a.num); return true; });
+  return { filas: sinRepetir, repetidos: out.length - sinRepetir.length };
 }
 
 async function importarAlumnos(filas, avance) {
@@ -101,11 +103,13 @@ async function importarAlumnos(filas, avance) {
   const usadas = new Set(enlazados.map((x) => x.f));
   for (const { f, manual } of enlazados) { const { _resp, ...a } = f; await api.upd('ac_alumnos', manual.id, { ...a, responsable_id: idDe(_resp) || manual.responsable_id || null }); }
   filas = filas.filter((f) => !usadas.has(f));
-  const conNum = filas.filter((f) => f.num).map(({ _resp, ...a }) => ({ ...a, responsable_id: idDe(_resp) || null }));
+  // el mismo nº dos veces en el Excel (filas repetidas): se guarda una sola, si no la base de datos rechaza el lote
+  const vistos = new Set(); let repetidos = 0;
+  const conNum = filas.filter((f) => { if (!f.num) return false; if (vistos.has(f.num)) { repetidos++; return false; } vistos.add(f.num); return true; }).map(({ _resp, ...a }) => ({ ...a, responsable_id: idDe(_resp) || null }));
   const sinNum = filas.filter((f) => !f.num).map(({ _resp, ...a }) => ({ ...a, responsable_id: idDe(_resp) || null }));
   await api.insMany('ac_alumnos', conNum, { lote: 200, onConflict: 'num' });
   if (sinNum.length) await api.insMany('ac_alumnos', sinNum, { lote: 200 });
-  return { responsables: nuevos.size, alumnos: filas.length };
+  return { responsables: nuevos.size, alumnos: filas.length - repetidos, repetidos };
 }
 
 // ---- bajas (BAJAS) ----
@@ -151,11 +155,11 @@ export async function renderImportar(view, ctx) {
     clear(salida,
       h('div', { class: 'small muted' }, `Hojas encontradas: ${libro.nombres.join(', ')}`),
       A.error ? h('div', { class: 'banner warn' }, A.error) : caja('Alumnos (hoja DATABASE)',
-        h('div', {}, h('p', {}, `${A.filas.length} filas: `, h('strong', {}, `${nuevos} nuevos`), `, ${A.filas.length - nuevos} ya existentes (se actualizan por su nº o por nombre y fecha de nacimiento).`),
+        h('div', {}, h("p", {}, `${A.repetidos ? `(${A.repetidos} fila(s) con ID repetido ignoradas) ` : ""}${A.filas.length} filas: `, h('strong', {}, `${nuevos} nuevos`), `, ${A.filas.length - nuevos} ya existentes (se actualizan por su nº o por nombre y fecha de nacimiento).`),
           h('p', { class: 'small muted' }, `${A.filas.filter((f) => f.estado === 'inscrito').length} marcados como inscritos y ${A.filas.filter((f) => f.estado === 'antiguo').length} como antiguos (columna INSCRITO). Los responsables repetidos se unen en uno solo.`),
           tabla([{ t: 'Nº', v: (f) => f.num ?? '' }, { t: 'Alumno', v: (f) => nombreAlumno(f) }, { t: 'Nacimiento', v: (f) => fmtFecha(f.fecha_nacimiento) }, { t: 'Estado', v: (f) => f.estado }], A.filas.slice(0, 5))),
         guardarBoton(`Importar ${A.filas.length} alumnos`, async () => {
-          try { const r = await importarAlumnos(A.filas, (m) => { estado.textContent = m; }); estado.textContent = ''; toast(`Importados ${r.alumnos} alumnos y ${r.responsables} responsables nuevos.`); await preparar(); } catch (ex) { estado.textContent = ''; toast('Error al importar: ' + ex.message, 'error'); }
+          try { const r = await importarAlumnos(A.filas, (m) => { estado.textContent = m; }); estado.textContent = ''; toast(`Importados ${r.alumnos} alumnos y ${r.responsables} responsables nuevos.${r.repetidos ? ` ${r.repetidos} fila(s) repetida(s) del Excel (mismo ID) se han ignorado.` : ''}`); await preparar(); } catch (ex) { estado.textContent = ''; toast('Error al importar: ' + ex.message, 'error'); }
         })),
       B.error ? h('div', { class: 'banner warn' }, B.error + ' (se importa después de los alumnos).') : caja('Bajas (hoja BAJAS)',
         h('div', {}, h('p', {}, h('strong', {}, `${B.ok.length}`), ' bajas enlazadas con un alumno existente', B.sin.length ? [', ', h('strong', {}, `${B.sin.length}`), ' sin enlazar (importa antes los alumnos o revisa los nombres).'] : '.'),
