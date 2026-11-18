@@ -202,3 +202,10 @@ table.ac-parrilla td { vertical-align: top; }
 .ac-reu-form input[type="text"] { flex: 1 1 240px; }
 .ac-tema input[type="checkbox"] { width: auto; flex: none; }
 .ac-tarea .ac-reu-ref { white-space: nowrap; }
+
+.ac-res .ac-res-t { cursor: text; text-align: left; border: 1px solid transparent; background: transparent; border-radius: 4px; width: auto; }
+.ac-res .ac-res-t:hover, .ac-res .ac-res-t:focus { border-color: var(--border); background: var(--surface); text-decoration: none; }
+.ac-com-ico { display: inline-flex; align-items: center; gap: 2px; border: none; background: none; cursor: pointer; font-size: 14px; padding: 0 2px; color: var(--text-secondary); }
+.ac-com-ico b { font-size: 11px; font-weight: 600; }
+.ac-ver { border: 1px solid var(--border); background: var(--surface); border-radius: 4px; font: inherit; font-size: 12px; padding: 1px 8px; cursor: pointer; color: var(--text-secondary); }
+.ac-ver:hover { color: var(--text-primary); border-color: var(--border-strong); }

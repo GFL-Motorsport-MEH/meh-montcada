@@ -200,7 +200,7 @@ try:
         page.get_by_role("button", name="Domiciliaciones y pagos").first.click(); page.wait_for_timeout(200)
         check(page.locator(".ac-tarjeta").count() == 0, "filtro por área oculta las tareas de otras áreas")
         page.get_by_role("button", name="Lista").click(); page.get_by_role("button", name="Todas las áreas").click()
-        page.locator(".ac-res-t").first.click(); page.wait_for_timeout(200)
+        page.get_by_role("button", name="Ver la tarea completa").first.click(); page.wait_for_timeout(200)
         page.get_by_role("button", name="Comentar").first.click(); page.get_by_label("Comentario").fill("Pendiente de llamar"); page.keyboard.press("Enter"); page.wait_for_timeout(500)
         check(any(not c.get("sys") for c in db(page, "ac_tareas")[0]["comentarios"]), "comentario con el botón Comentar")
         page.get_by_role("button", name="Por persona").click(); page.wait_for_timeout(300)
