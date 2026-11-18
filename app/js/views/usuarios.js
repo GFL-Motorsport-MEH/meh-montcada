@@ -52,13 +52,14 @@ export async function renderUsuarios(view, ctx) {
     const nombre = h('input', { type: 'text', value: p.nombre || '', 'aria-label': `Nombre de ${p.email}` });
     const rol = h('select', { 'aria-label': `Rol de ${p.email}`, disabled: esYo }, ROLES.map(([v, t]) => h('option', { value: v, selected: p.rol === v }, t)));
     const activo = h('input', { type: 'checkbox', checked: p.activo, disabled: esYo, 'aria-label': `Activo ${p.email}` });
+    const sinDinero = h('input', { type: 'checkbox', checked: !!p.sin_dinero, 'aria-label': `Sin acceso a dinero ${p.email}` });
     const btn = h('button', { class: 'btn small', disabled: true }, 'Guardar');
     const marcar = () => { btn.disabled = false; btn.classList.add('primary'); };
-    nombre.addEventListener('input', marcar); rol.addEventListener('change', marcar); activo.addEventListener('change', marcar);
+    nombre.addEventListener('input', marcar); rol.addEventListener('change', marcar); activo.addEventListener('change', marcar); sinDinero.addEventListener('change', marcar);
     btn.addEventListener('click', async () => {
       btn.disabled = true;
       try {
-        const cambios = { nombre: nombre.value.trim() || p.nombre };
+        const cambios = { nombre: nombre.value.trim() || p.nombre, sin_dinero: sinDinero.checked };
         if (!esYo) { cambios.rol = rol.value; cambios.activo = activo.checked; }
         if (!esYo && cambios.rol === 'admin' && p.rol !== 'admin'
           && !(await confirmar({ titulo: 'Dar permisos de administrador', texto: `${p.email} podrá borrar datos y gestionar usuarios. ¿Seguro?`, ok: 'Sí, hacerle administrador' }))) { btn.disabled = false; return; }
@@ -80,7 +81,8 @@ export async function renderUsuarios(view, ctx) {
       h('td', {}, nombre),
       h('td', {}, p.email || '—', esYo ? h('span', { class: 'line2' }, '(tú)') : null),
       h('td', {}, rol),
-      h('td', {}, h('label', { class: 'check' }, activo, p.activo ? 'Activo' : h('span', { class: 'pill warn' }, 'Desactivado'))),
+      h('td', {}, h('label', { class: 'check' }, activo, p.activo ? 'Activo' : h('span', { class: 'pill warn' }, 'Desactivado')),
+        h('label', { class: 'check small', title: 'No ve las tareas de Contabilidad ni de Domiciliaciones y pagos' }, sinDinero, ' Sin dinero')),
       h('td', { class: 'small' }, p.debe_cambiar_password ? h('span', { class: 'pill warn', title: 'Todavía no ha cambiado la contraseña provisional' }, 'Provisional') : h('span', { class: 'muted' }, 'Propia')),
       h('td', { class: 'small muted' }, fmtFecha(p.created_at)),
       h('td', { class: 'acciones-usuario' }, btn, btnPass));

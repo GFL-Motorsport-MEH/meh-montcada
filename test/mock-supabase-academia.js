@@ -10,7 +10,7 @@ const db = {
 };
 const DEFAULTS = {
   ac_alumnos: { estado: 'inscrito', autoriza_rrss: false }, ac_cuotas: { estado: 'pendiente', concepto: 'mensualidad', mes: '', importe: 0 }, ac_grupos: { activo: true, capacidad: 8 },
-  ac_tareas: { hecha: false, items: [], prioridad: 0 }, ac_documentos: { version: 1, estado: 'vigente', contenido: '' }, ac_profesoras: { activa: true, color: '#4f7cff' }, ac_aulas: { activa: true },
+  ac_tareas: { hecha: false, items: [], prioridad: 0, estado: 'pend', area: 'aca', comentarios: [] }, ac_documentos: { version: 1, estado: 'vigente', contenido: '' }, ac_profesoras: { activa: true, color: '#4f7cff' }, ac_aulas: { activa: true },
   ac_recogidas: { activa: true, dias: [], sale_solo: false, autorizacion_firmada: false }, ac_inscripciones: { cuota_mensual: 0, welcome_pack: 0, activa: true }, ac_remesas: { estado: 'borrador' }, ac_tutorias: { estado: 'pendiente', formato: 'presencial', fecha: hoy }, ac_anotaciones: { tipo: 'nota', fecha: hoy },
   ac_contactos: { situacion: 'posible alumno' }, ac_bajas: { fecha_baja: hoy }, ac_alumno_grupo: {},
 };
