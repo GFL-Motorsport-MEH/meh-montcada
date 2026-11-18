@@ -50,6 +50,13 @@ export function drawer({ titulo, ancho, onCerrar }) {
   return { cerrar, cuerpo, pie, panel };
 }
 
+// color estable por nombre y círculo con las siglas de una persona (o «?» si no hay nadie asignado)
+export const colorDe = (s) => { let x = 0; for (const c of String(s)) x = (x * 31 + c.charCodeAt(0)) >>> 0; return `hsl(${x % 360} 42% 40%)`; };
+export const iniciales = (n) => String(n).trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() || '').join('');
+export const avatarDe = (nombre, siglas) => (nombre
+  ? h('span', { class: 'ac-av', title: nombre, style: `background:${colorDe(nombre)}` }, siglas || iniciales(nombre))
+  : h('span', { class: 'ac-av vacio', title: 'Sin asignar' }, '?'));
+
 // cabecera de sección con título, contador y acciones
 export function cabecera(titulo, sub, ...acciones) {
   return h('div', { class: 'section-head' }, h('div', {}, h('h2', {}, titulo), sub ? h('div', { class: 'count' }, sub) : null), h('div', { class: 'section-actions' }, ...acciones));

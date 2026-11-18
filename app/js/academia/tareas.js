@@ -3,7 +3,7 @@
 // Las áreas «Contabilidad» y «Domiciliaciones y pagos» solo las ven quienes tienen permiso de dinero (se aplica en la base de datos).
 import { h, clear, cargando, toast, confirmar, hoyISO, normalizar } from '../ui.js';
 import * as api from './api.js';
-import { cabecera, refrescar } from './kit.js';
+import { cabecera, refrescar, colorDe, iniciales } from './kit.js';
 import { renderReuniones, llevarAReunion, nombreReunion, proxima, fechaCorta as fechaReu } from './reuniones.js';
 
 const PRIO = ['Normal', 'Importante', 'Urgente'];
@@ -26,11 +26,25 @@ const fmtISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,
 const sumarDias = (iso, n) => { const d = new Date(iso + 'T00:00'); d.setDate(d.getDate() + n); return fmtISO(d); };
 const sumarMes = (iso) => { const d = new Date(iso + 'T00:00'); d.setMonth(d.getMonth() + 1); return fmtISO(d); };
 const primerNombre = (n) => String(n || '').trim().split(/\s+/)[0] || '';
-const colorDe = (s) => { let x = 0; for (const c of String(s)) x = (x * 31 + c.charCodeAt(0)) >>> 0; return `hsl(${x % 360} 42% 40%)`; };
-const iniciales = (n) => String(n).trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() || '').join('');
 const SIGLAS = new Map(); // nombre -> siglas (GF, MG, ML, PA…)
 const avatar = (n) => (n ? h('span', { class: 'ac-av', title: n, style: `background:${colorDe(n)}` }, SIGLAS.get(n) || iniciales(n)) : h('span', { class: 'ac-av vacio', title: 'Sin asignar' }, '?'));
 const hace = (ts) => { const m = Math.round((Date.now() - new Date(ts)) / 6e4); return m < 2 ? 'ahora' : m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`; };
+
+// fecha y hora de registro de una tarea (hora local del navegador)
+const hhmm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+const registroCorto = (ts) => { const d = new Date(ts); return `${d.getDate()} ${MESES[d.getMonth()]}${d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : ''} · ${hhmm(d)}`; };
+const registroLargo = (ts) => { const d = new Date(ts); return `${['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][d.getDay()]} ${d.getDate()} ${MESES[d.getMonth()]} ${d.getFullYear()} a las ${hhmm(d)}`; };
+
+// orden de las personas en «Por persona» y «Persona y fecha»: primero Gustavo, Paula Alcalá, María López y María Gómez; el resto, por nombre.
+// Cada persona puede moverse a gusto; el orden elegido se recuerda en este navegador.
+const PRIORI = [{ sig: 'gf', pref: ['gustavo'] }, { sig: 'pa', pref: ['paula alcala'], exacto: ['paula'] }, { sig: 'ml', pref: ['maria lopez'] }, { sig: 'mg', pref: ['maria gomez'] }];
+const rangoPersona = (nombre, siglas) => {
+  const n = normalizar(nombre).trim(); const sg = String(siglas || '').toLowerCase();
+  const i = PRIORI.findIndex((p) => (sg && sg === p.sig) || p.pref.some((x) => n === x || n.startsWith(x + ' ')) || (p.exacto || []).includes(n));
+  return i < 0 ? 99 : i;
+};
+const leerOrden = () => { try { const v = JSON.parse(localStorage.getItem('ac_orden_personas') || 'null'); return Array.isArray(v) ? v : null; } catch { return null; } };
+const guardarOrden = (v) => { try { if (v) localStorage.setItem('ac_orden_personas', JSON.stringify(v)); else localStorage.removeItem('ac_orden_personas'); } catch { /* sin almacenamiento */ } };
 
 function grupo(t, hoy) {
   if (t.estado === 'hecha') return 'hecha';
@@ -45,8 +59,8 @@ const sel = (opciones, valor, extra = {}) => h('select', extra, opciones.map(([v
 // Tareas y Reuniones comparten pantalla: un conmutador arriba cambia de una a otra
 export async function renderTareas(view, ctx) {
   const ir = (seccion, q) => { S.seccion = seccion; if (q != null) { S.q = q; S.hechas = true; S.quien = 'todas'; S.area = 'all'; S.spec = null; } refrescar(); };
-  const conmutador = h('div', { class: 'segmented', role: 'group', 'aria-label': 'Sección' }, [['tareas', 'Tareas'], ['reuniones', 'Reuniones']].map(([k, l]) =>
-    h('button', { class: 'seg-btn', type: 'button', 'aria-selected': String(S.seccion === k), onclick: () => ir(k) }, l)));
+  const conmutador = h('div', { class: 'segmented ac-conm', role: 'group', 'aria-label': 'Sección' }, [['tareas', 'Tareas'], ['reuniones', 'Reuniones']].map(([k, l]) =>
+    h('button', { class: 'seg-btn', type: 'button', dataset: { k }, 'aria-selected': String(S.seccion === k), onclick: () => ir(k) }, l)));
   if (S.seccion === 'reuniones') return renderReuniones(view, ctx, { conmutador, verTarea: (titulo) => ir('tareas', titulo) });
   return renderLista(view, ctx, conmutador);
 }
@@ -85,6 +99,22 @@ async function renderLista(view, ctx, conmutador) {
   };
   const valorResp = (t) => (t.asignado_a ? 'u:' + t.asignado_a : t.responsable ? 'r:' + t.responsable : '');
   const parcheResp = (v, nombre) => (v === '' ? { asignado_a: null, responsable: null } : v.startsWith('u:') ? { asignado_a: v.slice(2), responsable: null } : { asignado_a: null, responsable: nombre ?? v.slice(2) });
+
+  // personas ordenadas (sin «Sin asignar»): orden guardado por la usuaria/el usuario y, para las nuevas, el orden por defecto
+  const siglasPorClave = (k) => (uPor.get(k)?.siglas || SIGLAS.get(personas.get(k)) || '');
+  const ordenDefecto = (a, b) => (rangoPersona(personas.get(a), siglasPorClave(a)) - rangoPersona(personas.get(b), siglasPorClave(b))) || String(personas.get(a)).localeCompare(String(personas.get(b)));
+  const claves = () => {
+    const todas = [...personas.keys()]; const guardado = leerOrden();
+    if (!guardado) return todas.sort(ordenDefecto);
+    const en = guardado.filter((k) => todas.includes(k));
+    return [...en, ...todas.filter((k) => !en.includes(k)).sort(ordenDefecto)];
+  };
+  function moverPersona(k, destino, despues) {
+    const o = claves().filter((x) => x !== k); const i = o.indexOf(destino);
+    o.splice(i < 0 ? o.length : despues ? i + 1 : i, 0, k);
+    guardarOrden(o); pintar();
+  }
+  const empujar = (k, d) => { const o = claves(); const i = o.indexOf(k); const j = i + d; if (j < 0 || j >= o.length) return; [o[i], o[j]] = [o[j], o[i]]; guardarOrden(o); pintar(); };
 
   async function guardar(t, parche) {
     try { Object.assign(t, await api.upd('ac_tareas', t.id, parche)); } catch (ex) { toast(ex.message, 'error'); }
@@ -173,7 +203,8 @@ async function renderLista(view, ctx, conmutador) {
         sel([['', 'No se repite'], ['semanal', 'Cada semana'], ['mensual', 'Cada mes']], t.repite || '', { disabled: dis, 'aria-label': 'Repetición', onchange: (e) => guardar(t, { repite: e.target.value || null }) }),
         h('input', { type: 'text', class: 'ac-etq', value: t.etiqueta || '', placeholder: 'Etiqueta', disabled: dis, 'aria-label': 'Etiqueta', onchange: (e) => guardar(t, { etiqueta: e.target.value.trim() || null }) }),
         enReunion(t),
-        dis ? null : reunionSel(t)),
+        dis ? null : reunionSel(t),
+        t.created_at ? h('span', { class: 'ac-reg muted small', title: 'Fecha y hora en que se registró la tarea' }, `Registrada el ${registroLargo(t.created_at)}${uPor.get(t.created_by) ? ' por ' + primerNombre(uPor.get(t.created_by).nombre || uPor.get(t.created_by).email) : ''}`) : null),
       h('textarea', { class: 'ac-t-notas', rows: lineasNotas, placeholder: 'Notas…', disabled: dis, 'aria-label': 'Notas', onchange: (e) => guardar(t, { notas: e.target.value.trim() || null }) }, t.notas || ''),
       items.length || editor ? h('div', { class: 'ac-t-items' },
         items.map((it, i) => h('div', { class: 'ac-item' + (it.ok ? ' hecho' : '') },
@@ -213,6 +244,7 @@ async function renderLista(view, ctx, conmutador) {
         t.repite ? h('span', { class: 'muted', title: 'Se repite' }, '↻ ' + (t.repite === 'semanal' ? 'semanal' : 'mensual')) : null,
         h('span', { class: 'ac-chip', style: `--c:${COL_AREA[t.area] || '#666'}` }, AREAS[t.area] || t.area),
         fr ? h('span', { class: `ac-fecha${g === 'venc' ? ' venc' : g === 'hoy' ? ' hoy' : ''}` }, fr) : null,
+        t.created_at ? h('span', { class: 'ac-reg muted', title: `Registrada el ${registroLargo(t.created_at)}${uPor.get(t.created_by) ? ' por ' + (uPor.get(t.created_by).nombre || uPor.get(t.created_by).email) : ''}` }, '🕓 ' + registroCorto(t.created_at)) : null,
         sinPersona ? null : h('span', { class: 'ac-quien' }, avatar(nombre), h('span', {}, nombre ? primerNombre(nombre) : 'Sin asignar'))));
   }
   const tarea = (t, tarjeta, sinPersona) => (abiertas.has(t.id) ? bloque(t, tarjeta) : resumen(t, tarjeta, sinPersona));
@@ -233,13 +265,26 @@ async function renderLista(view, ctx, conmutador) {
     return s;
   }
 
-  function columna(titulo, total, tareasCol, onDrop, extra, sinPersona, clase) {
-    const col = h('div', { class: 'ac-col' + (clase ? ' ' + clase : '') }, h('div', { class: 'ac-grupo-h' }, h('span', { class: 'ac-col-t' }, extra, titulo), h('span', {}, total)), tareasCol.map((t) => tarea(t, true, sinPersona)));
-    col.addEventListener('dragover', (e) => { if (editor) { e.preventDefault(); col.classList.add('sobre'); } });
+  // reord = { clave } hace la columna movible: se arrastra por la cabecera o con ◀ ▶
+  function columna(titulo, total, tareasCol, onDrop, extra, sinPersona, clase, reord) {
+    const cab = h('div', { class: 'ac-grupo-h' + (reord ? ' mov' : ''), title: reord ? 'Arrastra para cambiar de sitio' : null },
+      h('span', { class: 'ac-col-t' }, reord ? h('span', { class: 'ac-asa', 'aria-hidden': 'true' }, '⋮⋮') : null, extra, titulo),
+      h('span', { class: 'ac-col-n' }, total, reord ? [
+        h('button', { class: 'ac-x', type: 'button', title: 'Mover a la izquierda', 'aria-label': `Mover ${titulo} a la izquierda`, onclick: () => empujar(reord.clave, -1) }, '◀'),
+        h('button', { class: 'ac-x', type: 'button', title: 'Mover a la derecha', 'aria-label': `Mover ${titulo} a la derecha`, onclick: () => empujar(reord.clave, 1) }, '▶')] : null));
+    if (reord) { cab.draggable = true; cab.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/ac-persona', reord.clave); e.dataTransfer.effectAllowed = 'move'; }); }
+    const col = h('div', { class: 'ac-col' + (clase ? ' ' + clase : ''), dataset: reord ? { persona: reord.clave } : {} }, cab, tareasCol.map((t) => tarea(t, true, sinPersona)));
+    const esCol = (e) => [...(e.dataTransfer?.types || [])].includes('text/ac-persona');
+    col.addEventListener('dragover', (e) => { if (esCol(e) ? reord : editor) { e.preventDefault(); col.classList.add('sobre'); } });
     col.addEventListener('dragleave', () => col.classList.remove('sobre'));
-    col.addEventListener('drop', (e) => { e.preventDefault(); col.classList.remove('sobre'); const t = tareas.find((x) => x.id === e.dataTransfer.getData('text/plain')); if (t && editor) onDrop(t); });
+    col.addEventListener('drop', (e) => {
+      e.preventDefault(); col.classList.remove('sobre');
+      if (esCol(e)) { const k = e.dataTransfer.getData('text/ac-persona'); if (reord && k !== reord.clave) { const o = claves(); moverPersona(k, reord.clave, o.indexOf(k) < o.indexOf(reord.clave)); } return; }
+      const t = tareas.find((x) => x.id === e.dataTransfer.getData('text/plain')); if (t && editor) onDrop(t);
+    });
     return col;
   }
+  const restablecer = () => (leerOrden() ? h('button', { class: 'btn small ghost', type: 'button', onclick: () => { guardarOrden(null); pintar(); } }, 'Restablecer orden de personas') : null);
 
   function pintar() {
     const lista = filas();
@@ -268,21 +313,21 @@ async function renderLista(view, ctx, conmutador) {
         columna('Sin fecha (arrastra a un día para ponerle fecha)', sinF.length, sinF, (t) => guardar(t, { vence: null }), null, false, 'ac-banda'));
     } else if (S.vista === 'matriz') {
       const colsM = GRUPOS.filter(([k]) => k !== 'hecha' || S.hechas);
-      const otras = [...personas.keys()].filter((k) => k !== yo.id).sort((a, b) => String(personas.get(a)).localeCompare(String(personas.get(b))));
-      const filasM = [yo.id, ...otras, ''];
+      const filasM = [...claves(), ''];
       const cuerpo = [];
       filasM.forEach((k) => {
         const n = k === '' ? 'Sin asignar' : personas.get(k);
         const suyas = lista.filter((t) => claveResp(t) === k);
         if (!suyas.length && S.quien !== 'todas') return;
         const abiertasFila = suyas.filter((t) => abiertas.has(t.id));
-        cuerpo.push(h('tr', { class: 'r' }, h('th', { scope: 'row' }, h('span', { class: 'ac-quien' }, avatar(k === '' ? '' : n), h('b', {}, k === yo.id ? `${miNombre} (tú)` : primerNombre(n) || n)), h('div', { class: 'muted small' }, `${suyas.filter((t) => t.estado !== 'hecha').length} abiertas`)),
+        cuerpo.push(h('tr', { class: 'r' }, h('th', { scope: 'row' }, h('span', { class: 'ac-quien' }, avatar(k === '' ? '' : n), h('b', {}, k === yo.id ? `${miNombre} (tú)` : primerNombre(n) || n)), h('div', { class: 'muted small' }, `${suyas.filter((t) => t.estado !== 'hecha').length} abiertas`),
+            k === '' ? null : h('div', { class: 'ac-mov' }, h('button', { class: 'ac-x', type: 'button', title: 'Subir', 'aria-label': `Subir a ${n}`, onclick: () => empujar(k, -1) }, '▲'), h('button', { class: 'ac-x', type: 'button', title: 'Bajar', 'aria-label': `Bajar a ${n}`, onclick: () => empujar(k, 1) }, '▼'))),
           colsM.map(([g]) => h('td', {}, suyas.filter((t) => grupo(t, hoy) === g).sort(g === 'hecha' ? (a, b) => String(b.hecha_at || '').localeCompare(String(a.hecha_at || '')) : orden).map((t) =>
             h('button', { type: 'button', class: `ac-chipt prio${t.prioridad}${abiertas.has(t.id) ? ' on' : ''}${t.estado === 'hecha' ? ' hecha' : ''}`, title: t.titulo, onclick: () => { if (abiertas.has(t.id)) abiertas.delete(t.id); else abiertas.add(t.id); pintar(); } },
               h('i', { style: `background:${COL_AREA[t.area] || '#666'}` }), t.titulo))))));
         abiertasFila.forEach((t) => cuerpo.push(h('tr', { class: 'det' }, h('td', { colspan: colsM.length + 1 }, bloque(t, false)))));
       });
-      clear(cont, h('div', { class: 'card ac-matriz-w' }, h('table', { class: 'ac-matriz' },
+      clear(cont, restablecer(), h('div', { class: 'card ac-matriz-w' }, h('table', { class: 'ac-matriz' },
         h('thead', {}, h('tr', {}, h('th', {}), colsM.map(([k, l]) => h('th', { class: k === 'venc' ? 'venc' : '' }, l)))),
         h('tbody', {}, cuerpo))));
     } else if (S.vista === 'estado') {
@@ -291,12 +336,11 @@ async function renderLista(view, ctx, conmutador) {
         return columna(titulo, todas.length, k === 'hecha' ? todas.sort((a, b) => String(b.hecha_at || '').localeCompare(String(a.hecha_at || ''))).slice(0, 30) : todas, (t) => cambiarEstado(t, k));
       })));
     } else {
-      const otras = [...personas.keys()].filter((k) => k !== yo.id).sort((a, b) => String(personas.get(a)).localeCompare(String(personas.get(b))));
-      const cols = [yo.id, ...otras].map((k) => [k, personas.get(k)]).concat([['', 'Sin asignar']]);
-      clear(cont, h('div', { class: 'ac-tablero personas' }, cols.map(([k, n]) => {
+      const cols = claves().map((k) => [k, personas.get(k)]).concat([['', 'Sin asignar']]);
+      clear(cont, restablecer(), h('div', { class: 'ac-tablero personas' }, cols.map(([k, n]) => {
         const it = lista.filter((t) => claveResp(t) === k).sort(orden);
         if (!it.length && S.quien !== 'todas') return null;
-        return columna(k === yo.id ? `${miNombre} (tú)` : n, it.length, it, (t) => guardar(t, parcheResp(valorDe(k), n)), avatar(k === '' ? '' : n), true);
+        return columna(k === yo.id ? `${miNombre} (tú)` : n, it.length, it, (t) => guardar(t, parcheResp(valorDe(k), n)), avatar(k === '' ? '' : n), true, '', k === '' ? null : { clave: k });
       }).filter(Boolean)));
     }
     const base = tareas.filter((t) => t.estado !== 'hecha' && (S.area === 'all' || t.area === S.area) && (S.quien === 'todas' || (S.quien === 'mias' ? t.asignado_a === yo.id : S.quien === 'nadie' ? !claveResp(t) : claveResp(t) === S.quien)));
@@ -304,7 +348,7 @@ async function renderLista(view, ctx, conmutador) {
     const sinResp = tareas.filter((t) => t.estado !== 'hecha' && !claveResp(t) && (S.area === 'all' || t.area === S.area)).length;
     const tile = (k, num, etiqueta, mal) => h('button', { type: 'button', class: `ac-tile${S.spec === k ? ' on' : ''}${mal && num ? ' mal' : ''}`, onclick: () => { S.spec = S.spec === k ? null : k; pintar(); } }, h('b', {}, num), h('span', {}, etiqueta));
     clear(tiles, tile('venc', n((g) => g === 'venc'), 'Vencidas', true), tile('hoy', n((g) => g === 'hoy'), 'Para hoy'), tile('sem', n((g) => g === 'hoy' || g === 'sem'), 'Próximos 7 días'), tile('nadie', sinResp, 'Sin responsable'));
-    const otrasP = [...personas.entries()].filter(([k]) => k !== yo.id).sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+    const otrasP = claves().filter((k) => k !== yo.id).map((k) => [k, personas.get(k)]);
     clear(barraResp, [['todas', 'Todas'], ['mias', miNombre], ...otrasP, ['nadie', 'Sin asignar']].map(([k, l]) =>
       h('button', { class: 'seg-btn', type: 'button', 'aria-selected': String(S.quien === k), onclick: () => { S.quien = k; pintar(); } }, ['todas', 'mias', 'nadie'].includes(k) ? l : [avatar(l), ' ', primerNombre(l)])));
     document.querySelectorAll('.ac-chip').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.area === S.area)));
@@ -335,9 +379,10 @@ function leyenda(areasPropias, miNombre) {
     h('ul', { class: 'small' },
       p('Crear.', 'Escribe el título, elige responsable, área y fecha (opcional) y pulsa Intro o «Añadir».'),
       p('Todo en la propia tarea.', 'Cambia estado, área, fecha, prioridad, repetición, notas y lista de comprobación directamente en su fila; se guarda solo. El botón «Comentar» abre la caja para escribir un comentario.'),
-      p('Reuniones.', 'Arriba, «Reuniones»: cada lunes Coordinación y cada martes Profesoras (del 1 de septiembre al 20 de junio), más reuniones sueltas. Apunta temas a tratar; de cada tema puedes crear una tarea o enlazar una existente. Desde una tarea abierta, «Llevar a reunión…» la apunta en la próxima.'),
+      p('Reuniones.', 'Arriba, «Reuniones» (en morado; «Tareas» va en azul): un calendario marca los días de reunión, cada lunes Coordinación y cada martes Profesoras (del 1 de septiembre al 20 de junio), más reuniones sueltas; el anillo es una reunión sin temas y el círculo relleno, con temas (el número son los que faltan por tratar). Los temas son una lista: márcalos al tratarlos, asígnalos a alguien, pulsa 📝 para escribir notas y, si hace falta, crea una tarea o enlaza una existente. Desde una tarea abierta, «Llevar a reunión…» la apunta en la próxima.'),
       p('Una línea por tarea.', 'Pulsa el título para abrirla y editarlo todo en su sitio; «Cerrar» la vuelve a plegar. El círculo de la izquierda la marca como hecha.'),
-      p('Vistas.', 'Lista del día (Vencidas, Hoy, Próximos 7 días…), Por persona (una columna por responsable), Semana (calendario), Persona y fecha (quién y cuándo a la vez) y Tablero (Pendiente → En curso → Hecha). Arrastra con ⋮⋮ para reasignar, cambiar de día o de estado.'),
+      p('Vistas.', 'Lista del día (Vencidas, Hoy, Próximos 7 días…), Por persona (una columna por responsable), Semana (calendario), Persona y fecha (quién y cuándo a la vez) y Tablero (Pendiente → En curso → Hecha). Arrastra con ⋮⋮ para reasignar, cambiar de día o de estado. En Por persona y Persona y fecha van primero Gustavo, Paula Alcalá, María López y María Gómez; puedes mover cada persona arrastrando su cabecera o con ◀ ▶ (▲ ▼ en Persona y fecha), y «Restablecer orden de personas» vuelve al orden de siempre.'),
+      p('Fecha y hora de registro.', 'Cada tarea muestra cuándo se registró (día y hora, con 🕓 en la línea cerrada y completa al abrirla). Las importadas de Keep llevan el momento de la importación.'),
       p('Tareas hechas.', 'No se borran: quedan guardadas con su fecha. Marca «Ver hechas» para consultarlas (aparecen en el grupo «Hechas» y en la columna Hecha del tablero).'),
       p('Áreas.', 'Académica (alumnos, grupos, tutorías, eventos), Centro (mantenimiento, material, organización), Contabilidad (royalties, facturas, cobros) y Domiciliaciones y pagos (altas y bajas en domiciliaciones, cambios de cuota o de cuenta, recibos, devoluciones).'),
       p('Quién ve qué.', areasPropias.some((a) => AREAS_DINERO.includes(a)) ? 'Contabilidad y Domiciliaciones y pagos solo las ven las personas con permiso de dinero; quien no lo tiene no las ve ni se le pueden asignar.' : 'Tu usuario no tiene permiso de dinero, por eso no ves las áreas Contabilidad ni Domiciliaciones y pagos.'),
