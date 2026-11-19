@@ -428,3 +428,9 @@ td select.sel-color { font-size: 12px; padding: 2px 6px; }
 .lista-ed-fila .usos { font-size: 11.5px; color: var(--text-muted); min-width: 56px; text-align: right; }
 .lista-ed-nueva { display: grid; grid-template-columns: 34px 1fr auto; gap: 6px; margin-top: 6px; }
 @media (max-width: 760px) { .filters.filters-3b { grid-template-columns: 1fr; } }
+.ac-cuota-cambio { background: color-mix(in oklab, var(--warning) 28%, var(--surface)); font-weight: 700; box-shadow: inset 3px 0 0 var(--warning); }
+.ac-dif { color: var(--critical); font-weight: 600; }
+.ac-sin-remesa { border-color: var(--critical); background: color-mix(in oklab, var(--critical) 10%, var(--surface)); }
+.ac-domi td { vertical-align: middle; }
+.ac-domi tr.ac-baja td { opacity: .6; }
+.mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; white-space: nowrap; }
