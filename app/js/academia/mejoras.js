@@ -2,6 +2,7 @@
 import { h, clear, cargando, toast, confirmar } from '../ui.js';
 import * as api from './api.js';
 import { cabecera, refrescar } from './kit.js';
+import { vista, vincular, avisoFiltros } from '../vista.js';
 
 const MODULOS = { facturacion: 'Facturación', academia: 'Academia', trabajadores: 'Trabajadores' };
 const OTRA = 'General / otra';
@@ -10,7 +11,7 @@ const PESTANAS = {
   academia: ['Alumnos', 'Seguimiento', 'Tutorías', 'Bajas', 'Grupos', 'Horarios', 'Calendario', 'Recogidas', 'Tareas', 'Biblioteca y Mascotas', 'Protocolos', 'Programaciones', OTRA],
   trabajadores: ['Mi portal', 'Contrato y horario', 'Bolsa de horas', 'Documentos', 'Equipo', OTRA],
 };
-const F = { modulo: 'all', estado: 'pend', q: '' };
+const F = vista('mejoras.f', { modulo: 'all', estado: 'pend', q: '' });
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const fechaHora = (ts) => { const d = new Date(ts); return `${d.getDate()} ${MESES[d.getMonth()]} ${d.getFullYear()} · ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 const sel = (opciones, valor, extra = {}) => h('select', extra, opciones.map(([v, l]) => h('option', { value: v, selected: v === valor }, l)));
@@ -58,15 +59,18 @@ export async function renderMejoras(view, ctx, { conmutador } = {}) {
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
     clear(cont, it.length ? it.map(fila) : h('div', { class: 'card empty' }, 'No hay comentarios con estos filtros.'));
     document.querySelectorAll('.ac-mej-f [data-m]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.m === F.modulo)));
+    avisoM?.actualizar?.();
     document.querySelectorAll('.ac-mej-f [data-e]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.e === F.estado)));
   }
+  const avisoM = avisoFiltros(F, { etiquetas: { modulo: 'Módulo', estado: 'Estado', q: 'Búsqueda' }, formato: { modulo: (v) => (v === 'all' ? '' : MODULOS[v] || v), estado: (v) => (v === 'all' ? '' : v === 'pend' ? 'Pendientes' : 'Hechas') }, alLimpiar: () => { F.modulo = 'all'; F.estado = 'all'; pintar(); } });
   const fMod = h('div', { class: 'segmented', role: 'group', 'aria-label': 'Módulo' }, [['all', 'Todos'], ...Object.entries(MODULOS)].map(([k, l]) => h('button', { class: 'seg-btn', type: 'button', dataset: { m: k }, onclick: () => { F.modulo = k; pintar(); } }, l)));
   const fEst = h('div', { class: 'segmented', role: 'group', 'aria-label': 'Estado' }, [['pend', 'Pendientes'], ['hecha', 'Hechas'], ['all', 'Todas']].map(([k, l]) => h('button', { class: 'seg-btn', type: 'button', dataset: { e: k }, onclick: () => { F.estado = k; pintar(); } }, l)));
 
   clear(view, cabecera('Tareas', `${lista.filter((m) => m.estado === 'pend').length} mejoras pendientes`, conmutador),
     h('div', { class: 'card ac-mej-nueva' }, h('h3', { class: 'sub-titulo' }, 'Nueva mejora del software'), nuevo,
       h('div', { class: 'ac-mej-meta' }, modulo, pestana, h('button', { class: 'btn primary', type: 'button', disabled: !editor, onclick: crear }, 'Añadir'))),
-    h('div', { class: 'ac-filtros ac-mej-f' }, fMod, fEst, h('input', { type: 'search', placeholder: 'Buscar…', 'aria-label': 'Buscar mejoras', value: F.q, oninput: (e) => { F.q = e.target.value; pintar(); } })),
+    h('div', { class: 'ac-filtros ac-mej-f' }, fMod, fEst, vincular(F, 'q', h('input', { type: 'search', placeholder: 'Buscar…', 'aria-label': 'Buscar mejoras', oninput: (e) => { F.q = e.target.value; pintar(); } }))),
+    avisoM,
     cont);
   pintar();
 }
