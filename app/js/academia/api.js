@@ -52,12 +52,12 @@ function memo(key, fn) {
 export const invalidar = () => cache.clear();
 // Invalidación fina: una escritura solo afecta a las lecturas de su tabla (y a las que la incluyen), no a toda la caché.
 const CLAVES = {
-  ac_remesas_lista: /^rlista$/, ac_domiciliaciones: /^domis$/, ac_cuota_cambios: /^ccamb/, ac_remesa_envios: /^renv/, ac_remesa_envio_resumen: /^renv/, ac_remesa_envio_lineas: /^renvl/,
+  ac_remesas_lista: /^rlista$/, ac_domiciliaciones: /^domis$/, ac_domiciliacion_notas: /^dnotas$/, ac_cuota_cambios: /^ccamb/, ac_remesa_envios: /^renv/, ac_remesa_envio_resumen: /^renv/, ac_remesa_envio_lineas: /^renvl/,
   ac_cuotas: /^cuo/, ac_inscripciones: /^ins/, ac_wp_precios: /^wpp/, ac_remesas: /^rem/,
   ac_grupos: /^(grupos|ag|gruposTodos)/, ac_sesiones: /^grupos/, ac_alumno_grupo: /^(grupos|ag|gruposTodos)/,
   ac_recogidas: /^rec/, ac_recogidas_pagos: /^rpag/, ac_tareas: /^tareas$/, ac_prestamos: /^prestamos$/, ac_contactos: /^contactos$/,
   ac_cuotas_tarifa: /^cuotasTarifa$/, ac_descuentos: /^(descuentos|listas)$/, ac_listas: /^listas/, ac_autorizados: /^autorizados$/, ac_autorizados_priv: /^$/,
-  ac_anotaciones: /^anot/, ac_reuniones: /^reuniones$/, ac_reunion_temas: /^temas$/, ac_portal_docs: /^portalDocs$/, ac_documentos: /^documentos$/,
+  ac_anotaciones: /^anot/, ac_reuniones: /^reuniones$/, ac_reunion_temas: /^temas$/, ac_mejoras_software: /^mejoras$/, ac_portal_docs: /^portalDocs$/, ac_documentos: /^documentos$/,
   ac_biblioteca_items: /^bibitems$/, ac_bajas: /^bajas$/, ac_tutorias: /^tutorias$/, ac_tutorias_solicitudes: /^soltut$/, ac_nivel_historial: /^nivelHistorial$/, ac_calendario_marcas: /^cal/,
   ac_profesoras: /^profesoras$/, ac_aulas: /^aulas$/, ac_vinculos: /^vinculos$/, ac_responsables: /^(responsables|alumnos)$/,
   ac_alumnos: /^(alumnos|bajas|prestamos|tutorias|anot|rec|rpag|ag)/,
@@ -132,6 +132,7 @@ export const wpPrecios = (curso) => memo('wpp' + curso, () => all('ac_wp_precios
 export const remesas = (curso) => memo('rem' + curso, () => all('ac_remesas', '*', (q) => q.eq('curso_id', curso)).then((l) => l.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))));
 export const remesasLista = () => memo('rlista', () => all('ac_remesas_lista').then((l) => l.sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre, 'es', { numeric: true }))));
 export const domiciliaciones = () => memo('domis', () => all('ac_domiciliaciones'));
+export const domiNotas = () => memo('dnotas', () => all('ac_domiciliacion_notas').then((l) => l.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))));
 // sin caché: son pocas filas y el resaltado de cuota cambiada tiene que ser el de ahora mismo
 export const cuotaCambios = (curso) => all('ac_cuota_cambios', '*', (q) => q.eq('curso_id', curso));
 export const remesaEnvios = (curso) => memo('renv' + curso, () => all('ac_remesa_envios', '*, resumen:ac_remesa_envio_resumen(*)', (q) => q.eq('curso_id', curso)));
@@ -149,6 +150,7 @@ export const autorizados = () => memo('autorizados', () => all('ac_autorizados')
 export const autorizadosPriv = (ids) => (ids?.length ? supabase.from('ac_autorizados_priv').select('*').in('autorizado_id', ids).then(chk) : Promise.resolve([]));
 export const tareas = () => memo('tareas', () => all('ac_tareas'));
 export const reuniones = () => memo('reuniones', () => all('ac_reuniones'));
+export const mejoras = () => memo('mejoras', () => all('ac_mejoras_software'));
 export const temas = () => memo('temas', () => all('ac_reunion_temas'));
 export const documentos = () => memo('documentos', () => all('ac_documentos'));
 // compañeros de equipo (para asignar tareas): lo devuelve una función del servidor porque un usuario normal solo puede leer su propio perfil
