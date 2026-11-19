@@ -462,3 +462,6 @@ table.data.ac-compacta { font-size: 11.5px; min-width: 0; }
 .ac-mej .ac-mej-meta { grid-column: 2; }
 .ac-mej.hecha { opacity: .6; border-left-color: #43a85b; }
 .ac-mej.hecha .ac-mej-txt { text-decoration: line-through; }
+/* resumen de remesas: tabla con su propio scroll, la cabecera se pega arriba del recuadro (no al borde de la página) */
+main table.data.ac-compacta > thead { top: 0; }
+.ac-rresumen select { width: auto; max-width: 280px; }
