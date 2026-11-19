@@ -49,6 +49,18 @@ export function sel(opciones, valor, { vacio, ...extra } = {}) {
   return h('select', extra, vacio !== undefined ? h('option', { value: '' }, vacio) : null, ops.map(([v, l]) => h('option', { value: v, selected: v === (valor ?? '') }, l)));
 }
 
+// edad en años a partir de la fecha de nacimiento o del texto de «edad» («8», «4 años», «2016», «2016-09-22»); null si no se entiende
+export function edadNumerica(texto, fnac) {
+  if (fnac) { const e = edad(fnac); return e === '' || Number.isNaN(e) ? null : e; }
+  const t = String(texto ?? '').trim(); if (!t) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return edad(t);
+  if (/^\d{4}$/.test(t)) return Number(t) >= 1930 ? new Date().getFullYear() - Number(t) : null;
+  const m = /^(\d{1,3})\s*(años?|a)?\b/i.exec(t);
+  return m ? Number(m[1]) : null;
+}
+// valor de una lista «nivel» cuyo tramo de edad contiene la edad dada (items = [{ valor, edad_min, edad_max }])
+export const nivelPorEdad = (items, e) => (e == null ? null : (items || []).find((x) => x.edad_min != null && x.edad_max != null && e >= x.edad_min && e <= x.edad_max) || null);
+
 // panel lateral (como el de gastos): devuelve { cerrar, cuerpo, pie }
 export function drawer({ titulo, ancho, onCerrar }) {
   const cuerpo = h('div', { class: 'drawer-body' });
@@ -166,7 +178,7 @@ export function selColor(items, valor, { vacio, onchange, disabled, label } = {}
     vacio !== undefined ? h('option', { value: '' }, vacio) : null,
     ops.map(([v, l]) => h('option', { value: v, selected: v === (valor ?? ''), style: `color:${colorLista(items, v)}` }, l)));
   const pintar = () => { s.setAttribute('style', s.value ? estiloColor(colorLista(items, s.value)) : ''); };
-  s.addEventListener('change', pintar); pintar();
+  s.addEventListener('change', pintar); s.addEventListener('repintar', pintar); pintar(); // «repintar»: tras cambiar .value por código
   if (onchange) s.addEventListener('change', onchange);
   return s;
 }
