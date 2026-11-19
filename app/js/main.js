@@ -10,6 +10,8 @@ import { renderIngresos } from './views/ingresos.js';
 import { renderUsuarios } from './views/usuarios.js';
 import { renderBalance } from './views/balance.js';
 import { renderFacturacion } from './views/facturacion.js';
+import { renderAjustes } from './views/ajustes.js';
+import { cargarAjustes, ajustes, alCambiarAjustes } from './ajustes.js';
 import { renderControl } from './views/control.js';
 import { renderConfig } from './views/config.js';
 import { RUTAS_ACADEMIA, TABS_ACADEMIA } from './academia/index.js';
@@ -111,6 +113,7 @@ async function renderSinAcceso(view) {
   clear(view, h('div', { class: 'card empty' }, h('h3', {}, 'Todavía no tienes secciones asignadas'),
     h('p', {}, 'Tu rol no tiene ningún permiso activo. Pide a un administrador que lo configure en Usuarios > Permisos de los roles.')));
 }
+let ultimoModulo = 'facturacion';
 const RUTAS = {
   panel: { titulo: 'Panel', render: renderPanel, modulo: 'facturacion', perm: 'fact' },
   gastos: { titulo: 'Gastos', render: renderGastos, modulo: 'facturacion', perm: 'fact' },
@@ -119,7 +122,9 @@ const RUTAS = {
   balance: { titulo: 'Balance', render: renderBalance, modulo: 'facturacion', perm: 'fact' },
   facturacion: { titulo: 'Facturación', render: renderFacturacion, modulo: 'facturacion', perm: 'fact' },
   control: { titulo: 'Control', render: renderControl, modulo: 'facturacion', perm: 'fact' },
-  config: { titulo: 'Configuración', render: renderConfig, modulo: 'facturacion', perm: 'fact', edita: true },
+  config: { titulo: 'Listados y datos', render: renderConfig, modulo: 'facturacion', perm: 'fact', edita: true },
+  // Configuración (ajustes de la app) es común a los tres módulos: se muestra dentro del último módulo en el que estabas
+  ajustes: { titulo: 'Configuración', render: renderAjustes, get modulo() { return ultimoModulo; } },
   usuarios: { titulo: 'Usuarios', render: renderUsuarios, admin: true, modulo: 'facturacion' },
   sin_acceso: { titulo: 'Sin acceso', render: renderSinAcceso, modulo: 'facturacion' },
   ...RUTAS_ACADEMIA, // módulo Academia (todo su código está en js/academia/)
@@ -128,6 +133,7 @@ const RUTAS = {
 function puedeRuta(r) {
   const x = RUTAS[r];
   if (!x) return false;
+  if (r === 'ajustes') return !ctx.soloEscaner();
   if (x.admin) return ctx.esAdmin();
   if (x.alguno) return x.alguno.some((k) => ctx.veAlgo(k)); // Trabajadores: acceso (lo suyo o todo) a alguno de estos permisos
   if (x.todo) return x.todo.some((k) => ctx.ve(k)); // Trabajadores: ver lo de todos en alguno
@@ -302,14 +308,33 @@ ctx.repintarCabecera = () => { pintarShell(); pintarVista(); };
 
 // color pastel de cada pestaña (solo para ir asociando color y sección; se reparte por el nombre, no por la posición)
 const COLOR_PESTANA = {
-  Panel: '#9db4e8', Gastos: '#f2b5a0', 'Escáner': '#b7a6e0', Ingresos: '#9fd4b0', Pagos: '#f0d58a', Remesas: '#8fcfd6', Balance: '#e8a9c4', Control: '#b5c98a', 'Configuración': '#c2c6cc', Usuarios: '#d4b99a',
+  Panel: '#9db4e8', Gastos: '#f2b5a0', 'Escáner': '#b7a6e0', Ingresos: '#9fd4b0', Pagos: '#f0d58a', Remesas: '#8fcfd6', Balance: '#e8a9c4', Control: '#b5c98a', 'Configuración': '#c2c6cc', 'Listados y datos': '#c8cfa0', Usuarios: '#d4b99a',
   Alumnos: '#9db4e8', Seguimiento: '#b7a6e0', 'Tutorías': '#8fcfd6', Bajas: '#f2b5a0', Grupos: '#9fd4b0', Horarios: '#f0d58a', Calendario: '#e8a9c4', Recogidas: '#b5c98a', Tareas: '#d4b99a',
   'Biblioteca y Mascotas': '#a9c6e0', Protocolos: '#c2c6cc', Programaciones: '#e8c19a',
   'Mi portal': '#c9b6e4', 'Contrato y horario': '#9db4e8', 'Bolsa de horas': '#f0d58a', Documentos: '#8fcfd6', Equipo: '#b5c98a',
 };
 function colorearTabs() {
-  tabsEl.querySelectorAll('.tab').forEach((t) => { const c = COLOR_PESTANA[(t.firstChild?.textContent || '').trim()]; if (c) t.style.setProperty('--tc', c); });
+  const A = ajustes();
+  tabsEl.querySelectorAll('.tab').forEach((t) => {
+    const n = (t.firstChild?.textContent || '').trim();
+    const c = A.colorTabs === false ? null : (A.coloresTabs && A.coloresTabs[n]) || COLOR_PESTANA[n];
+    if (c) t.style.setProperty('--tc', c); else t.style.removeProperty('--tc');
+  });
 }
+alCambiarAjustes(() => { if (state.arrancado) colorearTabs(); });
+// pestañas de cada módulo que este usuario puede abrir (para elegir su color en Configuración)
+ctx.pestanasPorModulo = () => {
+  const fact = [['panel', 'Panel'], ['gastos', 'Gastos'], ['escaner', 'Escáner'], ['ingresos', 'Ingresos'], ...TABS_COBROS, ['balance', 'Balance'], ['control', 'Control'], ['config', 'Listados y datos'], ['usuarios', 'Usuarios']];
+  const pack = (m, lista) => ({ titulo: m.titulo, nombres: lista.filter(([id]) => puedeRuta(id)).map(([, n]) => n) });
+  return [pack(MODULOS[0], fact), pack(MODULOS[1], TABS_ACADEMIA), pack(MODULOS[2], TABS_TRABAJADORES)].filter((g) => g.nombres.length)
+    .map((g, i, a) => (i === a.length - 1 ? { ...g, nombres: [...g.nombres, 'Configuración'] } : g));
+};
+ctx.colorPestanaBase = (n) => COLOR_PESTANA[n];
+ctx.modulosDisponibles = () => modulosVisibles();
+ctx.restaurarOrdenPestanas = () => {
+  try { for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k && k.startsWith('meh.tabs.')) localStorage.removeItem(k); } } catch { /* */ }
+  prefsTabs = {}; db.setPrefsTabs({}).catch(() => {}); pintarTabs('ajustes');
+};
 // orden de pestañas a gusto de cada persona: se arrastran con el ratón y se recuerda en este navegador (una lista por módulo)
 const nombreTab = (t) => (t.firstChild?.textContent || '').trim();
 let prefsTabs = {}; // orden de pestañas por módulo, guardado en el servidor para el usuario
@@ -357,11 +382,14 @@ function ordenarTabs(modulo) {
   }
   pintarReset();
 }
-function pintarTabs(actual) { pintarTabsBase(actual); ordenarTabs(RUTAS[actual].modulo); colorearTabs(); }
+function pintarTabs(actual) {
+  if (actual !== 'ajustes') ultimoModulo = RUTAS[actual].modulo;
+  else if (!modulosVisibles().some((m) => m.id === ultimoModulo)) ultimoModulo = modulosVisibles()[0]?.id || 'facturacion';
+  pintarTabsBase(actual); ordenarTabs(RUTAS[actual].modulo); colorearTabs(); }
 function pintarTabsBase(actual) {
   const modulo = RUTAS[actual].modulo;
   resumenEl.hidden = modulo !== 'facturacion'; // los chips de gastos solo en el módulo Facturación
-  try { localStorage.setItem(LS_RUTA + modulo, actual); } catch { /* */ }
+  if (actual !== 'ajustes') { try { localStorage.setItem(LS_RUTA + modulo, actual); } catch { /* */ } }
   const mods = modulosVisibles();
   modulosEl.hidden = mods.length < 2;
   clear(modulosEl, mods.map((m) => h('button', { type: 'button', class: 'modulo', 'aria-pressed': String(m.id === modulo), title: m.sub, onclick: () => irAModulo(m.id) },
@@ -370,11 +398,11 @@ function pintarTabsBase(actual) {
   const proximamente = (label) => h('span', { class: 'tab disabled', title: 'Próximamente' }, label, h('span', { class: 'soon' }, 'pronto'));
   subTabsEl.hidden = true; clear(subTabsEl);
   if (modulo === 'academia') {
-    clear(tabsEl, TABS_ACADEMIA.filter(([id]) => puedeRuta(id)).map(([id, label]) => tab(id, label)), ctx.ve('ac_alumnos') ? proximamente('Asistencia') : null);
+    clear(tabsEl, TABS_ACADEMIA.filter(([id]) => puedeRuta(id)).map(([id, label]) => tab(id, label)), ctx.ve('ac_alumnos') ? proximamente('Asistencia') : null, tab('ajustes', 'Configuración'));
     return;
   }
   if (modulo === 'trabajadores') {
-    clear(tabsEl, TABS_TRABAJADORES.filter(([id]) => puedeRuta(id)).map(([id, label]) => tab(id, label)));
+    clear(tabsEl, TABS_TRABAJADORES.filter(([id]) => puedeRuta(id)).map(([id, label]) => tab(id, label)), tab('ajustes', 'Configuración'));
     return;
   }
   if (ctx.soloEscaner()) { clear(tabsEl, tab('escaner', 'Escáner')); return; }
@@ -382,8 +410,8 @@ function pintarTabsBase(actual) {
   const badge = h('span', { class: 'tab-badge tab-badge-gastos', hidden: !state.pendientes, title: `${state.pendientes || 0} gastos pendientes de revisar` }, state.pendientes ? String(state.pendientes) : '');
   clear(tabsEl, fact ? tab('panel', 'Panel') : null, fact ? h('a', { class: 'tab', href: '#/gastos', 'aria-current': actual === 'gastos' ? 'page' : false }, 'Gastos', badge) : null, ctx.veAlgo('escaner') ? tab('escaner', 'Escáner') : null,
     pestanaIngresos(actual), TABS_COBROS.filter(([id]) => puedeRuta(id)).map(([id, label]) => h('a', { class: 'tab', href: `#/${id}`, 'aria-current': subtabCobro(id, actual) ? 'page' : false }, label)),
-    fact ? tab('balance', 'Balance') : null, fact ? tab('control', 'Control') : null, ctx.edita('fact') ? tab('config', 'Configuración') : null,
-    ctx.esAdmin() ? tab('usuarios', 'Usuarios') : null);
+    fact ? tab('balance', 'Balance') : null, fact ? tab('control', 'Control') : null, ctx.edita('fact') ? tab('config', 'Listados y datos') : null,
+    ctx.esAdmin() ? tab('usuarios', 'Usuarios') : null, tab('ajustes', 'Configuración'));
 }
 
 // La pestaña Ingresos abre su primera sub-pestaña accesible y, dentro de ellas, muestra la barra de sub-pestañas.
@@ -478,6 +506,8 @@ async function arrancar() {
   state.taxonomia = taxonomia;
   state.cursoId = ctx.soloEscaner() ? (cursos.find((c) => c.fecha_inicio <= hoy && hoy <= c.fecha_fin) || state.cursosVisibles.at(-1))?.id : await elegirCurso();
   await cargarPrefsTabs();
+  await cargarAjustes();
+  if (!window.location.hash.replace('#', '').replace('/', '') && ajustes().inicio !== 'ultimo') irAModulo(ajustes().inicio);
   await cargarOrdenes();
   state.arrancado = true;
   historial.vaciar();
@@ -488,7 +518,7 @@ async function arrancar() {
   // con la app abierta, los datos de Academia se descargan en segundo plano y se mantienen al día
   if (ctx.ve('ac_alumnos') && !ctx.soloEscaner()) {
     setTimeout(() => precargarAcademia(state.cursoId), 800);
-    if (!window.__mehRefresco) window.__mehRefresco = setInterval(() => { if (!document.hidden) refrescarAcademia(); }, 120000);
+    if (!window.__mehRefresco) window.__mehRefresco = setInterval(() => { if (!document.hidden && ajustes().refresco !== false) refrescarAcademia(); }, 120000);
   }
 }
 

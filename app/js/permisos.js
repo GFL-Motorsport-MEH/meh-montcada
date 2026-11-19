@@ -31,7 +31,7 @@ export const GRUPOS_PERMISOS = [
     { k: 'tr_horas', t: 'Bolsa de horas', tipo: 'propio' },
   ] },
   { grupo: 'Facturación y contabilidad', items: [
-    { k: 'fact', t: 'Contabilidad: Panel, Gastos, Ingresos, Balance, Facturación, Control y Configuración', tipo: 'todo', dinero: true },
+    { k: 'fact', t: 'Contabilidad: Panel, Gastos, Ingresos, Balance, Facturación, Control y Listados y datos', tipo: 'todo', dinero: true },
     { k: 'escaner', t: 'Escáner de gastos (solo añade gastos, que quedan pendientes de revisar)', tipo: 'si' },
   ] },
 ];

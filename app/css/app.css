@@ -800,3 +800,18 @@ table.tabla-plantillas tbody tr { cursor: grab; }
 table.tabla-plantillas tbody tr.arrastrando { opacity: .4; }
 table.tabla-plantillas tbody tr.suelta-antes > td { box-shadow: inset 0 3px 0 var(--accent); }
 table.tabla-plantillas tbody tr.suelta-despues > td { box-shadow: inset 0 -3px 0 var(--accent); }
+
+/* Configuración (ajustes de la app) */
+.aj-wrap { display: flex; flex-direction: column; gap: 12px; }
+.aj-card { display: flex; flex-direction: column; gap: 10px; }
+.aj-linea { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.aj-grupo-t { font-size: 12px; font-weight: 600; color: var(--text-muted); margin: 6px 0 4px; text-transform: uppercase; letter-spacing: .04em; }
+.aj-tabs { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.aj-tab { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.aj-tab input[type=color], .aj-persona input[type=color] { width: 30px; height: 24px; padding: 0; border: 1px solid var(--border, #ccc); border-radius: 4px; background: none; cursor: pointer; }
+.aj-acciones { display: flex; gap: 8px; margin-top: 4px; }
+.aj-personas { display: flex; flex-direction: column; gap: 6px; }
+.aj-persona { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.aj-nombre { min-width: 190px; font-size: 14px; }
+.aj-aviso { font-size: 12px; color: var(--warning, #b45309); font-weight: 600; }
+.aj-persona .ac-av { display: inline-grid; place-items: center; min-width: 28px; height: 24px; padding: 0 5px; border-radius: 12px; color: #fff; font-size: 11px; font-weight: 600; }

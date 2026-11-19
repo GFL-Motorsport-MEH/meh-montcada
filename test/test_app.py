@@ -417,7 +417,7 @@ try:
         page.screenshot(path=str(SHOTS / "control-faltafact.png"))
 
         print("7g. configuración: empresas")
-        page.get_by_role("link", name="Configuración").click()
+        page.get_by_role("link", name="Listados y datos").click()
         page.get_by_role("tab", name="Empresas").click()
         cnt = page.locator(".section-head .count").first
         expect(cnt).to_contain_text("de 122 empresas")
@@ -455,7 +455,7 @@ try:
         expect(page.locator("form.drawer")).to_have_count(0)
 
         print("7h. configuración: listas")
-        page.get_by_role("link", name="Configuración").click()
+        page.get_by_role("link", name="Listados y datos").click()
         page.get_by_role("tab", name="Listas").click()
         met = page.locator(".lista-card", has=page.get_by_role("heading", name="Métodos de pago"))
         expect(met.locator("li")).to_have_count(6)
@@ -504,7 +504,7 @@ try:
         expect(page.locator(".section-head h2").first).to_contain_text("Alcantarilla")
         check(page.locator(".kpi .value").first.inner_text().replace("\u00a0", " ") == "0 €", "Balance de un centro sin ingresos")
         page.get_by_label("Centro", exact=True).select_option(label="Todos los centros")
-        page.get_by_role("link", name="Configuración").click()
+        page.get_by_role("link", name="Listados y datos").click()
         page.get_by_role("tab", name="Centros").click()
         page.get_by_label("Nombre del nuevo centro").fill("Sabadell")
         page.get_by_role("button", name="Crear centro").click()
@@ -532,7 +532,7 @@ try:
         suma = round(sum(float(x["cantidad"]) for x in partes), 2)
         check(len(partes) >= 3 and abs(suma - total) < 0.005 and len({x["division_id"] for x in partes}) == 1, f"dividir entre meses: {len(partes)} partes que suman {suma} (original {total})")
         check(page.evaluate("window.__mock.db.gastos.length") == n0 + len(partes) - 1, "las partes nuevas se crean")
-        page.get_by_role("link", name="Configuración").click()
+        page.get_by_role("link", name="Listados y datos").click()
         page.get_by_role("tab", name="Plantillas de gastos").click()
         page.get_by_role("button", name="Sugerir desde los gastos").click()
         sug = page.locator(".sugerencias li")
@@ -785,7 +785,7 @@ try:
 
         print("7r. historial de cambios y copia de seguridad")
         g0 = page.evaluate("(() => { const g = window.__mock.db.gastos.find(x => x.concepto); window.__mock.db.auditoria = [{ id: 1, at: new Date().toISOString(), usuario: null, tabla: 'gastos', registro_id: String(g.id), accion: 'UPDATE', antes: { id: g.id, concepto: g.concepto }, despues: { id: g.id, concepto: 'CAMBIADO POR ERROR' } }]; g.concepto = 'CAMBIADO POR ERROR'; return { id: g.id, concepto: window.__mock.db.auditoria[0].antes.concepto }; })()")
-        page.get_by_role("link", name="Configuración").click()
+        page.get_by_role("link", name="Listados y datos").click()
         page.get_by_role("tab", name="Historial y copias").click()
         fila = page.locator("table.tabla-historial tbody tr").first
         expect(fila).to_contain_text("CAMBIADO POR ERROR")
@@ -929,7 +929,7 @@ try:
         page.get_by_label("Email").fill("consulta@example.com"); page.get_by_label("Contraseña").fill("secreto123")
         page.get_by_role("button", name="Entrar").click()
         expect(page.locator("nav.tabs .tab").first).to_be_visible(timeout=10000)
-        check(page.get_by_role("link", name="Escáner").count() == 0 and page.get_by_role("link", name="Configuración").count() == 0, "consulta: sin escáner ni configuración")
+        check(page.get_by_role("link", name="Escáner").count() == 0 and page.get_by_role("link", name="Listados y datos").count() == 0, "consulta: sin escáner ni configuración")
         page.get_by_role("link", name="Gastos").click()
         page.locator("table.tabla-gastos tbody tr").first.wait_for()
         check(page.locator("table.tabla-gastos tbody td.c-imp input").first.is_disabled(), "consulta: no puede editar celdas")

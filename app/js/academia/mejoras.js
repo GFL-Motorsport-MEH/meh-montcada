@@ -7,7 +7,7 @@ import { vista, vincular, avisoFiltros } from '../vista.js';
 const MODULOS = { facturacion: 'Facturación', academia: 'Academia', trabajadores: 'Trabajadores' };
 const OTRA = 'General / otra';
 const PESTANAS = {
-  facturacion: ['Panel', 'Gastos', 'Escáner', 'Ingresos', 'Pagos', 'Remesas', 'Balance', 'Control', 'Configuración', 'Usuarios', OTRA],
+  facturacion: ['Panel', 'Gastos', 'Escáner', 'Ingresos', 'Pagos', 'Remesas', 'Balance', 'Control', 'Listados y datos', 'Configuración', 'Usuarios', OTRA],
   academia: ['Alumnos', 'Seguimiento', 'Tutorías', 'Bajas', 'Grupos', 'Horarios', 'Calendario', 'Recogidas', 'Tareas', 'Biblioteca y Mascotas', 'Protocolos', 'Programaciones', OTRA],
   trabajadores: ['Mi portal', 'Contrato y horario', 'Bolsa de horas', 'Documentos', 'Equipo', OTRA],
 };

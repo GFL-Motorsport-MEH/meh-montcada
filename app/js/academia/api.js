@@ -1,6 +1,7 @@
 // Acceso a datos del módulo Academia (tablas ac_*). Una pequeña caché de 60 s evita repetir consultas al cambiar de pestaña;
 // cualquier escritura la vacía entera.
 import { supabase, traducirError } from '../db.js';
+import { registrarPersonas } from '../personas.js';
 
 const PAGE = 1000;
 
@@ -188,7 +189,13 @@ export const temas = () => memo('temas', async () => {
 });
 export const documentos = () => memo('documentos', () => all('ac_documentos'));
 // compañeros de equipo (para asignar tareas): lo devuelve una función del servidor porque un usuario normal solo puede leer su propio perfil
-export const usuarios = () => memo('usuarios', async () => chk(await supabase.rpc('equipo_tareas')).filter((u) => !centroActivo || !u.centro_id || u.centro_id === centroActivo));
+export const usuarios = () => memo('usuarios', async () => {
+  const [lista, colores] = await Promise.all([supabase.rpc('equipo_tareas').then(chk), supabase.rpc('equipo_colores').then(({ data }) => data || [], () => [])]);
+  const col = new Map(colores.map((c) => [c.id, c.color]));
+  const out = lista.filter((u) => !centroActivo || !u.centro_id || u.centro_id === centroActivo).map((u) => ({ ...u, color: col.get(u.id) || null }));
+  registrarPersonas(out);
+  return out;
+});
 // DNI / IBAN: solo los devuelve la base de datos a quien tiene el permiso de Pagos
 export const privados = (ids) => (ids?.length ? supabase.from('ac_responsables_priv').select('*').in('responsable_id', ids).then(chk) : Promise.resolve([]));
 

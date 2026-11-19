@@ -1,5 +1,6 @@
 // Piezas de interfaz compartidas por las pantallas de Academia.
 import { h, clear, normalizar } from '../ui.js';
+import { colorPersona } from '../personas.js';
 import { leerV, guardarV, filtroFecha, pasaFecha, aISO, fechaActiva, describirFecha, crearAviso, FECHA_VACIA } from '../vista.js';
 import { ordenGuardado, guardarOrden } from '../orden-compartido.js';
 
@@ -78,7 +79,7 @@ export function drawer({ titulo, ancho, onCerrar }) {
 }
 
 // color estable por nombre y círculo con las siglas de una persona (o «?» si no hay nadie asignado)
-export const colorDe = (s) => { let x = 0; for (const c of String(s)) x = (x * 31 + c.charCodeAt(0)) >>> 0; return `hsl(${x % 360} 42% 40%)`; };
+export const colorDe = (s) => { const c = colorPersona(s); if (c) return c; let x = 0; for (const c of String(s)) x = (x * 31 + c.charCodeAt(0)) >>> 0; return `hsl(${x % 360} 42% 40%)`; };
 export const iniciales = (n) => String(n).trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() || '').join('');
 export const avatarDe = (nombre, siglas) => (nombre
   ? h('span', { class: 'ac-av', title: nombre, style: `background:${colorDe(nombre)}` }, siglas || iniciales(nombre))
