@@ -293,7 +293,40 @@ const COLOR_PESTANA = {
 function colorearTabs() {
   tabsEl.querySelectorAll('.tab').forEach((t) => { const c = COLOR_PESTANA[(t.firstChild?.textContent || '').trim()]; if (c) t.style.setProperty('--tc', c); });
 }
-function pintarTabs(actual) { pintarTabsBase(actual); colorearTabs(); }
+// orden de pestañas a gusto de cada persona: se arrastran con el ratón y se recuerda en este navegador (una lista por módulo)
+const nombreTab = (t) => (t.firstChild?.textContent || '').trim();
+function ordenarTabs(modulo) {
+  const clave = `meh.tabs.${modulo}`;
+  let guardado = null;
+  try { guardado = JSON.parse(localStorage.getItem(clave) || 'null'); } catch { /* */ }
+  const tabs = [...tabsEl.querySelectorAll('.tab:not(.disabled)')];
+  if (Array.isArray(guardado) && guardado.length) {
+    const pos = (t) => { const i = guardado.indexOf(nombreTab(t)); return i < 0 ? 1e6 : i; };
+    [...tabs].sort((a, b) => pos(a) - pos(b)).forEach((t) => tabsEl.insertBefore(t, tabsEl.querySelector('.tab.disabled') || tabsEl.querySelector('.tab-reset')));
+  }
+  let arrastrada = null;
+  const guardar = () => { try { localStorage.setItem(clave, JSON.stringify([...tabsEl.querySelectorAll('.tab:not(.disabled)')].map(nombreTab))); } catch { /* */ } };
+  tabsEl.querySelectorAll('.tab:not(.disabled)').forEach((t) => {
+    t.draggable = true; t.title = t.title || 'Arrastra para cambiar el orden de las pestañas';
+    t.addEventListener('dragstart', (e) => { arrastrada = t; t.classList.add('arrastrando'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', nombreTab(t)); });
+    t.addEventListener('dragend', () => { t.classList.remove('arrastrando'); arrastrada = null; guardar(); pintarReset(); });
+    t.addEventListener('dragover', (e) => {
+      if (!arrastrada || arrastrada === t) return;
+      e.preventDefault();
+      const r = t.getBoundingClientRect();
+      tabsEl.insertBefore(arrastrada, e.clientX < r.left + r.width / 2 ? t : t.nextSibling);
+    });
+    t.addEventListener('drop', (e) => e.preventDefault());
+  });
+  function pintarReset() {
+    tabsEl.querySelector('.tab-reset')?.remove();
+    let hay = false; try { hay = !!localStorage.getItem(clave); } catch { /* */ }
+    if (!hay) return;
+    tabsEl.append(h('button', { type: 'button', class: 'tab-reset', title: 'Volver al orden original de las pestañas', onclick: () => { try { localStorage.removeItem(clave); } catch { /* */ } pintarTabs(location.hash.replace(/^#\//, '').split(/[/?]/)[0]); } }, '↺ orden original'));
+  }
+  pintarReset();
+}
+function pintarTabs(actual) { pintarTabsBase(actual); ordenarTabs(RUTAS[actual].modulo); colorearTabs(); }
 function pintarTabsBase(actual) {
   const modulo = RUTAS[actual].modulo;
   resumenEl.hidden = modulo !== 'facturacion'; // los chips de gastos solo en el módulo Facturación
