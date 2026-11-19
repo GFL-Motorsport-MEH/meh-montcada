@@ -55,7 +55,7 @@ try:
         check(page.evaluate("document.body.dataset.modulo") == "academia", "#/academia abre el módulo Academia")
 
         print("2. todas las pestañas cargan sin error")
-        for r in ["ac_resumen", "ac_alumnos", "ac_pagos", "ac_pagos_importar", "ac_remesas", "ac_seguimiento", "ac_tutorias", "ac_bajas", "ac_grupos", "ac_horarios", "ac_calendario", "ac_recogidas", "ac_tareas", "ac_biblioteca", "ac_documentos", "ac_importar", "ac_programaciones", "ac_portal", "ac_cambio_curso"]:
+        for r in ["ac_resumen", "ac_alumnos", "ac_pagos", "ac_pagos_importar", "ac_remesas", "ac_seguimiento", "ac_tutorias", "ac_bajas", "ac_grupos", "ac_horarios", "ac_calendario", "ac_recogidas", "ac_tareas", "ac_biblioteca", "ac_documentos", "ac_importar", "ac_programaciones", "ac_cambio_curso", "tr_portal", "tr_contrato", "tr_horas", "tr_documentos", "tr_equipo"]:
             ir(page, r)
             check(page.locator(".banner.error").count() == 0, f"{r} sin errores")
         ir(page, "ac_biblioteca")
@@ -365,8 +365,8 @@ try:
         check(len(r["av2"]) == 1 and "coincide" in r["av2"][0], "aviso de horario que se pisa con otro grupo del alumno")
         ir(page, "ac_programaciones")
         check(page.locator(".card[data-bloque]").count() == 2, "Programaciones: espacio con los dos bloques (talleres / intensivos y cursos)")
-        ir(page, "ac_portal")
-        check(page.get_by_role("heading", name="Portal del trabajador").count() == 1, "portal del trabajador abre")
+        ir(page, "ac_portal")  # enlace antiguo: Mi portal pasó al módulo Trabajadores
+        check(page.get_by_role("heading", name="Documentos").count() >= 1 and page.evaluate("document.body.dataset.modulo") == "trabajadores", "el enlace antiguo #/ac_portal abre Documentos en el módulo Trabajadores")
         ir(page, "ac_cambio_curso")
         check(page.get_by_role("heading", name="Cambio de curso").count() == 1 and page.locator(".banner.error").count() == 0, "pantalla de cambio de curso abre")
         ir(page, "config")
@@ -658,9 +658,41 @@ try:
         check(any(x["valor"] == "MATRICULADO" for x in db(page, "ac_listas")), "se renombra un valor de la lista")
         check([c for c in db(page, "ac_contactos") if c["nombre"] == "Contacto prueba"][0]["situacion"] == "MATRICULADO", "al renombrar se actualizan los contactos que lo usaban")
         dr.get_by_role("button", name="Listo").click(); page.wait_for_timeout(400)
+        print("12f. módulo Trabajadores: Mi portal, contrato y horario, bolsa de horas, documentos y equipo")
+        check(not any("Mi portal" in t for t in (ir(page, "ac_alumnos") or page.locator(".tabs .tab").all_inner_texts())), "Mi portal ya no es una pestaña de Academia")
+        mods = [t.strip() for t in page.locator(".modulos .modulo").all_inner_texts()]
+        check(any(m.startswith("Trabajadores") for m in mods), "el selector de módulos incluye Trabajadores")
+        page.locator(".modulos .modulo", has_text="Trabajadores").click(); page.wait_for_timeout(600)
+        check(page.evaluate("document.body.dataset.modulo") == "trabajadores", "se abre el módulo Trabajadores")
+        tt = [t.strip() for t in page.locator(".tabs .tab").all_inner_texts()]
+        check(tt == ["Mi portal", "Contrato y horario", "Bolsa de horas", "Documentos", "Equipo"], f"pestañas de Trabajadores {tt}")
+        yo = page.evaluate("window.__mock.db.profiles[0].id")
+        ir(page, "tr_contrato")
+        page.get_by_role("button", name="+ Nuevo contrato").click(); page.wait_for_timeout(300)
+        d = page.locator(".drawer")
+        d.get_by_label("Puesto").fill("Profesora"); d.get_by_label("Horas por semana").fill("12"); d.get_by_label("Fecha de inicio").fill("2026-09-01")
+        d.get_by_role("button", name="Guardar").click(); page.wait_for_timeout(600)
+        cs = db(page, "tr_contratos")
+        check(len(cs) == 1 and cs[0]["profile_id"] == yo and cs[0]["categoria"] == "Profesora" and float(cs[0]["horas_semana"]) == 12, "contrato creado")
+        page.get_by_label("Desde").fill("16:00"); page.get_by_label("Hasta").fill("20:00"); page.get_by_role("button", name="Añadir franja").click(); page.wait_for_timeout(600)
+        fr = db(page, "tr_horario")
+        check(len(fr) == 1 and fr[0]["dia"] == 1 and fr[0]["hora_inicio"] == "16:00" and fr[0]["contrato_id"] == cs[0]["id"], "franja de horario creada y enlazada al contrato en vigor")
+        check("4 h a la semana" in page.locator("main").inner_text() and "12 h" in page.locator(".banner.warn").inner_text(), "el horario suma 4 h y avisa de que no cuadra con las 12 h del contrato")
+        ir(page, "tr_horas")
+        page.locator(".form-section select").first.select_option(index=1)
+        page.get_by_label("Horas (en «ajuste» o «saldo inicial», con − si restan)").fill("3.5"); page.get_by_label("Concepto").fill("Reunión de padres"); page.get_by_role("button", name="Añadir movimiento").click(); page.wait_for_timeout(600)
+        page.locator(".form-section select").first.select_option(index=1); page.locator(".form-section select").nth(1).select_option("compensacion"); page.get_by_label("Horas (en «ajuste» o «saldo inicial», con − si restan)").fill("1"); page.get_by_role("button", name="Añadir movimiento").click(); page.wait_for_timeout(600)
+        hs = db(page, "tr_horas")
+        check(sorted(float(x["horas"]) for x in hs) == [-1, 3.5], f"horas de más en positivo y devueltas en negativo {hs}")
+        check("+2,5 h" in page.locator(".tr-saldo").inner_text(), "saldo de la bolsa de horas: +2,5 h")
+        ir(page, "tr_portal")
+        txt = page.locator("main").inner_text()
+        check("mi contrato" in txt.lower() and "Profesora" in txt and "+2,5 h" in txt and "mi horario de contrato" in txt.lower(), "Mi portal resume contrato, horario y bolsa de horas: " + txt[:700].replace("\n", " | "))
+        ir(page, "tr_equipo")
+        check("Admin Prueba" in page.locator("main").inner_text() and "+2,5 h" in page.locator("main").inner_text() and page.locator(".banner.error").count() == 0, "Equipo muestra el saldo y el contrato de cada persona")
 
         print("13. sin scroll lateral en las pantallas con tablas")
-        for r in ["ac_resumen", "ac_remesas", "ac_alumnos", "ac_pagos", "ac_grupos", "ac_calendario", "ac_tareas", "ac_biblioteca", "ac_recogidas"]:
+        for r in ["ac_resumen", "ac_remesas", "ac_alumnos", "ac_pagos", "ac_grupos", "ac_calendario", "ac_tareas", "ac_biblioteca", "ac_recogidas", "tr_portal", "tr_contrato", "tr_horas", "tr_documentos", "tr_equipo"]:
             ir(page, r)
             check(page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), f"{r}: sin scroll lateral en 1280 px")
         check(not [e for e in errores if "favicon" not in e and "ERR_FAILED" not in e], "sin errores de consola: " + "; ".join(errores[:3]))

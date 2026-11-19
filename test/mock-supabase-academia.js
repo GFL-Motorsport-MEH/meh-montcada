@@ -5,11 +5,12 @@ const CURSOS = [{ id: 'c1', nombre: '2025.26', fecha_inicio: '2025-09-01', fecha
 const L = (lista, ...vals) => vals.map((valor, i) => ({ id: `l-${lista}-${i}`, lista, valor, orden: i }));
 const ACAD = ['ac_alumnos', 'ac_pagos', 'ac_remesas', 'ac_seguimiento', 'ac_tutorias', 'ac_bajas', 'ac_grupos', 'ac_calendario', 'ac_recogidas', 'ac_tareas', 'ac_biblioteca', 'ac_documentos', 'ac_programaciones', 'ac_portal'];
 const P = (rol, permiso, alcance, editar) => ({ rol, permiso, alcance, editar });
+const TR = ['tr_contrato', 'tr_horas'];
 const ROLES_DB = [{ rol: 'admin', nombre: 'Administrador', descripcion: 'Todo', orden: 0 }, { rol: 'direccion', nombre: 'Dirección', descripcion: '', orden: 1 }, { rol: 'coordinacion', nombre: 'Coordinación', descripcion: '', orden: 2 }, { rol: 'profesora', nombre: 'Profesora', descripcion: '', orden: 3 }, { rol: 'escaner', nombre: 'Solo escáner', descripcion: '', orden: 4 }];
 const PERMISOS_DB = [
-  P('direccion', 'ac_resumen', 'todo', false), ...ACAD.map((k) => P('direccion', k, 'todo', true)), P('direccion', 'escaner', 'todo', true),
-  P('coordinacion', 'ac_resumen', 'todo', false), ...ACAD.filter((k) => !['ac_pagos', 'ac_remesas'].includes(k)).map((k) => P('coordinacion', k, 'todo', true)),
-  P('profesora', 'ac_grupos', 'propio', false), P('profesora', 'ac_calendario', 'todo', false), P('profesora', 'ac_tutorias', 'propio', true), P('profesora', 'ac_seguimiento', 'propio', true), P('profesora', 'ac_biblioteca', 'todo', true), P('profesora', 'ac_documentos', 'todo', false),
+  P('direccion', 'ac_resumen', 'todo', false), ...ACAD.map((k) => P('direccion', k, 'todo', true)), ...TR.map((k) => P('direccion', k, 'todo', true)), P('direccion', 'escaner', 'todo', true),
+  P('coordinacion', 'ac_resumen', 'todo', false), ...ACAD.filter((k) => !['ac_pagos', 'ac_remesas'].includes(k)).map((k) => P('coordinacion', k, 'todo', true)), ...TR.map((k) => P('coordinacion', k, 'propio', false)),
+  P('profesora', 'ac_grupos', 'propio', false), P('profesora', 'ac_calendario', 'todo', false), P('profesora', 'ac_tutorias', 'propio', true), P('profesora', 'ac_seguimiento', 'propio', true), P('profesora', 'ac_biblioteca', 'todo', true), P('profesora', 'ac_documentos', 'todo', false), P('profesora', 'ac_portal', 'propio', false), ...TR.map((k) => P('profesora', k, 'propio', false)),
   P('escaner', 'escaner', 'todo', true),
 ];
 const db = {

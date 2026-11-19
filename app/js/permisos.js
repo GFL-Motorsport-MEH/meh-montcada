@@ -23,7 +23,11 @@ export const GRUPOS_PERMISOS = [
     { k: 'ac_biblioteca', t: 'Biblioteca y Mascotas', tipo: 'todo' },
     { k: 'ac_documentos', t: 'Protocolos', tipo: 'todo' },
     { k: 'ac_programaciones', t: 'Programaciones (talleres, intensivos y cursos)', tipo: 'todo' },
-    { k: 'ac_portal', t: 'Portal del trabajador (nóminas y documentos: «lo suyo» = los suyos; «todo» = los de todos)', tipo: 'propio', dinero: true },
+  ] },
+  { grupo: 'Trabajadores (portal del trabajador)', items: [
+    { k: 'ac_portal', t: 'Documentos (nóminas, contratos y certificados: «lo suyo» = los suyos; «todo» = los de todos)', tipo: 'propio', dinero: true },
+    { k: 'tr_contrato', t: 'Contrato y horario de contrato', tipo: 'propio' },
+    { k: 'tr_horas', t: 'Bolsa de horas', tipo: 'propio' },
   ] },
   { grupo: 'Facturación y contabilidad', items: [
     { k: 'fact', t: 'Contabilidad: Panel, Gastos, Ingresos, Balance, Facturación, Control y Configuración', tipo: 'todo', dinero: true },
@@ -47,9 +51,9 @@ export const aFila = (valor) => { const [alcance, e] = valor.split(':'); return 
 const ACADEMIA = ['ac_alumnos', 'ac_pagos', 'ac_remesas', 'ac_seguimiento', 'ac_tutorias', 'ac_bajas', 'ac_grupos', 'ac_calendario', 'ac_recogidas', 'ac_tareas', 'ac_biblioteca', 'ac_documentos', 'ac_programaciones'];
 const todoEdita = (ks) => Object.fromEntries(ks.map((k) => [k, 'todo:1']));
 export const RECOMENDADOS = {
-  direccion: { ac_resumen: 'todo:0', ...todoEdita(ACADEMIA), ac_portal: 'todo:1', escaner: 'todo:1' },
-  coordinacion: { ac_resumen: 'todo:0', ...todoEdita(ACADEMIA.filter((k) => !['ac_pagos', 'ac_remesas'].includes(k))), ac_portal: 'propio:0' },
-  profesora: { ac_grupos: 'propio:0', ac_calendario: 'todo:0', ac_tutorias: 'propio:1', ac_seguimiento: 'propio:1', ac_biblioteca: 'todo:1', ac_documentos: 'todo:0', ac_programaciones: 'todo:0', ac_portal: 'propio:0' },
+  direccion: { ac_resumen: 'todo:0', ...todoEdita(ACADEMIA), ac_portal: 'todo:1', tr_contrato: 'todo:1', tr_horas: 'todo:1', escaner: 'todo:1' },
+  coordinacion: { ac_resumen: 'todo:0', ...todoEdita(ACADEMIA.filter((k) => !['ac_pagos', 'ac_remesas'].includes(k))), ac_portal: 'propio:0', tr_contrato: 'propio:0', tr_horas: 'propio:0' },
+  profesora: { ac_grupos: 'propio:0', ac_calendario: 'todo:0', ac_tutorias: 'propio:1', ac_seguimiento: 'propio:1', ac_biblioteca: 'todo:1', ac_documentos: 'todo:0', ac_programaciones: 'todo:0', ac_portal: 'propio:0', tr_contrato: 'propio:0', tr_horas: 'propio:0' },
   escaner: { escaner: 'todo:1' },
 };
 
@@ -64,6 +68,6 @@ export function crearPermisos(rol, filas) {
     propio: (k) => alcance(k) === 'propio',    // solo lo suyo
     veAlgo: (k) => alcance(k) !== null,        // algo de acceso (lo suyo o todo)
     edita: (k) => admin || !!mapa.get(k)?.editar,
-    algunoAcademia: () => admin || [...mapa.keys()].some((k) => k.startsWith('ac_')),
+    algunoAcademia: () => admin || [...mapa.keys()].some((k) => k.startsWith('ac_') || k.startsWith('tr_')), // Academia o Trabajadores (para saber si es un usuario «solo escáner»)
   };
 }

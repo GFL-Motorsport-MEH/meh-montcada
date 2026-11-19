@@ -12,6 +12,7 @@ import { renderFacturacion } from './views/facturacion.js';
 import { renderControl } from './views/control.js';
 import { renderConfig } from './views/config.js';
 import { RUTAS_ACADEMIA, TABS_ACADEMIA } from './academia/index.js';
+import { RUTAS_TRABAJADORES, TABS_TRABAJADORES } from './trabajadores/index.js';
 import { precargar as precargarAcademia, refrescarTodo as refrescarAcademia } from './academia/api.js';
 import { renderEscanerVista } from './views/escaner-vista.js';
 import * as historial from './deshacer.js';
@@ -98,10 +99,11 @@ const ctx = {
 };
 
 // ---------- módulos y rutas ----------
-// Dos módulos principales: Facturación (contabilidad, en uso) y Academia (gestión diaria, en desarrollo).
+// Tres módulos: Facturación (contabilidad), Academia (gestión diaria) y Trabajadores (portal del trabajador, contratos, horas y documentos).
 const MODULOS = [
   { id: 'facturacion', titulo: 'Facturación', sub: 'Contabilidad, cobros y control', inicio: 'panel' },
   { id: 'academia', titulo: 'Academia', sub: 'Alumnos, horarios y seguimiento', inicio: 'ac_alumnos' },
+  { id: 'trabajadores', titulo: 'Trabajadores', sub: 'Portal, contratos, horas y documentos', inicio: 'tr_portal' },
 ];
 // perm = permiso que da acceso a la pantalla (ver permisos.js); edita = hace falta poder editar
 async function renderSinAcceso(view) {
@@ -120,17 +122,20 @@ const RUTAS = {
   usuarios: { titulo: 'Usuarios', render: renderUsuarios, admin: true, modulo: 'facturacion' },
   sin_acceso: { titulo: 'Sin acceso', render: renderSinAcceso, modulo: 'facturacion' },
   ...RUTAS_ACADEMIA, // módulo Academia (todo su código está en js/academia/)
+  ...RUTAS_TRABAJADORES, // módulo Trabajadores (js/trabajadores/)
 };
 function puedeRuta(r) {
   const x = RUTAS[r];
   if (!x) return false;
   if (x.admin) return ctx.esAdmin();
+  if (x.alguno) return x.alguno.some((k) => ctx.veAlgo(k)); // Trabajadores: acceso (lo suyo o todo) a alguno de estos permisos
+  if (x.todo) return x.todo.some((k) => ctx.ve(k)); // Trabajadores: ver lo de todos en alguno
   if (!x.perm) return true;
   return x.edita ? ctx.edita(x.perm) : ctx.veAlgo(x.perm);
 }
 // primera pantalla de un módulo a la que este usuario puede entrar
 function primeraRuta(modulo) {
-  const orden = modulo === 'academia' ? TABS_ACADEMIA.map((t) => t[0]) : ['panel', 'gastos', 'escaner', 'ingresos', 'ac_pagos', 'ac_remesas', 'facturacion', 'balance', 'control', 'config', 'usuarios'];
+  const orden = modulo === 'academia' ? TABS_ACADEMIA.map((t) => t[0]) : modulo === 'trabajadores' ? TABS_TRABAJADORES.map((t) => t[0]) : ['panel', 'gastos', 'escaner', 'ingresos', 'ac_pagos', 'ac_remesas', 'facturacion', 'balance', 'control', 'config', 'usuarios'];
   return orden.find(puedeRuta) || null;
 }
 // Ingresos tiene dos sub-pestañas: Resumen de Pagos (la cuadrícula, que se rellena con los pagos marcados en Pagos) y Facturación.
@@ -144,10 +149,13 @@ const LS_RUTA = 'meh.ruta.';
 function rutaActual() {
   let r = (window.location.hash.match(/^#\/(\w+)/) || [])[1];
   if (r === 'academia') r = 'ac_alumnos'; // enlace antiguo: el Resumen pasó a Facturación
+  if (r === 'ac_portal') r = 'tr_documentos'; // «Mi portal» ya no está en Academia: pasó al módulo Trabajadores
   if (r === 'ac_resumen') r = 'ingresos'; // el Resumen de Pagos ahora es el Resumen de Ingresos
   if (RUTAS[r] && puedeRuta(r)) return r;
+  const mismo = RUTAS[r] && primeraRuta(RUTAS[r].modulo); // pantalla sin permiso de un módulo al que sí tiene acceso: a la primera de ese módulo
+  if (mismo) return mismo;
   // sin permiso (o ruta que no existe): a la primera pantalla que le toca
-  return (ctx.veAlgo('fact') && primeraRuta('facturacion')) || primeraRuta('academia') || primeraRuta('facturacion') || 'sin_acceso';
+  return (ctx.veAlgo('fact') && primeraRuta('facturacion')) || primeraRuta('academia') || primeraRuta('trabajadores') || primeraRuta('facturacion') || 'sin_acceso';
 }
 function irAModulo(id) {
   let destino = primeraRuta(id);
@@ -290,7 +298,8 @@ ctx.repintarCabecera = () => { pintarShell(); pintarVista(); };
 const COLOR_PESTANA = {
   Panel: '#9db4e8', Gastos: '#f2b5a0', 'Escáner': '#b7a6e0', Ingresos: '#9fd4b0', Pagos: '#f0d58a', Remesas: '#8fcfd6', Balance: '#e8a9c4', Control: '#b5c98a', 'Configuración': '#c2c6cc', Usuarios: '#d4b99a',
   Alumnos: '#9db4e8', Seguimiento: '#b7a6e0', 'Tutorías': '#8fcfd6', Bajas: '#f2b5a0', Grupos: '#9fd4b0', Horarios: '#f0d58a', Calendario: '#e8a9c4', Recogidas: '#b5c98a', Tareas: '#d4b99a',
-  'Biblioteca y Mascotas': '#a9c6e0', Protocolos: '#c2c6cc', Programaciones: '#e8c19a', 'Mi portal': '#c9b6e4',
+  'Biblioteca y Mascotas': '#a9c6e0', Protocolos: '#c2c6cc', Programaciones: '#e8c19a',
+  'Mi portal': '#c9b6e4', 'Contrato y horario': '#9db4e8', 'Bolsa de horas': '#f0d58a', Documentos: '#8fcfd6', Equipo: '#b5c98a',
 };
 function colorearTabs() {
   tabsEl.querySelectorAll('.tab').forEach((t) => { const c = COLOR_PESTANA[(t.firstChild?.textContent || '').trim()]; if (c) t.style.setProperty('--tc', c); });
@@ -356,6 +365,10 @@ function pintarTabsBase(actual) {
   subTabsEl.hidden = true; clear(subTabsEl);
   if (modulo === 'academia') {
     clear(tabsEl, TABS_ACADEMIA.filter(([id]) => puedeRuta(id)).map(([id, label]) => tab(id, label)), ctx.ve('ac_alumnos') ? proximamente('Asistencia') : null);
+    return;
+  }
+  if (modulo === 'trabajadores') {
+    clear(tabsEl, TABS_TRABAJADORES.filter(([id]) => puedeRuta(id)).map(([id, label]) => tab(id, label)));
     return;
   }
   if (ctx.soloEscaner()) { clear(tabsEl, tab('escaner', 'Escáner')); return; }
