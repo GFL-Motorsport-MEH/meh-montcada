@@ -1,6 +1,7 @@
 // Pestaña Gastos: tabla tipo hoja de cálculo, una línea por gasto y editable en la propia fila
 // (desplegables para las listas, casillas para Pago / Banco / Gestoría). La ficha completa sigue en el botón ⋯.
 import { h, clear, fmtEUR2, fmtFecha, fmtFechaCorta, num, MESES, MESES_CORTO, capitalizar, tituloCategoria, normalizar, cargando, descargarCSV, mesDeFecha, hoyISO, toast, confirmar } from '../ui.js';
+import { ordenGuardado, guardarOrden } from '../orden-compartido.js';
 import { abrirGastoForm } from './gasto-form.js';
 import { moverGastosACentro, actualizarGasto, getListas, agrupar, getGastosPendientes } from '../db.js';
 import { generarGastosDelMes } from './plantillas.js';
@@ -139,7 +140,7 @@ export async function renderGastos(view, ctx) {
     h('option', { value: 'comentarios' }, 'Con comentarios'));
 
   const titulo = h('div', { class: 'count' });
-  const btnUltimo = h('button', { class: 'link-btn small', type: 'button', hidden: true, onclick: () => { orden = { campo: -1, asc: false }; pintar(); } }, 'Volver al orden por último movimiento');
+  const btnUltimo = h('button', { class: 'link-btn small', type: 'button', hidden: true, onclick: () => { orden = { campo: -1, asc: false }; guardarOrden('gastos', { cls: null, asc: false }); pintar(); } }, 'Volver al orden por último movimiento');
   const tbody = h('tbody');
   const pie = h('div', { class: 'table-foot' });
 
@@ -180,13 +181,13 @@ export async function renderGastos(view, ctx) {
     const contenido = c.icono ? svg(c.icono) : c.label || '';
     const t = h('th', { scope: 'col', class: `${c.cls} ${c.clsTh || ''} ${c.orden ? 'sortable' : ''}`, title: c.title ? `${c.title}${c.orden ? ' · clic para ordenar' : ''}` : (c.orden ? 'Clic para ordenar' : null), tabindex: c.orden ? '0' : null, 'aria-sort': c.orden ? 'none' : null }, contenido, flecha);
     if (c.orden) {
-      t.addEventListener('click', () => { orden = { campo: i, asc: orden.campo === i ? !orden.asc : !['c-fecha', 'c-imp', 'c-cont'].some((k) => c.cls.includes(k)) }; pintar(); });
+      t.addEventListener('click', () => { orden = { campo: i, asc: orden.campo === i ? !orden.asc : !['c-fecha', 'c-imp', 'c-cont'].some((k) => c.cls.includes(k)) }; guardarOrden('gastos', { cls: c.cls, asc: orden.asc }); pintar(); });
       t.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); t.click(); } });
       t._col = i; t._flecha = flecha;
     }
     return t;
   });
-  orden = { campo: -1, asc: false }; // por defecto: último movimiento (lo último añadido arriba) hasta que se ordene por una columna
+  { const g = ordenGuardado('gastos'); const i = g && g.cls ? COLDEF.findIndex((c) => c.cls === g.cls && c.orden) : -1; orden = { campo: i, asc: i >= 0 ? !!g.asc : false }; } // por defecto: último movimiento (lo último añadido arriba) hasta que se ordene por una columna
 
   const alFiltrar = () => { limite = POR_PAGINA; pintar(); };
   const filaFiltros = COLDEF.map((c, i) => {

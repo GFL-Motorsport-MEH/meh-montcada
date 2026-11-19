@@ -228,6 +228,32 @@ try:
         page.screenshot(path=str(SHOTS / "ingresos_vinculo.png"))
         ir(page, "ac_pagos")
 
+        print("7c. pagos: filas 0.x, orden compartido y modo de pago con permiso")
+        page.evaluate("() => { const m = window.__mock.db; m.ac_alumnos.push({ id: 'otro-04', num: 0.4, nombre: 'Room', apellidos: 'Scape', estado: 'antiguo', nivel: 'All', metodo_pago: null }); }")
+        page.evaluate("() => import('/js/academia/api.js').then((m) => m.invalidar())")
+        ir(page, "ac_remesas"); ir(page, "ac_pagos")
+        primera = page.locator("table.ac-pg tbody tr").first
+        check(primera.locator("td.ac-id").inner_text().strip() == "0.4" and "Scape Room" in primera.locator("td.ac-nom").inner_text(), "la fila 0.4 (Scape Room) está arriba en Pagos")
+        page.locator("table.ac-pg th.ac-ord", has_text="Nivel").click(); page.wait_for_timeout(900)
+        guardado = [o for o in db(page, "ui_orden_tablas") if o["clave"] == "pagos"]
+        check(guardado and guardado[0]["orden"]["k"] == "nivel", "el orden elegido se guarda en el servidor (compartido)")
+        ir(page, "ac_remesas"); ir(page, "ac_pagos")
+        check(page.locator("table.ac-pg th.ac-ord", has_text="Nivel").get_attribute("aria-sort") == "ascending", "al volver se ve el último orden elegido")
+        check(page.locator("table.ac-pg tbody tr").first.locator("td.ac-id").inner_text().strip() == "0.4", "las filas 0.x siguen arriba al ordenar")
+        s = page.locator("table.ac-pg select.ac-modo-sel").first
+        antes = s.input_value()
+        s.select_option("Efectivo" if antes != "Efectivo" else "Domiciliacion"); page.wait_for_timeout(300)
+        check(page.locator(".dialog").count() == 1 and "ficha en Alumnos" in page.locator(".dialog").inner_text(), "cambiar el modo de pago pide permiso (avisa de que cambia Alumnos)")
+        page.locator(".dialog-actions .btn:not(.primary)").click(); page.wait_for_timeout(300)
+        check(page.locator("table.ac-pg select.ac-modo-sel").first.input_value() == antes, "al cancelar no cambia nada")
+        s = page.locator("table.ac-pg select.ac-modo-sel").first
+        s.select_option("Efectivo" if antes != "Efectivo" else "Domiciliacion"); page.wait_for_timeout(300)
+        page.locator(".dialog-actions .btn.primary").click(); page.wait_for_timeout(500)
+        check(any(a.get("metodo_pago") == ("Efectivo" if antes != "Efectivo" else "Domiciliacion") for a in db(page, "ac_alumnos") if a["id"] != "otro-04"), "al confirmar se cambia el modo de pago en la base de Alumnos")
+        page.evaluate("() => { const m = window.__mock.db; m.ac_alumnos = m.ac_alumnos.filter((a) => a.id !== 'otro-04'); m.ac_alumnos.forEach((a) => { a.metodo_pago = 'Domiciliacion'; }); }")
+        page.evaluate("() => import('/js/academia/api.js').then((m) => m.invalidar())")
+        ir(page, "ac_remesas"); ir(page, "ac_pagos")
+
         print("8. remesa")
         ir(page, "ac_remesas")
         page.locator(".section-actions select").first.select_option("noviembre")

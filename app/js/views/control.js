@@ -2,6 +2,7 @@
 import { h, clear, fmtEUR2, fmtFecha, num, normalizar, cargando, descargarCSV, toast } from '../ui.js';
 import * as db from '../db.js';
 import { agrupar } from '../deshacer.js';
+import { ordenGuardado, guardarOrden } from '../orden-compartido.js';
 import { botonSubirFactura } from '../factura-archivo.js';
 
 const SECCIONES = [['faltafact', 'Facturas pendientes'], ['gestoria', 'Gestoría'], ['conciliacion', 'Conciliación bancaria'], ['factcheck', 'FactCheck'], ['notas', 'Notas']];
@@ -29,7 +30,7 @@ async function renderFaltaFact(cont, ctx) {
   for (const c of cursos) porCurso.set(c.id, await ctx.gastos(c.id));
   const todos = cursos.flatMap((c) => porCurso.get(c.id).map((g) => ({ g, curso: c })));
   const f = { curso: '', metodo: '', q: '' };
-  let orden = { campo: 'fecha', asc: false };
+  let orden = ordenGuardado('control.faltafact') || { campo: 'fecha', asc: false };
   const sel = new Set(); // ids de gastos seleccionados
   const metodos = [...new Set(todos.map((x) => x.g.metodo_pago).filter(Boolean))].sort();
   const fCurso = h('select', { 'aria-label': 'Curso', onchange: () => { f.curso = fCurso.value; pintar(); } },
@@ -50,7 +51,7 @@ async function renderFaltaFact(cont, ctx) {
   const ths = [...COLS.map(([campo, label, cls]) => {
     const flecha = h('span', { 'aria-hidden': 'true', class: 'flecha' });
     const t = h('th', { scope: 'col', class: `sortable ${cls}`.trim(), title: 'Clic para ordenar', tabindex: '0', 'aria-sort': 'none' }, label, flecha);
-    t.addEventListener('click', () => { orden = { campo, asc: orden.campo === campo ? !orden.asc : !['fecha', 'importe'].includes(campo) }; pintar(); });
+    t.addEventListener('click', () => { orden = { campo, asc: orden.campo === campo ? !orden.asc : !['fecha', 'importe'].includes(campo) }; guardarOrden('control.faltafact', orden); pintar(); });
     t.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); t.click(); } });
     t._campo = campo; t._flecha = flecha;
     return t;

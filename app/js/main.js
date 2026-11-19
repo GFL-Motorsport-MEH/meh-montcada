@@ -1,5 +1,6 @@
 import { authHash } from './hash.js'; // debe ir el primero
 import { h, clear, cargando, toast, hoyISO } from './ui.js';
+import { cargarOrdenes } from './orden-compartido.js';
 import * as db from './db.js';
 import { renderLogin, renderNuevaPassword, renderPendiente } from './views/auth.js';
 import { renderPanel } from './views/panel.js';
@@ -454,6 +455,7 @@ async function arrancar() {
   state.taxonomia = taxonomia;
   state.cursoId = ctx.soloEscaner() ? (cursos.find((c) => c.fecha_inicio <= hoy && hoy <= c.fecha_fin) || state.cursosVisibles.at(-1))?.id : await elegirCurso();
   await cargarPrefsTabs();
+  await cargarOrdenes();
   state.arrancado = true;
   historial.vaciar();
   if (/access_token=|type=/.test(window.location.hash)) history.replaceState(null, '', '#/panel');

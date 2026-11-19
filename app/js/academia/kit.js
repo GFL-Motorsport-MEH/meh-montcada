@@ -1,5 +1,6 @@
 // Piezas de interfaz compartidas por las pantallas de Academia.
 import { h, clear, normalizar } from '../ui.js';
+import { ordenGuardado, guardarOrden } from '../orden-compartido.js';
 
 export const DIAS = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 export const DIAS_CORTO = ['', 'L', 'M', 'X', 'J', 'V', 'S', 'D'];
@@ -98,7 +99,12 @@ const comparar = (a, b) => {
 export function tabla(cols, filas, { onClick, vacio = 'Sin datos todavía.', clase = '', ordenable = true } = {}) {
   if (!filas.length) return h('div', { class: 'card empty' }, vacio);
   const clave = cols.map((c) => c.t).join('|');
-  const est = ESTADO_TABLAS.get(clave) || { col: -1, dir: 1, filtros: {} };
+  let est = ESTADO_TABLAS.get(clave);
+  if (!est) { // la última ordenación elegida por cualquiera del equipo (servidor)
+    const g = ordenGuardado('tabla:' + clave);
+    const col = g && g.t ? cols.findIndex((c) => c.t === g.t) : -1;
+    est = { col, dir: col >= 0 && g.dir === -1 ? -1 : 1, filtros: {} };
+  }
   ESTADO_TABLAS.set(clave, est);
   const util = ordenable && filas.length > 1;
   const textos = util ? filas.map((f) => cols.map((c) => (c.sin || !c.t ? '' : textoCelda(c, f)))) : [];
@@ -108,7 +114,7 @@ export function tabla(cols, filas, { onClick, vacio = 'Sin datos todavía.', cla
   const tbody = h('tbody');
   const ths = cols.map((c, j) => {
     const th = h('th', { class: (c.num ? 'num ' : '') + (filtrable[j] ? 'sortable' : ''), title: filtrable[j] ? 'Pulsa para ordenar' : null }, c.t, ' ', h('span', { class: 'ac-orden' }));
-    if (filtrable[j]) th.addEventListener('click', () => { if (est.col !== j) { est.col = j; est.dir = 1; } else if (est.dir === 1) est.dir = -1; else { est.col = -1; est.dir = 1; } pinta(); });
+    if (filtrable[j]) th.addEventListener('click', () => { if (est.col !== j) { est.col = j; est.dir = 1; } else if (est.dir === 1) est.dir = -1; else { est.col = -1; est.dir = 1; } guardarOrden('tabla:' + clave, { t: est.col >= 0 ? cols[est.col].t : null, dir: est.dir }); pinta(); });
     return th;
   });
   const controles = cols.map((c, j) => {

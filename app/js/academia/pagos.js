@@ -1,6 +1,7 @@
 // Pagos: una fila por alumno y, por cada mes (y el welcome pack), la cuantía + «pagado» + «recibo hecho», como la hoja PAGOS del Excel.
 // Se pueden seleccionar varias celdas (arrastrando, Ctrl/Cmd+clic o Mayús+clic) y cambiarlas de una vez desde la barra inferior.
-import { h, clear, cargando, toast, fmtEUR2, hoyISO, normalizar, MESES, MESES_CORTO, capitalizar } from '../ui.js';
+import { h, clear, cargando, toast, fmtEUR2, hoyISO, normalizar, MESES, MESES_CORTO, capitalizar, confirmar } from '../ui.js';
+import { ordenGuardado, guardarOrden } from '../orden-compartido.js';
 import * as api from './api.js';
 import { cabecera, sel, nombreAlumno, refrescar, drawer, numero, guardarBoton } from './kit.js';
 import { abrirFicha } from './alumnos.js';
@@ -14,7 +15,7 @@ const SIMBOLO = { pagado: '✓', devuelto: '↩', exento: '–', pendiente: '' }
 export async function renderPagos(view, ctx) {
   clear(view, cargando());
   const curso = ctx.cursoActual();
-  const [alumnos, insc, cuotas, precios, remesas] = await Promise.all([api.alumnos(), api.inscripciones(curso.id), api.cuotas(curso.id), api.wpPrecios(curso.id), api.remesas(curso.id)]);
+  const [alumnos, insc, cuotas, precios, remesas, listas] = await Promise.all([api.alumnos(), api.inscripciones(curso.id), api.cuotas(curso.id), api.wpPrecios(curso.id), api.remesas(curso.id), api.listas()]);
   const remPor = new Map(remesas.map((r) => [r.id, r]));
   const dondeCargo = (c) => { const r = remPor.get(c.remesa_id); return r ? ` · en ${r.nombre || capitalizar(r.mes)}${r.banco ? ' (' + r.banco + ')' : ''}` : (c.concepto === 'mensualidad' ? ' · sin remesa' : ''); };
   const inscPor = new Map(insc.map((i) => [i.alumno_id, i]));
@@ -22,8 +23,12 @@ export async function renderPagos(view, ctx) {
   const editor = ctx.edita('ac_pagos');
   const f = { q: '', soloPend: false, modo: '', nivel: '', recibo: '' };
   const orden = { k: 'nombre', dir: 1 };
+  { const g = ordenGuardado('pagos'); if (g && g.k) { orden.k = g.k; orden.dir = g.dir === -1 ? -1 : 1; } }
   const RANGO = { pendiente: 0, devuelto: 1, pagado: 2, exento: 3 };
-  const filasBase = alumnos.filter((a) => (inscPor.get(a.id)?.activa && a.estado !== 'baja') || (a.estado === 'inscrito' && inscPor.has(a.id)) || cuotas.some((c) => c.alumno_id === a.id));
+  const esOtro = (a) => Number(a.num) > 0 && Number(a.num) < 1; // filas 0.x del Excel: Camps, Scape Room, Story Time, Other, Recogidas
+  const NOMBRES_OTROS = { 0.1: 'Camp Easter', 0.2: 'Camp Summer', 0.3: 'Camp Xmass', 0.4: 'Scape Room', 0.5: 'Story Time', 0.6: 'Other Activities', 0.7: 'Recogidas Mas Rampinyo' };
+  const nombreFila = (a) => (esOtro(a) ? NOMBRES_OTROS[Number(a.num)] || nombreAlumno(a) : nombreAlumno(a));
+  const filasBase = alumnos.filter((a) => esOtro(a) || (inscPor.get(a.id)?.activa && a.estado !== 'baja') || (a.estado === 'inscrito' && inscPor.has(a.id)) || cuotas.some((c) => c.alumno_id === a.id));
   const sinInsc = alumnos.filter((a) => a.estado === 'inscrito' && !inscPor.has(a.id)).length;
   const precioWp = (a) => { const p = precios.find((x) => norm(x.nivel) === norm(a.nivel) && norm(a.nivel)); return p ? Number(p.importe) : null; };
   const importeDefecto = (a, col) => (col.c === 'welcome_pack' ? precioWp(a) ?? Number(inscPor.get(a.id)?.welcome_pack || 0) : Number(inscPor.get(a.id)?.cuota_mensual || 0));
@@ -182,10 +187,12 @@ export async function renderPagos(view, ctx) {
     else if (k === 'modo') r = txt(x.metodo_pago, y.metodo_pago);
     else if (k === 'cuota') r = Number(inscPor.get(x.id)?.cuota_mensual || 0) - Number(inscPor.get(y.id)?.cuota_mensual || 0);
     else if (k.startsWith('c')) { const ci = Number(k.slice(1)); const rg = (a) => { const c = cuotaDe(a, ci); return c ? RANGO[c.estado] ?? 4 : 4; }; r = rg(x) - rg(y) || (Number(cuotaDe(x, ci)?.importe || 0) - Number(cuotaDe(y, ci)?.importe || 0)); }
+    const o = esOtro(y) - esOtro(x); if (o) return o; // las filas 0.x siempre arriba, ordenadas por su número
+    if (esOtro(x)) return Number(x.num) - Number(y.num);
     return (r || porNombre(x, y)) * (r ? orden.dir : 1);
   }
   const cabs = new Map();
-  function ordenar(k) { orden.dir = orden.k === k ? -orden.dir : 1; orden.k = k; pintarFlechas(); pintar(); }
+  function ordenar(k) { orden.dir = orden.k === k ? -orden.dir : 1; orden.k = k; guardarOrden('pagos', { k: orden.k, dir: orden.dir }); pintarFlechas(); pintar(); }
   function pintarFlechas() { for (const [k, th] of cabs) { const fl = th.querySelector('.ac-fl'); fl.textContent = orden.k === k ? (orden.dir > 0 ? '▲' : '▼') : ''; th.setAttribute('aria-sort', orden.k === k ? (orden.dir > 0 ? 'ascending' : 'descending') : 'none'); } }
   function pintar() {
     const q = normalizar(f.q); const mi = MESES.indexOf(mesActual());
@@ -196,14 +203,45 @@ export async function renderPagos(view, ctx) {
       .sort(comparar);
     celdas.clear(); seleccion.clear(); ancla = null; pintarBarra();
     clear(cuerpo, rows.map((a, r) => h('tr', {},
-      h('td', { class: 'ac-id muted' }, a.num ? String(Math.round(a.num)) : ''),
-      h('td', { class: 'ac-nom', title: nombreAlumno(a) }, h('a', { href: '#', onclick: (e) => { e.preventDefault(); abrirFicha(a, ctx, refrescar); } }, nombreAlumno(a))),
+      h('td', { class: 'ac-id muted' }, a.num ? (esOtro(a) ? String(Number(a.num)) : String(Math.round(a.num))) : ''),
+      h('td', { class: 'ac-nom', title: nombreFila(a) }, h('a', { href: '#', onclick: (e) => { e.preventDefault(); abrirFicha(a, ctx, refrescar); } }, nombreFila(a))),
       h('td', { class: 'ac-niv', title: [a.modalidad, a.nivel].filter(Boolean).join(' · ') }, a.nivel || ''),
-      h('td', { class: 'ac-modo', title: a.metodo_pago || '' }, a.metodo_pago || ''),
+      modoPago(a),
       cuotaMensual(a),
       COLS.map((_, ci) => { const td = h('td', { class: 'ac-cel', 'data-r': String(r), 'data-c': String(ci) }); celdas.set(claveSel(a, ci), td); return td; }))));
     rows.forEach((a) => COLS.forEach((_, ci) => pintaCelda(a, ci)));
     if (!rows.length) clear(cuerpo, h('tr', {}, h('td', { colspan: 18, class: 'empty' }, 'No hay alumnos con estos filtros. Fija la cuota de cada alumno en su fila y genera las mensualidades.')));
+  }
+  // Modo de pago editable: cambia también la ficha del alumno (base de datos de Alumnos), así que pide permiso; si pasa a domiciliación, ofrece añadir sus cuotas pendientes a las remesas abiertas.
+  const esDomi = (m) => /domicil|sepa|recibo/i.test(m || '');
+  const MODOS = [...new Set([...(listas.metodo_pago || []), ...filasBase.map((x) => x.metodo_pago).filter(Boolean)])];
+  function modoPago(a) {
+    const td = h('td', { class: 'ac-modo', title: a.metodo_pago || '' });
+    if (!editor || esOtro(a)) { td.textContent = a.metodo_pago || ''; return td; }
+    const s = sel(MODOS.map((m) => [m, m]), a.metodo_pago || '', { vacio: '—', 'aria-label': `Modo de pago de ${nombreAlumno(a)}`, class: 'cell ac-modo-sel' });
+    s.addEventListener('change', async () => {
+      const nuevo = s.value || null; const antes = a.metodo_pago || null;
+      if (nuevo === antes) return;
+      if (!await confirmar({ titulo: 'Cambiar modo de pago', texto: `${nombreAlumno(a)}: de «${antes || 'sin modo'}» a «${nuevo || 'sin modo'}». Esto también cambia su ficha en Alumnos (es el mismo dato). ¿Continuar?`, ok: 'Cambiar' })) { s.value = antes || ''; return; }
+      try {
+        Object.assign(a, await api.upd('ac_alumnos', a.id, { metodo_pago: nuevo })); td.title = nuevo || '';
+        toast('Modo de pago actualizado también en Alumnos.');
+        if (esDomi(nuevo) && !esDomi(antes)) await ofrecerRemesas(a);
+      } catch (ex) { s.value = antes || ''; toast(ex.message, 'error'); }
+    });
+    td.append(s); return td;
+  }
+  async function ofrecerRemesas(a) {
+    const pend = cuotas.filter((c) => c.alumno_id === a.id && c.concepto === 'mensualidad' && c.estado === 'pendiente' && !c.remesa_id && Number(c.importe) > 0);
+    if (!pend.length) return;
+    const abierta = (mes) => remesas.find((r) => r.mes === mes && r.estado === 'borrador');
+    const metibles = pend.filter((c) => abierta(c.mes)); const sinRem = [...new Set(pend.filter((c) => !abierta(c.mes)).map((c) => c.mes))];
+    if (!metibles.length) { toast(`No hay remesa abierta (en borrador) para ${sinRem.join(', ')}: créala en Remesas y luego añade sus cargos.`); return; }
+    const total = metibles.reduce((t, c) => t + Number(c.importe), 0);
+    const texto = `Ahora es domiciliación. ¿Añado sus ${metibles.length} cuota${metibles.length === 1 ? '' : 's'} pendiente${metibles.length === 1 ? '' : 's'} (${fmtEUR2(total)}) a las remesas abiertas de ${[...new Set(metibles.map((c) => c.mes))].join(', ')}?${sinRem.length ? ` Sin remesa abierta: ${sinRem.join(', ')} (se quedan sin remesa).` : ''}`;
+    if (!await confirmar({ titulo: 'Añadir a remesas', texto, ok: 'Añadir a remesas' })) return;
+    for (const mes of new Set(metibles.map((c) => c.mes))) { const r = abierta(mes); const ids = metibles.filter((c) => c.mes === mes).map((c) => c.id); await api.updMany('ac_cuotas', ids, { remesa_id: r.id }); metibles.filter((c) => c.mes === mes).forEach((c) => { c.remesa_id = r.id; }); }
+    rows.forEach((x) => COLS.forEach((_, ci) => pintaCelda(x, ci))); toast('Cuotas añadidas a las remesas.');
   }
   function cuotaMensual(a) {
     const i = inscPor.get(a.id);
@@ -255,7 +293,7 @@ export async function renderPagos(view, ctx) {
 
   const th = (k, t, cls, extra) => { const el = h('th', { class: 'ac-ord ' + (cls || ''), title: 'Clic para ordenar', onclick: () => ordenar(k) }, t, h('span', { class: 'ac-fl' }), extra || null); cabs.set(k, el); return el; };
   const tb = h('table', { class: 'data ac-pg' },
-    h('colgroup', {}, ['38px', '128px', '60px', '88px', '54px'].map((w) => h('col', { style: `width:${w}` })), COLS.map(() => h('col'))),
+    h('colgroup', {}, ['38px', '210px', '60px', '96px', '54px'].map((w) => h('col', { style: `width:${w}` })), COLS.map(() => h('col'))),
     h('thead', {}, resumen, h('tr', {}, th('num', 'ID'), th('nombre', 'Alumno', 'l'), th('nivel', 'Nivel'), th('modo', 'Modo pago'), th('cuota', 'Cuota'),
       COLS.map((k, ci) => th('c' + ci, k.t, 'ac-mes', h('div', { class: 'ac-sub' }, '€ · P · R'))))), cuerpo);
   pintarFlechas();
