@@ -147,6 +147,26 @@ export function tabla(cols, filas, { onClick, vacio = 'Sin datos todavía.', cla
 
 export const pill = (texto, tipo = 'off') => h('span', { class: `pill ${tipo}` }, texto);
 
+// ---------- valores de lista con color (ac_listas.color) ----------
+export const COLOR_NEUTRO = '#6b7280';
+export const PALETA_LISTAS = ['#2563eb', '#0891b2', '#0f766e', '#16a34a', '#d97706', '#ea580c', '#dc2626', '#db2777', '#c026d3', '#7c3aed', '#92400e', '#475569'];
+const estiloColor = (c) => { const k = c || COLOR_NEUTRO; return `background:color-mix(in srgb, ${k} 16%, transparent);color:${k};border-color:color-mix(in srgb, ${k} 40%, transparent)`; };
+export const colorLista = (items, valor) => (items || []).find((x) => x.valor === valor)?.color || COLOR_NEUTRO;
+// etiqueta de color; sin valor no pinta nada
+export const pillColor = (texto, color) => (texto ? h('span', { class: 'pill-color', style: estiloColor(color) }, texto) : '');
+// desplegable que se pinta del color del valor elegido. items = [{ valor, color }]
+export function selColor(items, valor, { vacio, onchange, disabled, label } = {}) {
+  const ops = items.map((x) => [x.valor, x.valor]);
+  if (valor && !ops.some(([v]) => v === valor)) ops.push([valor, valor]); // valor antiguo que ya no está en la lista: se conserva
+  const s = h('select', { class: 'sel-color', disabled: !!disabled, 'aria-label': label || null },
+    vacio !== undefined ? h('option', { value: '' }, vacio) : null,
+    ops.map(([v, l]) => h('option', { value: v, selected: v === (valor ?? ''), style: `color:${colorLista(items, v)}` }, l)));
+  const pintar = () => { s.setAttribute('style', s.value ? estiloColor(colorLista(items, s.value)) : ''); };
+  s.addEventListener('change', pintar); pintar();
+  if (onchange) s.addEventListener('change', onchange);
+  return s;
+}
+
 // buscador de alumnos: un campo con lista desplegable; getAlumno() devuelve el elegido
 export function buscadorAlumno(alumnos, { valorId, placeholder = 'Escribe apellido o nombre…', soloActivos = false } = {}) {
   const lista = soloActivos ? alumnos.filter((a) => a.estado === 'inscrito' || a.estado === 'prematricula') : alumnos;
