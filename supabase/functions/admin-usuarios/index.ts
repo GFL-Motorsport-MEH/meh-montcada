@@ -1,6 +1,6 @@
 // Gestión de usuarios desde la app (solo administradores activos).
 // Acciones:
-//   "crear"    (nombre, rol, email?, password?)  Sin email se crea solo la ficha, sin acceso (para tareas, profesoras…).
+//   "crear"    (nombre, rol, email?, password?, centro_id?)  Sin email se crea solo la ficha, sin acceso (para tareas, profesoras…).
 //   "password" (user_id, password)               Contraseña provisional nueva.
 //   "email"    (user_id, email, password?)       Cambia el email; si el usuario aún no tenía acceso, se lo crea
 //                                                (con el mismo id) con la contraseña provisional.
@@ -67,10 +67,16 @@ Deno.serve(async (req) => {
       const { data: roles } = await admin.from('roles').select('rol');
       const rol = String(body.rol || '');
       if (!(roles || []).some((r: { rol: string }) => r.rol === rol)) return json({ error: 'Rol no válido' }, 400);
+      // centro al que se limita (vacío = todos los centros)
+      const centro_id = body.centro_id ? String(body.centro_id) : null;
+      if (centro_id) {
+        const { data: c } = await admin.from('centros').select('id').eq('id', centro_id).maybeSingle();
+        if (!c) return json({ error: 'Centro no válido' }, 400);
+      }
       if (!email) {
         // sin email: solo la ficha, sin acceso. Cuando se le ponga el email podrá entrar.
         const { data: p, error: e0 } = await admin.from('profiles')
-          .insert({ nombre, rol, activo: true, email: null, debe_cambiar_password: false }).select().single();
+          .insert({ nombre, rol, activo: true, email: null, debe_cambiar_password: false, centro_id }).select().single();
         if (e0) return json({ error: e0.message }, 500);
         return json({ perfil: p });
       }
@@ -79,7 +85,7 @@ Deno.serve(async (req) => {
       const r = await crearAcceso(null, email, pass, nombre);
       if (r.error) return json({ error: r.error }, 400);
       const { data: p, error: e2 } = await admin.from('profiles')
-        .update({ nombre, rol, activo: true, email, debe_cambiar_password: true }).eq('id', r.user!.id).select().single();
+        .update({ nombre, rol, activo: true, email, debe_cambiar_password: true, centro_id }).eq('id', r.user!.id).select().single();
       if (e2) return json({ error: e2.message }, 500);
       return json({ perfil: p });
     }

@@ -3,12 +3,40 @@
 import { supabase, traducirError } from '../db.js';
 
 const PAGE = 1000;
+
+// ---------- centro ----------
+// Cada dato de Academia es de un centro. El centro activo (el elegido arriba, o el fijo de un usuario limitado a un centro) filtra las lecturas
+// y se estampa en lo que se crea. Vacío = todos los centros. Lo que cuelga de un alumno, una reunión o una persona hereda su centro.
+// (La base de datos aplica lo mismo a los usuarios con centro fijo: esto es para que el resto vea solo el centro elegido.)
+let centroActivo = '';
+let centroPrincipal = null;
+const RAIZ = new Set(['ac_alumnos', 'ac_grupos', 'ac_aulas', 'ac_profesoras', 'ac_tareas', 'ac_reuniones', 'ac_documentos', 'ac_biblioteca_items', 'ac_remesas', 'ac_responsables']);
+export function setCentro(id, principalId) {
+  const nuevo = id || '';
+  const cambia = nuevo !== centroActivo;
+  centroActivo = nuevo; centroPrincipal = principalId || null;
+  if (cambia) invalidar();
+}
+const conCentro = (tabla, f) => (centroActivo && RAIZ.has(tabla) && f.centro_id === undefined ? { ...f, centro_id: centroActivo } : f);
+// filas que cuelgan de un alumno (campo alumno_id): solo las de los alumnos del centro activo; las sueltas (sin alumno) son del principal
+async function delCentro(filas, campo = 'alumno_id') {
+  if (!centroActivo) return filas;
+  const ids = new Set((await alumnos()).map((a) => a.id));
+  return filas.filter((f) => (f[campo] ? ids.has(f[campo]) : centroActivo === centroPrincipal));
+}
+// filas que cuelgan de una persona (profile_id): las de quienes trabajan en el centro activo (o en todos)
+export async function delCentroPersonas(filas) {
+  if (!centroActivo) return filas;
+  const ids = new Set((await usuarios().catch(() => null))?.map((u) => u.id) || []);
+  return ids.size ? filas.filter((f) => ids.has(f.profile_id)) : filas;
+}
 const chk = ({ data, error }) => { if (error) throw new Error(traducirError(error)); return data; };
 
 // Lee todas las filas: la primera página y, si viene llena, las siguientes de 4 en 4 en paralelo (antes una a una).
 async function all(tabla, cols = '*', build) {
   const pag = async (from) => {
     let q = supabase.from(tabla).select(cols);
+    if (centroActivo && RAIZ.has(tabla)) q = centroActivo === centroPrincipal ? q.or(`centro_id.is.null,centro_id.eq.${centroActivo}`) : q.eq('centro_id', centroActivo);
     if (build) q = build(q);
     return chk(await q.order('id').range(from, from + PAGE - 1));
   };
@@ -115,7 +143,7 @@ export const listas = () => memo('listas', async () => {
   return o;
 });
 export const alumnos = () => memo('alumnos', () => all('ac_alumnos', '*, responsable:ac_responsables(id,apellidos,nombre,email,telefono)'));
-export const vinculos = () => memo('vinculos', () => all('ac_vinculos'));
+export const vinculos = () => memo('vinculos', async () => delCentro(await all('ac_vinculos')));
 export const profesoras = () => memo('profesoras', () => all('ac_profesoras').then((l) => l.sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre))));
 export const aulas = () => memo('aulas', () => all('ac_aulas').then((l) => l.sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre))));
 export const grupos = (curso) => memo('grupos' + curso, () => all('ac_grupos', '*, sesiones:ac_sesiones(*), miembros:ac_alumno_grupo(id,alumno_id,fecha_alta,fecha_baja)', (q) => q.eq('curso_id', curso)));
@@ -126,8 +154,8 @@ export const gruposDeAlumnos = (curso) => memo('ag' + curso, async () => {
   return m;
 });
 export const calendarioDias = (curso) => memo('cal' + curso, () => all('ac_calendario_marcas', '*', (q) => q.eq('curso_id', curso)));
-export const inscripciones = (curso) => memo('ins' + curso, () => all('ac_inscripciones', '*', (q) => q.eq('curso_id', curso)));
-export const cuotas = (curso) => memo('cuo' + curso, () => all('ac_cuotas', '*', (q) => q.eq('curso_id', curso)));
+export const inscripciones = (curso) => memo('ins' + curso, async () => delCentro(await all('ac_inscripciones', '*', (q) => q.eq('curso_id', curso))));
+export const cuotas = (curso) => memo('cuo' + curso, async () => delCentro(await all('ac_cuotas', '*', (q) => q.eq('curso_id', curso))));
 export const wpPrecios = (curso) => memo('wpp' + curso, () => all('ac_wp_precios', '*', (q) => q.eq('curso_id', curso)));
 export const remesas = (curso) => memo('rem' + curso, () => all('ac_remesas', '*', (q) => q.eq('curso_id', curso)).then((l) => l.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))));
 export const remesasLista = () => memo('rlista', () => all('ac_remesas_lista').then((l) => l.sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre, 'es', { numeric: true }))));
@@ -137,34 +165,39 @@ export const domiNotas = () => memo('dnotas', () => all('ac_domiciliacion_notas'
 export const cuotaCambios = (curso) => all('ac_cuota_cambios', '*', (q) => q.eq('curso_id', curso));
 export const remesaEnvios = (curso) => memo('renv' + curso, () => all('ac_remesa_envios', '*, resumen:ac_remesa_envio_resumen(*)', (q) => q.eq('curso_id', curso)));
 export const remesaEnvioLineas = (envio) => memo('renvl' + envio, () => all('ac_remesa_envio_lineas', '*', (q) => q.eq('envio_id', envio)));
-export const bajas = () => memo('bajas', () => all('ac_bajas', '*, alumno:ac_alumnos(id,num,apellidos,nombre,nivel,modalidad,estado)'));
-export const contactos = () => memo('contactos', () => all('ac_contactos'));
-export const tutorias = () => memo('tutorias', () => all('ac_tutorias', '*, alumno:ac_alumnos(id,apellidos,nombre), profesora:ac_profesoras(id,nombre)'));
+export const bajas = () => memo('bajas', async () => delCentro(await all('ac_bajas', '*, alumno:ac_alumnos(id,num,apellidos,nombre,nivel,modalidad,estado)')));
+export const contactos = () => memo('contactos', async () => delCentro(await all('ac_contactos')));
+export const tutorias = () => memo('tutorias', async () => delCentro(await all('ac_tutorias', '*, alumno:ac_alumnos(id,apellidos,nombre), profesora:ac_profesoras(id,nombre)')));
 export const formularios = () => memo('formularios', () => all('ac_formularios').then((l) => l.sort((a, b) => a.titulo.localeCompare(b.titulo))));
 export const formRespuestas = (formId) => memo('formresp' + formId, () => all('ac_formulario_respuestas', '*, alumno:ac_alumnos(id,apellidos,nombre)', (q) => q.eq('formulario_id', formId)));
-export const anotaciones = (alumnoId) => memo('anot' + (alumnoId || ''), () => all('ac_anotaciones', '*, alumno:ac_alumnos(id,apellidos,nombre), profesora:ac_profesoras(id,nombre)', alumnoId ? (q) => q.eq('alumno_id', alumnoId) : undefined));
-export const prestamos = () => memo('prestamos', () => all('ac_prestamos', '*, alumno:ac_alumnos(id,apellidos,nombre)'));
+export const anotaciones = (alumnoId) => memo('anot' + (alumnoId || ''), async () => delCentro(await all('ac_anotaciones', '*, alumno:ac_alumnos(id,apellidos,nombre), profesora:ac_profesoras(id,nombre)', alumnoId ? (q) => q.eq('alumno_id', alumnoId) : undefined)));
+export const prestamos = () => memo('prestamos', async () => delCentro(await all('ac_prestamos', '*, alumno:ac_alumnos(id,apellidos,nombre)')));
 export const bibItems = () => memo('bibitems', () => all('ac_biblioteca_items'));
-export const recogidas = (curso) => memo('rec' + curso, () => all('ac_recogidas', '*, alumno:ac_alumnos(id,apellidos,nombre,intolerancias,colegio)', (q) => q.eq('curso_id', curso)));
-export const recogidasPagos = (curso) => memo('rpag' + curso, () => all('ac_recogidas_pagos', '*, alumno:ac_alumnos(id,apellidos,nombre)', (q) => q.eq('curso_id', curso)));
-export const autorizados = () => memo('autorizados', () => all('ac_autorizados').then((l) => l.sort((a, b) => a.orden - b.orden)));
+export const recogidas = (curso) => memo('rec' + curso, async () => delCentro(await all('ac_recogidas', '*, alumno:ac_alumnos(id,apellidos,nombre,intolerancias,colegio)', (q) => q.eq('curso_id', curso))));
+export const recogidasPagos = (curso) => memo('rpag' + curso, async () => delCentro(await all('ac_recogidas_pagos', '*, alumno:ac_alumnos(id,apellidos,nombre)', (q) => q.eq('curso_id', curso))));
+export const autorizados = () => memo('autorizados', async () => (await delCentro(await all('ac_autorizados'))).sort((a, b) => a.orden - b.orden));
 export const autorizadosPriv = (ids) => (ids?.length ? supabase.from('ac_autorizados_priv').select('*').in('autorizado_id', ids).then(chk) : Promise.resolve([]));
 export const tareas = () => memo('tareas', () => all('ac_tareas'));
 export const reuniones = () => memo('reuniones', () => all('ac_reuniones'));
 export const mejoras = () => memo('mejoras', () => all('ac_mejoras_software'));
-export const temas = () => memo('temas', () => all('ac_reunion_temas'));
+export const temas = () => memo('temas', async () => {
+  const t = await all('ac_reunion_temas');
+  if (!centroActivo) return t;
+  const r = new Set((await reuniones()).map((x) => x.id));
+  return t.filter((x) => r.has(x.reunion_id));
+});
 export const documentos = () => memo('documentos', () => all('ac_documentos'));
 // compañeros de equipo (para asignar tareas): lo devuelve una función del servidor porque un usuario normal solo puede leer su propio perfil
-export const usuarios = () => memo('usuarios', async () => chk(await supabase.rpc('equipo_tareas')));
+export const usuarios = () => memo('usuarios', async () => chk(await supabase.rpc('equipo_tareas')).filter((u) => !centroActivo || !u.centro_id || u.centro_id === centroActivo));
 // DNI / IBAN: solo los devuelve la base de datos a quien tiene el permiso de Pagos
 export const privados = (ids) => (ids?.length ? supabase.from('ac_responsables_priv').select('*').in('responsable_id', ids).then(chk) : Promise.resolve([]));
 
 // ---------- escrituras ----------
-export async function ins(tabla, fila) { const r = chk(await supabase.from(tabla).insert(fila).select().single()); invalidarTabla(tabla); return r; }
+export async function ins(tabla, fila) { const r = chk(await supabase.from(tabla).insert(conCentro(tabla, fila)).select().single()); invalidarTabla(tabla); return r; }
 export async function insMany(tabla, filas, { lote = 200, onConflict, ignorar = false } = {}) {
   const out = [];
   for (let i = 0; i < filas.length; i += lote) {
-    const trozo = filas.slice(i, i + lote);
+    const trozo = filas.slice(i, i + lote).map((f) => conCentro(tabla, f));
     const q = onConflict ? supabase.from(tabla).upsert(trozo, { onConflict, ignoreDuplicates: ignorar }) : supabase.from(tabla).insert(trozo);
     const r = chk(await q.select());
     out.push(...(r || []));
@@ -191,8 +224,8 @@ export const descuentos = () => memo('descuentos', () => all('ac_descuentos').th
 export const cuotasTarifa = () => memo('cuotasTarifa', () => all('ac_cuotas_tarifa').then((l) => l.sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre))));
 // todos los grupos de todos los cursos con sus miembros (historial de niveles de cada alumno)
 export const gruposTodos = () => memo('gruposTodos', () => all('ac_grupos', 'id,nombre,nivel,curso_id,miembros:ac_alumno_grupo(alumno_id,fecha_alta,fecha_baja)'));
-export const nivelHistorial = () => memo('nivelHistorial', () => all('ac_nivel_historial'));
-export const portalDocs = () => memo('portalDocs', () => all('ac_portal_docs').then((l) => l.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))));
+export const nivelHistorial = () => memo('nivelHistorial', async () => delCentro(await all('ac_nivel_historial')));
+export const portalDocs = () => memo('portalDocs', async () => (await delCentroPersonas(await all('ac_portal_docs'))).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')));
 // archivos del portal del trabajador (bucket privado «trabajadores»; ruta = <id del usuario>/<fecha>-<nombre>)
 export async function subirPortal(profileId, file) {
   const limpio = file.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w.\-]+/g, '_');

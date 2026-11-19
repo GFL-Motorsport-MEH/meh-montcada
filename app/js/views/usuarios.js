@@ -53,7 +53,7 @@ export async function renderUsuarios(view, ctx) {
     });
     const crear = h('button', { class: 'btn small ghost', type: 'button', title: 'Crea una ficha de profesora con su nombre y la vincula', onclick: async () => {
       try {
-        await ac.ins('ac_profesoras', { nombre: p.nombre || (p.email || '').split('@')[0], profile_id: p.id });
+        await ac.ins('ac_profesoras', { nombre: p.nombre || (p.email || '').split('@')[0], profile_id: p.id, ...(p.centro_id ? { centro_id: p.centro_id } : {}) });
         fichasProf = await ac.profesoras(); toast('Ficha creada'); pintar();
       } catch (ex) { toast(ex.message, 'error'); }
     } }, 'Crear ficha');
@@ -61,6 +61,14 @@ export async function renderUsuarios(view, ctx) {
       actual ? null : h('div', {}, p.rol === 'profesora' ? h('span', { class: 'pill warn', title: 'Sin ficha no ve sus grupos, tutorías ni alumnos' }, 'Sin ficha: no verá nada suyo') : null, ' ', crear));
   }
 
+  // Centro: lo primero que se decide. Limita todo lo que ve la persona (todos los módulos) al centro elegido; dentro de él rige su rol. Vacío = todos.
+    const nomCentro = (c) => (ctx.tituloCentro ? ctx.tituloCentro(c.nombre) : c.nombre);
+  function centroSelectUsuario(actual, etiqueta) {
+    const hay = (ctx.state.centros || []).filter((c) => c.activo !== false || c.id === actual);
+    return h('select', { 'aria-label': etiqueta, class: 'centro-usuario', title: 'Solo verá los datos de este centro. «Todos los centros» = sin limitar.' },
+      h('option', { value: '' }, 'Todos los centros'),
+      hay.map((c) => h('option', { value: c.id, selected: c.id === actual }, nomCentro(c))));
+  }
   const EMAIL_OK = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
   const reemplazar = (nuevo) => { perfiles = perfiles.map((x) => (x.id === nuevo.id ? { ...x, ...nuevo } : x)); };
 
@@ -72,15 +80,17 @@ export async function renderUsuarios(view, ctx) {
     const siglas = h('input', { type: 'text', value: p.siglas || '', maxlength: 4, placeholder: 'Siglas', class: 'siglas', style: 'width:64px;margin-top:4px', title: 'Abreviatura que se ve en las tareas (GF, MG…)', 'aria-label': `Siglas de ${etq}` });
     const email = h('input', { type: 'email', value: p.email || '', placeholder: 'Sin email · sin acceso', 'aria-label': `Email de ${etq}`, title: sinAcceso ? 'Cuando le pongas un email y guardes, podrá entrar (se le da una contraseña provisional)' : 'Cambia el email con el que entra' });
     const rol = h('select', { 'aria-label': `Rol de ${etq}`, disabled: esYo }, ROLES.map(([v, t]) => h('option', { value: v, selected: p.rol === v }, t)));
+    const centro = centroSelectUsuario(p.centro_id, `Centro de ${etq}`);
     const ficha = fichaSelect(p);
     const btn = h('button', { class: 'btn small', disabled: true }, 'Guardar');
     const marcar = () => { btn.disabled = false; btn.classList.add('primary'); };
-    nombre.addEventListener('input', marcar); siglas.addEventListener('input', marcar); rol.addEventListener('change', marcar); email.addEventListener('input', marcar);
+    nombre.addEventListener('input', marcar); siglas.addEventListener('input', marcar); rol.addEventListener('change', marcar); email.addEventListener('input', marcar); centro.addEventListener('change', marcar);
     btn.addEventListener('click', async () => {
       btn.disabled = true;
       try {
         const cambios = { nombre: nombre.value.trim() || p.nombre, siglas: siglas.value.trim().toUpperCase() || null };
         if (!esYo) cambios.rol = rol.value;
+        if (!esYo) cambios.centro_id = centro.value || null;
         const nuevoEmail = email.value.trim().toLowerCase();
         const cambiaEmail = nuevoEmail !== (p.email || '');
         if (cambiaEmail) {
@@ -135,7 +145,7 @@ export async function renderUsuarios(view, ctx) {
     return h('tr', { class: p.activo ? '' : 'inactivo' },
       h('td', {}, nombre, siglas),
       h('td', {}, email, esYo ? h('span', { class: 'line2' }, '(tú)') : null),
-      h('td', {}, rol, ficha),
+      h('td', {}, rol, h('div', { class: 'small muted', style: 'margin-top:4px' }, 'Centro'), centro, ficha),
       h('td', {}, estado),
       h('td', { class: 'small' }, sinAcceso ? h('span', { class: 'muted' }, '—') : p.debe_cambiar_password ? h('span', { class: 'pill warn', title: 'Todavía no ha cambiado la contraseña provisional' }, 'Provisional') : h('span', { class: 'muted' }, 'Propia')),
       h('td', { class: 'small muted' }, fmtFecha(p.created_at)),
@@ -152,6 +162,7 @@ export async function renderUsuarios(view, ctx) {
   const aNombre = h('input', { type: 'text', placeholder: 'Nombre', 'aria-label': 'Nombre del usuario nuevo' });
   const aEmail = h('input', { type: 'email', placeholder: 'email@ejemplo.com', 'aria-label': 'Email del usuario nuevo' });
   const aRol = h('select', { 'aria-label': 'Rol del usuario nuevo' }, ROLES.map(([v, t]) => h('option', { value: v, selected: v === 'escaner' }, t)));
+  const aCentro = centroSelectUsuario('', 'Centro del usuario nuevo');
   const aFicha = h('input', { type: 'checkbox', checked: false, 'aria-label': 'Es profesora: crear su ficha' });
   const aFichaLabel = h('label', { class: 'check small', title: 'Crea su ficha de profesora (o vincula la que ya exista con su mismo nombre) para que salga en horarios, grupos y tutorías' }, aFicha, ' Es profesora (crear su ficha)');
   aRol.addEventListener('change', () => { aFicha.checked = aRol.value === 'profesora'; });
@@ -166,14 +177,14 @@ export async function renderUsuarios(view, ctx) {
     const pass = email ? generarPassword() : null;
     aBtn.disabled = true;
     try {
-      const r = await adminUsuarios({ accion: 'crear', email, nombre: nombreNuevo, rol: aRol.value, ...(pass ? { password: pass } : {}) });
+      const r = await adminUsuarios({ accion: 'crear', email, nombre: nombreNuevo, rol: aRol.value, centro_id: aCentro.value || null, ...(pass ? { password: pass } : {}) });
       perfiles = [...perfiles, r.perfil];
       let msgFicha = '';
       if (aFicha.checked) {
         try {
           const ya = fichasProf.find((f) => !f.profile_id && norm(f.nombre) === norm(r.perfil.nombre));
           if (ya) { await ac.upd('ac_profesoras', ya.id, { profile_id: r.perfil.id }); msgFicha = ' Se ha vinculado a la ficha que ya existía.'; }
-          else { await ac.ins('ac_profesoras', { nombre: r.perfil.nombre, profile_id: r.perfil.id }); msgFicha = ' Ficha de profesora creada.'; }
+          else { await ac.ins('ac_profesoras', { nombre: r.perfil.nombre, profile_id: r.perfil.id, ...(aCentro.value ? { centro_id: aCentro.value } : {}) }); msgFicha = ' Ficha de profesora creada.'; }
           fichasProf = await ac.profesoras();
         } catch (ex) { toast('Usuario creado, pero no la ficha: ' + ex.message, 'error'); }
       }
@@ -185,14 +196,14 @@ export async function renderUsuarios(view, ctx) {
     finally { aBtn.disabled = false; }
   } },
   h('label', { class: 'field' }, h('span', {}, 'Nombre'), aNombre), h('label', { class: 'field' }, h('span', {}, 'Email (opcional)'), aEmail),
-  h('label', { class: 'field' }, h('span', {}, 'Rol'), aRol), aFichaLabel, aBtn);
+  h('label', { class: 'field' }, h('span', {}, 'Centro'), aCentro), h('label', { class: 'field' }, h('span', {}, 'Rol'), aRol), aFichaLabel, aBtn);
 
   const panelUsuarios = h('div', {},
     h('div', { class: 'card' }, h('h3', {}, 'Dar de alta'),
       h('p', { class: 'small muted' }, 'Con email: se crea con una contraseña provisional que verás una sola vez para pasársela; al entrar, la app le obliga a elegir la suya. Sin email: se crea solo la ficha, sin acceso (sirve para asignarle tareas o vincular a una profesora); cuando le pongas el email en la tabla y guardes, podrá entrar. Marca «Es profesora» para crear su ficha a la vez (si ya hay una con su mismo nombre, se vincula).'),
       alta),
     h('div', { class: 'table-wrap' }, h('table', { class: 'data tabla-usuarios' },
-      h('thead', {}, h('tr', {}, ['Nombre', 'Email', 'Rol', 'Estado', 'Contraseña', 'Alta', ''].map((t) => h('th', { scope: 'col' }, t)))), tbody)));
+      h('thead', {}, h('tr', {}, ['Nombre', 'Email', 'Centro y rol', 'Estado', 'Contraseña', 'Alta', ''].map((t) => h('th', { scope: 'col' }, t)))), tbody)));
   const panelPermisos = h('div', { hidden: true });
   let permisosCargados = false;
   const seg = (txt, id) => h('button', { class: 'seg-btn', type: 'button', 'data-id': id, onclick: () => mostrar(id) }, txt);

@@ -14,7 +14,7 @@ import { renderControl } from './views/control.js';
 import { renderConfig } from './views/config.js';
 import { RUTAS_ACADEMIA, TABS_ACADEMIA } from './academia/index.js';
 import { RUTAS_TRABAJADORES, TABS_TRABAJADORES } from './trabajadores/index.js';
-import { precargar as precargarAcademia, refrescarTodo as refrescarAcademia } from './academia/api.js';
+import { precargar as precargarAcademia, refrescarTodo as refrescarAcademia, setCentro } from './academia/api.js';
 import { renderEscanerVista } from './views/escaner-vista.js';
 import * as historial from './deshacer.js';
 import { crearPermisos } from './permisos.js';
@@ -264,9 +264,15 @@ ctx.irACurso = (cursoId, filtro) => {
   if (window.location.hash.startsWith('#/gastos')) pintarVista(); else window.location.hash = '#/gastos';
 };
 
+// el centro activo condiciona las lecturas de Academia (y Trabajadores): hay que avisar a la capa de datos cada vez que cambie
+function aplicarCentro() { setCentro(state.centroId, ctx.centroPrincipal()?.id); }
 function centroSelect() {
+  if (state.perfil?.centro_id) {
+    const c = state.centros.find((x) => x.id === state.perfil.centro_id);
+    return c ? h('span', { class: 'pill', title: 'Tu acceso está limitado a este centro' }, tituloCentro(c.nombre)) : null;
+  }
   if (state.centros.filter((c) => c.activo !== false).length < 2) return null;
-  const sel = h('select', { class: 'select-inline', 'aria-label': 'Centro', onchange: () => { state.centroId = sel.value; try { localStorage.setItem(LS_CENTRO, sel.value); } catch { /* */ } pintarVista(); } },
+  const sel = h('select', { class: 'select-inline', 'aria-label': 'Centro', onchange: () => { state.centroId = sel.value; try { localStorage.setItem(LS_CENTRO, sel.value); } catch { /* */ } aplicarCentro(); pintarVista(); } },
     h('option', { value: '' }, 'Todos los centros'),
     state.centros.filter((c) => c.activo !== false || c.id === state.centroId).map((c) => h('option', { value: c.id, selected: c.id === state.centroId }, tituloCentro(c.nombre))));
   return sel;
@@ -463,6 +469,9 @@ async function arrancar() {
   const [cursos, taxonomia, centros] = await Promise.all([db.getCursos(), db.getTaxonomia(), db.getCentros().catch(() => [])]);
   state.centros = centros;
   try { const c = localStorage.getItem(LS_CENTRO); state.centroId = centros.some((x) => x.id === c) ? c : ''; } catch { state.centroId = ''; }
+  // una persona limitada a un centro solo trabaja en él: no puede cambiarlo ni ver «todos»
+  if (state.perfil.centro_id && centros.some((x) => x.id === state.perfil.centro_id)) state.centroId = state.perfil.centro_id;
+  aplicarCentro();
   const hoy = hoyISO();
   state.cursos = cursos;
   state.cursosVisibles = cursos.filter((c) => !c.fecha_inicio || c.fecha_inicio <= hoy);
@@ -489,7 +498,7 @@ async function salir() {
 }
 
 function reiniciarEstado() {
-  Object.assign(state, { session: null, perfil: null, roles: [], permisos: crearPermisos(null, []), cursos: [], cursosVisibles: [], taxonomia: [], cursoId: null, sugerencias: null, empresas: null, centros: [], centroId: '', arrancado: false });
+  Object.assign(state, { session: null, perfil: null, roles: [], permisos: crearPermisos(null, []), cursos: [], cursosVisibles: [], taxonomia: [], cursoId: null, sugerencias: null, empresas: null, centros: [], centroId: '', arrancado: false }); setCentro('', null);
   state.gastos.clear(); state.ingresos.clear();
 }
 
