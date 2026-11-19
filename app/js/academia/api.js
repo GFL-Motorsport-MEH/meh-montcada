@@ -55,9 +55,9 @@ const CLAVES = {
   ac_cuotas: /^cuo/, ac_inscripciones: /^ins/, ac_wp_precios: /^wpp/, ac_remesas: /^rem/,
   ac_grupos: /^(grupos|ag|gruposTodos)/, ac_sesiones: /^grupos/, ac_alumno_grupo: /^(grupos|ag|gruposTodos)/,
   ac_recogidas: /^rec/, ac_recogidas_pagos: /^rpag/, ac_tareas: /^tareas$/, ac_prestamos: /^prestamos$/, ac_contactos: /^contactos$/,
-  ac_cuotas_tarifa: /^cuotasTarifa$/, ac_descuentos: /^(descuentos|listas)$/, ac_listas: /^listas$/, ac_autorizados: /^autorizados$/, ac_autorizados_priv: /^$/,
+  ac_cuotas_tarifa: /^cuotasTarifa$/, ac_descuentos: /^(descuentos|listas)$/, ac_listas: /^listas/, ac_autorizados: /^autorizados$/, ac_autorizados_priv: /^$/,
   ac_anotaciones: /^anot/, ac_reuniones: /^reuniones$/, ac_reunion_temas: /^temas$/, ac_portal_docs: /^portalDocs$/, ac_documentos: /^documentos$/,
-  ac_biblioteca_items: /^bibitems$/, ac_bajas: /^bajas$/, ac_tutorias: /^tutorias$/, ac_nivel_historial: /^nivelHistorial$/, ac_calendario_marcas: /^cal/,
+  ac_biblioteca_items: /^bibitems$/, ac_bajas: /^bajas$/, ac_tutorias: /^tutorias$/, ac_tutorias_solicitudes: /^soltut$/, ac_nivel_historial: /^nivelHistorial$/, ac_calendario_marcas: /^cal/,
   ac_profesoras: /^profesoras$/, ac_aulas: /^aulas$/, ac_vinculos: /^vinculos$/, ac_responsables: /^(responsables|alumnos)$/,
   ac_alumnos: /^(alumnos|bajas|prestamos|tutorias|anot|rec|rpag|ag)/,
 };
@@ -90,6 +90,21 @@ export function refrescarTodo() {
 }
 
 // ---------- lecturas ----------
+// listas con id, color y orden (para los desplegables de colores y su editor): { lista: [{ id, valor, color, orden }] }
+export const listasColor = () => memo('listasColor', async () => {
+  const o = {};
+  for (const x of (await all('ac_listas')).sort((a, b) => a.orden - b.orden || a.valor.localeCompare(b.valor))) (o[x.lista] ||= []).push({ id: x.id, valor: x.valor, color: x.color || null, orden: x.orden });
+  return o;
+});
+// cambia un texto de contacto en todos los contactos que lo usan (al renombrar un valor de lista)
+export async function renombrarEnContactos(columna, viejo, nuevo) {
+  chk(await supabase.from('ac_contactos').update({ [columna]: nuevo }).eq(columna, viejo));
+  invalidarTabla('ac_contactos');
+}
+export async function contarEnContactos(columna, valor) {
+  const r = await supabase.from('ac_contactos').select('id', { count: 'exact', head: true }).eq(columna, valor);
+  return r.count || 0;
+}
 export const listas = () => memo('listas', async () => {
   const o = {};
   for (const x of (await all('ac_listas')).sort((a, b) => a.orden - b.orden)) (o[x.lista] ||= []).push(x.valor);
@@ -117,6 +132,7 @@ export const remesas = (curso) => memo('rem' + curso, () => all('ac_remesas', '*
 export const bajas = () => memo('bajas', () => all('ac_bajas', '*, alumno:ac_alumnos(id,num,apellidos,nombre,nivel,modalidad,estado)'));
 export const contactos = () => memo('contactos', () => all('ac_contactos'));
 export const tutorias = () => memo('tutorias', () => all('ac_tutorias', '*, alumno:ac_alumnos(id,apellidos,nombre), profesora:ac_profesoras(id,nombre)'));
+export const solicitudesTutorias = () => memo('soltut', () => all('ac_tutorias_solicitudes', '*, alumno:ac_alumnos(id,apellidos,nombre)'));
 export const anotaciones = (alumnoId) => memo('anot' + (alumnoId || ''), () => all('ac_anotaciones', '*, alumno:ac_alumnos(id,apellidos,nombre), profesora:ac_profesoras(id,nombre)', alumnoId ? (q) => q.eq('alumno_id', alumnoId) : undefined));
 export const prestamos = () => memo('prestamos', () => all('ac_prestamos', '*, alumno:ac_alumnos(id,apellidos,nombre)'));
 export const bibItems = () => memo('bibitems', () => all('ac_biblioteca_items'));

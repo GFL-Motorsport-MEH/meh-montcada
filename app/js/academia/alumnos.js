@@ -111,6 +111,7 @@ export async function renderAlumnos(view, ctx) {
       ...(verPagos ? [{ t: 'Pago', s: (a) => a.metodo_pago || '', v: (a) => (e && editaPagos ? selc(a, 'metodo_pago', ls.metodo_pago || []) : a.metodo_pago || '') }] : []),
       ...(verPagos ? [{ t: 'Descuento', s: (a) => inscPor.get(a.id)?.descuento || '', v: (a) => { if (!(e && editaPagos)) return inscPor.get(a.id)?.descuento || ''; const c = sel(ls.descuento || [], inscPor.get(a.id)?.descuento, { vacio: '—', class: 'ac-celda' }); c.addEventListener('change', () => guardarInscripcion(a, { descuento: c.value || null })); return c; } }] : []),
       ...(verPagos ? [{ t: 'Cuota', num: true, v: (a) => (inscPor.get(a.id)?.cuota_mensual ? fmtEUR2(inscPor.get(a.id).cuota_mensual) : '') }] : []),
+      { t: 'Inscripción', s: (a) => a.fecha_entrada || '', v: (a) => { if (!e) return a.fecha_entrada ? fmtFecha(a.fecha_entrada) : ''; const c = h('input', { type: 'date', value: a.fecha_entrada || '', class: 'ac-celda', 'aria-label': 'Fecha de inscripción' }); c.addEventListener('change', () => guardarCampo(a, 'fecha_entrada', c.value)); return c; } },
       { t: 'Estado', s: (a) => (ESTADOS.find((x) => x[0] === a.estado) || [0, a.estado])[1], v: (a) => (e ? selc(a, 'estado', ESTADOS, false) : pillEstado(a.estado)) },
       { t: '💬', s: (a) => (a.info ? 'con comentario' : ''), v: celdaComentario },
     ];
@@ -169,7 +170,7 @@ export async function abrirFicha(alumno, ctx, onCambio, prefill = null) {
   const secDatos = h('div', { class: 'form-section' }, h('h3', {}, 'Alumno'),
     campo('Apellidos', F.apellidos, { req: true }), campo('Nombre', F.nombre, { req: true }),
     campo('Fecha de nacimiento', F.nacimiento), campo('Colegio', F.colegio),
-    campo('Estado', F.estado), campo('Fecha de entrada', F.entrada),
+    campo('Estado', F.estado), campo('Fecha de inscripción', F.entrada),
     campo('Modalidad', F.modalidad), campo('Nivel', F.nivel),
     campo('Cómo nos conoció', F.conocio), campo('Código postal', F.cp),
     campo('Alergias / intolerancias', F.intol, { full: true }), campo('Información / comentarios', F.info, { full: true }),
