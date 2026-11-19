@@ -553,7 +553,7 @@ table.tabla-factcheck input.cell { min-width: 0; padding: 3px 2px; font-size: 11
 table.tabla-tarifas, table.tabla-costes { min-width: 0; }
 table.tabla-plantillas { min-width: 0; }
 table.tabla-gastos col.c-dia { width: 44px; }
-table.tabla-plantillas tr.inactiva > td:not(:first-child) { opacity: .5; }
+table.tabla-plantillas tr.inactiva > td:not(.c-mov):not(.c-sel) { opacity: .5; }
 /* la letra la ajusta ajustarAncho(); los campos heredan el tamaño de la tabla */
 table.grid-ing input.cell, table.tabla-factcheck input.cell { font-size: inherit; }
 /* relleno compacto en tablas de cifras (más específico que table.data tbody td) */
@@ -640,7 +640,7 @@ table.tabla-gastos td.c-imp input { font-weight: 700; }
 td.celda-fecha { position: relative; }
 .cal-oculto { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
 /* miniresumen junto al curso */
-.mini-resumen { display: inline-flex; gap: 2px; align-items: center; font-size: 10.5px; }
+.mini-resumen { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; align-items: center; font-size: 10.5px; padding: 4px 0 0; }
 .mini-resumen[hidden] { display: none; }
 .mini-resumen .mr { border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); border-radius: 10px; padding: 1px 7px; cursor: pointer; font: inherit; white-space: nowrap; }
 .mini-resumen .mr b { color: var(--text-primary); }
@@ -760,3 +760,58 @@ table.tabla-falta thead th .flecha { font-size: 10px; }
   .barra-seleccion { position: sticky; top: var(--cab, 0px); z-index: 20; padding: 6px 12px; box-shadow: 0 2px 6px rgba(0,0,0,.12); }
   main table.data.tabla-gastos > thead { top: calc(var(--cab, 0px) + var(--barra-h, 0px)); }
 }
+
+/* ---------- filtros: aviso de filtro activo y filtro de fechas ---------- */
+.aviso-filtros { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 8px; padding: 6px 10px; border: 1px solid #f0c36d; background: #fff7e0; color: #5a4100; border-radius: 6px; font-size: 12.5px; }
+.aviso-filtros[hidden] { display: none; }
+.aviso-filtros-t { flex: 1 1 auto; min-width: 0; }
+.aviso-filtros em { font-style: normal; font-weight: 600; }
+.aviso-filtros .btn { margin-left: auto; }
+:root[data-theme="dark"] .aviso-filtros { background: #3a2f10; border-color: #7a6020; color: #f3deaa; }
+.ffecha { display: inline-flex; align-items: center; gap: 4px; position: relative; }
+.ffecha-campos { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.ffecha-campos select, .ffecha-campos input { font: inherit; }
+.ffecha.activo .ffecha-campos select, .ffecha.activo .ffecha-campos input, .ffecha-btn.activo, .ffecha.activo > .ffecha-btn { border-color: #d19a1a; background: #fff7e0; }
+.ffecha-y { font-size: 12px; color: var(--muted, #6b7280); }
+.ffecha-compacto { display: block; }
+.ffecha-btn { width: 100%; font: inherit; font-size: 11.5px; padding: 2px 4px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); cursor: pointer; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: inherit; }
+.ffecha-panel { position: absolute; z-index: 30; top: 100%; left: 0; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; padding: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 18px rgba(0,0,0,.18); min-width: 210px; }
+.ffecha-panel[hidden] { display: none; }
+.ffecha-panel .ffecha-campos { flex-direction: column; align-items: stretch; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .aviso-filtros { background: #3a2f10; border-color: #7a6020; color: #f3deaa; } }
+.filters > .ffecha { grid-column: 1 / -1; flex-wrap: wrap; }
+/* escáner: datos editables en el paso 1 y miniatura en el paso 2 */
+table.escaner-tabla td input:not([type=checkbox]), table.escaner-tabla td select { width: 100%; }
+table.escaner-tabla td:nth-child(2) { min-width: 0; }
+.escaner-clasif { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 4px; }
+.escaner-clasif select { width: 100%; min-width: 0; }
+.factura-mini { display: flex; gap: 12px; align-items: flex-start; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); }
+.factura-mini .mini-img { flex: 0 0 auto; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: #fff; cursor: zoom-in; line-height: 0; }
+.factura-mini .mini-img img { width: 110px; max-height: 150px; object-fit: cover; object-position: top; display: block; border-radius: 3px; }
+.factura-mini .mini-ico { width: 110px; height: 90px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--text-secondary); }
+.factura-mini .mini-info { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; min-width: 0; }
+.factura-mini .mini-nombre { overflow-wrap: anywhere; }
+
+/* Plantillas: arrastrar filas para ordenarlas */
+table.tabla-gastos col.c-mov { width: 22px; }
+.asa-fila { border: 0; background: none; cursor: grab; color: var(--text-muted); padding: 2px 3px; font-size: 13px; line-height: 1; letter-spacing: -2px; }
+.asa-fila:hover, .asa-fila:focus-visible { color: var(--text-primary); }
+table.tabla-plantillas tbody tr { cursor: grab; }
+table.tabla-plantillas tbody tr.arrastrando { opacity: .4; }
+table.tabla-plantillas tbody tr.suelta-antes > td { box-shadow: inset 0 3px 0 var(--accent); }
+table.tabla-plantillas tbody tr.suelta-despues > td { box-shadow: inset 0 -3px 0 var(--accent); }
+
+/* Configuración (ajustes de la app) */
+.aj-wrap { display: flex; flex-direction: column; gap: 12px; }
+.aj-card { display: flex; flex-direction: column; gap: 10px; }
+.aj-linea { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.aj-grupo-t { font-size: 12px; font-weight: 600; color: var(--text-muted); margin: 6px 0 4px; text-transform: uppercase; letter-spacing: .04em; }
+.aj-tabs { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.aj-tab { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.aj-tab input[type=color], .aj-persona input[type=color] { width: 30px; height: 24px; padding: 0; border: 1px solid var(--border, #ccc); border-radius: 4px; background: none; cursor: pointer; }
+.aj-acciones { display: flex; gap: 8px; margin-top: 4px; }
+.aj-personas { display: flex; flex-direction: column; gap: 6px; }
+.aj-persona { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.aj-nombre { min-width: 190px; font-size: 14px; }
+.aj-aviso { font-size: 12px; color: var(--warning, #b45309); font-weight: 600; }
+.aj-persona .ac-av { display: inline-grid; place-items: center; min-width: 28px; height: 24px; padding: 0 5px; border-radius: 12px; color: #fff; font-size: 11px; font-weight: 600; }

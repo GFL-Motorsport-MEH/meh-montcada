@@ -51,6 +51,19 @@ export async function setPrefsTabs(tabs) {
   if (error) throw new Error(traducirError(error));
 }
 
+// ajustes personales (colores de pestañas, pantalla de inicio, datos en segundo plano)
+export async function getAjustes() {
+  const { data, error } = await supabase.from('ui_preferencias').select('ajustes').maybeSingle();
+  if (error) return null;
+  return (data && data.ajustes) || {};
+}
+export async function setAjustes(ajustes) {
+  const { data: u } = await supabase.auth.getUser();
+  const id = u && u.user && u.user.id; if (!id) return;
+  const { error } = await supabase.from('ui_preferencias').upsert({ user_id: id, ajustes, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+  if (error) throw new Error(traducirError(error));
+}
+
 // ---------- sesión ----------
 export async function getSession() {
   return check(await supabase.auth.getSession()).session;

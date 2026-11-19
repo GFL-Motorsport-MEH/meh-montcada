@@ -1,5 +1,6 @@
 // TRABAJADORES · Contrato y horario: contratos de cada persona (tipo, puesto, jornada, horas semanales, fechas) y su horario semanal de contrato.
 // Cada trabajador ve lo suyo; quien gestiona (permiso «todo» + editar) elige a la persona y lo cambia.
+import { leerV, guardarV } from '../vista.js';
 import { h, clear, cargando, toast, confirmar, fmtFecha, hoyISO } from '../ui.js';
 import * as api from './api.js';
 import { campo, sel, txt, fecha, numero, tabla, cabecera, refrescar, drawer, DIAS } from '../academia/kit.js';
@@ -35,7 +36,10 @@ export async function renderContrato(view, ctx) {
   const hoy = hoyISO();
   const nombreDe = new Map(personas.map((u) => [u.id, nombreUsuario(u)]));
 
+  verPersona = leerV('trab.contrato.persona', verPersona);
+  if (!personas.some((u) => u.id === verPersona)) verPersona = yo.id;
   const pintar = () => {
+    guardarV('trab.contrato.persona', verPersona);
     const pid = verPersona;
     const cs = contratos.filter((c) => c.profile_id === pid);
     const fr = franjas.filter((f) => f.profile_id === pid);

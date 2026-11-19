@@ -1,4 +1,5 @@
 // Pestaña Configuración: empresas, listas, centros y plantillas de gastos.
+import { leerV, guardarV, crearAviso, busqueda } from '../vista.js';
 import { h, clear, fmtEUR2, fmtFecha, num, normalizar, cargando, descargarCSV, toast, confirmar, hoyISO } from '../ui.js';
 import * as db from '../db.js';
 
@@ -32,11 +33,14 @@ async function renderEmpresas(cont, ctx) {
       const u = uso.get(k) || { n: 0, total: 0 }; u.n++; u.total += num(g.cantidad); uso.set(k, u);
     }
   }
-  let q = '', soloSinDatos = false;
+  const g0 = leerV('empresas.f', {}); // lo filtrado se recuerda al refrescar
+  let q = typeof g0.q === 'string' ? g0.q : '', soloSinDatos = g0.soloSinDatos === true;
   const contador = h('div', { class: 'count' });
   const tbody = h('tbody');
   const fQ = h('input', { type: 'search', placeholder: 'Buscar empresa, CIF o IBAN…', 'aria-label': 'Buscar empresa', oninput: () => { q = fQ.value; pintar(); } });
-  const fSin = h('input', { type: 'checkbox', onchange: () => { soloSinDatos = fSin.checked; pintar(); } });
+  fQ.value = q;
+  const fSin = h('input', { type: 'checkbox', onchange: () => { soloSinDatos = fSin.checked; pintar(); } }); fSin.checked = soloSinDatos;
+  const aviso = crearAviso({ obtener: () => [['Búsqueda', busqueda(q)], ['Solo sin CIF o sin IBAN', soloSinDatos]], limpiar: () => { q = ''; fQ.value = ''; soloSinDatos = false; fSin.checked = false; pintar(); } });
 
   async function guardarCampo(e, campo, input) {
     let valor = input.value.trim();
@@ -83,6 +87,7 @@ async function renderEmpresas(cont, ctx) {
       .sort((a, b) => a.nombre_comercial.localeCompare(b.nombre_comercial, 'es'));
   }
   function pintar() {
+    guardarV('empresas.f', { q, soloSinDatos }); aviso.actualizar();
     const l = lista();
     contador.textContent = `${l.length} de ${empresas.length} empresas · ${empresas.filter((e) => e.cif).length} con CIF · ${empresas.filter((e) => e.iban).length} con IBAN`;
     clear(tbody, l.map((e) => {
@@ -114,6 +119,7 @@ async function renderEmpresas(cont, ctx) {
       h('div', { class: 'section-actions' }, h('button', { class: 'btn', onclick: exportar }, 'Exportar CSV'), h('button', { class: 'btn primary', onclick: nueva }, '+ Nueva empresa'))),
     h('p', { class: 'muted small' }, 'El nombre comercial es el que aparece en los gastos: si lo cambias, se cambia en todos los gastos. Al elegir la empresa en un gasto se rellenan solos el CIF y el IBAN.'),
     h('div', { class: 'filters filters-2' }, h('div', { class: 'search' }, fQ), h('label', { class: 'check small' }, fSin, 'Solo sin CIF o sin IBAN')),
+    aviso,
     h('div', { class: 'table-wrap' }, h('table', { class: 'data tabla-empresas' },
       h('thead', {}, h('tr', {}, ['Nombre comercial', 'Razón social', 'CIF', 'IBAN', 'Registro'].map((t) => h('th', { scope: 'col' }, t)), h('th', { scope: 'col', class: 'num' }, 'Gastos'))),
       tbody)));

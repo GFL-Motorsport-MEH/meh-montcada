@@ -1,4 +1,5 @@
 // Bajas: registro de bajas con motivo, permanencia en la academia y resumen por motivo.
+import { leerV, guardarV, crearAviso } from '../vista.js';
 import { h, clear, cargando, toast, confirmar, fmtFecha, hoyISO, normalizar } from '../ui.js';
 import * as api from './api.js';
 import { campo, txt, area, fecha, sel, drawer, cabecera, tabla, nombreAlumno, guardarBoton, buscadorAlumno, refrescar } from './kit.js';
@@ -28,13 +29,16 @@ export async function renderBajas(view, ctx) {
   for (const b of bajas) { const m = b.motivo || 'Sin motivo'; porMotivo.set(m, (porMotivo.get(m) || 0) + 1); }
   const resumen = [...porMotivo.entries()].sort((a, b) => b[1] - a[1]);
   const sinEnlazar = bajas.filter((b) => !b.alumno).length;
-  let filtro = '';
+  let filtro = leerV('bajas.motivo', '');
+  if (filtro && !porMotivo.has(filtro)) filtro = '';
   const barra = h('div', { class: 'ac-barra-motivos' }, resumen.map(([m, n]) => h('span', { style: `flex:${n};--c:${colorMotivo(m)}`, title: `${m}: ${n}` })));
   const chips = h('div', { class: 'ac-motivos' });
   const zona = h('div');
+  const aviso = crearAviso({ obtener: () => [['Motivo de la baja', filtro]], limpiar: () => { filtro = ''; guardarV('bajas.motivo', ''); pintaChips(); pintaTabla(); } });
   const pintaChips = () => clear(chips, resumen.map(([m, n]) => h('button', { type: 'button', class: 'ac-motivo ac-motivo-btn' + (filtro === m ? ' activo' : ''), style: `--c:${colorMotivo(m)}`, title: filtro === m ? 'Quitar filtro' : 'Ver solo este motivo',
-    onclick: () => { filtro = filtro === m ? '' : m; pintaChips(); pintaTabla(); } }, `${m} `, h('strong', {}, String(n)))));
+    onclick: () => { filtro = filtro === m ? '' : m; guardarV('bajas.motivo', filtro); pintaChips(); pintaTabla(); } }, `${m} `, h('strong', {}, String(n)))));
   const pintaTabla = () => {
+    aviso.actualizar();
     const filas = bajas.filter((b) => !filtro || (b.motivo || 'Sin motivo') === filtro).sort((a, b) => (b.fecha_baja || '').localeCompare(a.fecha_baja || ''));
     clear(zona, tabla([
       { t: 'ID', v: (b) => (b.alumno?.num ? String(Math.round(b.alumno.num)) : h('span', { class: 'muted' }, '—')) },
@@ -47,7 +51,7 @@ export async function renderBajas(view, ctx) {
   clear(view,
     cabecera('Bajas', `${bajas.length} bajas registradas`, editor ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrir({ alumnos, ls, recargar }) }, '+ Registrar baja') : null),
     sinEnlazar ? h('div', { class: 'banner warn' }, `${sinEnlazar} baja${sinEnlazar === 1 ? '' : 's'} sin alumno enlazado: no aparecen en la ficha de ningún alumno.`) : null,
-    resumen.length ? h('div', { class: 'card ac-motivos-card' }, barra, chips) : null, zona);
+    resumen.length ? h('div', { class: 'card ac-motivos-card' }, barra, chips) : null, aviso, zona);
   // llegada desde la ficha de un alumno («Dar de baja…»)
   let pre = null; try { pre = sessionStorage.getItem('ac.baja.alumno'); sessionStorage.removeItem('ac.baja.alumno'); } catch { /* */ }
   if (pre && editor) abrir({ alumnos, ls, recargar, alumnoId: pre });

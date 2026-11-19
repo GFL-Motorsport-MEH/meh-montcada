@@ -7,6 +7,8 @@ import { registrarSeccionConfig } from './config.js';
 import { propuestaDesdePlantillas, sugerirPlantillas } from '../gastos-ops.js';
 
 const GRUPOS = [['mensual', 'Gastos mensuales'], ['nomina', 'Nóminas']];
+// primero los gastos mensuales, luego las nóminas, y dentro de cada grupo el orden que haya puesto el usuario
+const porOrden = (a, b) => (a.grupo === b.grupo ? 0 : a.grupo === 'mensual' ? -1 : 1) || (a.orden ?? 0) - (b.orden ?? 0);
 const leerImporte = (s) => { let t = String(s ?? '').trim().replace(/\s|€/g, ''); if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.'); const n = Number(t); return t === '' ? null : Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN; };
 
 async function cargarPlantillas(ctx) {
@@ -38,7 +40,7 @@ async function renderPlantillas(cont, ctx) {
   const tipos = [...new Set([...(ctx.state.listas || []).filter((x) => x.lista === 'tipo').map((x) => x.valor), ...plantillas.map((p) => p.tipo)].filter(Boolean))];
   const periodicidades = [...new Set([...(ctx.state.listas || []).filter((x) => x.lista === 'periodicidad').map((x) => x.valor), ...plantillas.map((p) => p.periodicidad)].filter(Boolean))];
   const varios = ctx.state.centros.length > 1;
-  const COLS = [['c-sel', 'Activa', 'Plantilla activa'], ['c-dia', 'Día', 'Día del mes del pago'], varios ? ['c-centro', 'Centro'] : null, ['c-tipo', 'Tipo'],
+  const COLS = [['c-mov', '', 'Arrastra la fila para cambiar el orden'], ['c-sel', 'Activa', 'Plantilla activa'], ['c-dia', 'Día', 'Día del mes del pago'], varios ? ['c-centro', 'Centro'] : null, ['c-tipo', 'Tipo'],
     ['c-emp', 'Empresa / persona'], ['c-conc', 'Concepto', 'En el concepto, {mes} se cambia por el mes'], ['c-cat', 'Categoría'], ['c-sub', 'Subcategoría'],
     ['c-per', 'Periodicidad'], ['c-met', 'Método'], ['c-imp', 'Importe'], ['c-ico', '']].filter(Boolean);
 
@@ -75,11 +77,14 @@ async function renderPlantillas(cont, ctx) {
     selCat.addEventListener('change', () => { const cat = ctx.state.taxonomia.find((c) => c.id === selCat.value); const unica = cat?.subcategorias.length === 1 ? cat.subcategorias[0].id : null;
       guardar(p, { categoria_id: selCat.value || null, subcategoria_id: unica }, selCat).then(pintarSub); });
     selSub.addEventListener('change', () => guardar(p, { subcategoria_id: selSub.value || null, categoria_id: selCat.value || null }, selSub).then(pintarSub));
-    const cen = varios ? h('select', { 'aria-label': `Centro · ${p.empresa}`, class: 'gc' }, h('option', { value: '' }, 'Principal'),
+    const cen = varios ? h('select', { 'aria-label': `Centro · ${p.empresa}`, class: 'gc' }, h('option', { value: '' }, 'General'),
       ctx.state.centros.map((c) => h('option', { value: c.id, selected: c.id === p.centro_id }, ctx.tituloCentro(c.nombre)))) : null;
     cen?.addEventListener('change', () => guardar(p, { centro_id: cen.value || null }, cen));
     const act = h('input', { type: 'checkbox', checked: p.activo !== false, 'aria-label': `Activa · ${p.empresa}`, onchange: () => guardar(p, { activo: act.checked }).then(() => tr.classList.toggle('inactiva', !act.checked)) });
-    const tr = h('tr', { class: p.activo === false ? 'inactiva' : '' },
+    const asa = h('button', { type: 'button', class: 'asa-fila', title: 'Arrastra la fila para moverla (o usa ↑ ↓ con la flecha del teclado)', 'aria-label': `Mover ${p.empresa} ${p.concepto || ''}`,
+      onkeydown: (e) => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); moverPaso(p, e.key === 'ArrowUp' ? -1 : 1).then(() => secciones[p.grupo].querySelector(`tr[data-id="${p.id}"] .asa-fila`)?.focus()); } } }, '⋮⋮');
+    const tr = h('tr', { class: p.activo === false ? 'inactiva' : '', dataset: { id: p.id } },
+      h('td', { class: 'center' }, asa),
       h('td', { class: 'col-check' }, act),
       txt('dia_pago', 'Día', { inputmode: 'numeric', class: 'gc gc-num' }),
       cen ? h('td', {}, cen) : null,
@@ -94,7 +99,58 @@ async function renderPlantillas(cont, ctx) {
         try { await db.borrarPlantilla(p.id); plantillas.splice(plantillas.indexOf(p), 1); pintar(); } catch (ex) { toast(ex.message, 'error'); }
       } }, '✕')));
     [...tr.children].forEach((td, i) => td.classList.add(COLS[i][0]));
+    arrastrable(tr, p);
     return tr;
+  }
+
+  // ---------- orden: arrastrar la fila entera (o ↑ ↓ en el asa) ----------
+  const delGrupo = (g) => plantillas.filter((p) => p.grupo === g);
+  async function mover(p, destino, despues) {
+    const lista = delGrupo(p.grupo).sort(porOrden);
+    if (destino === p) return;
+    lista.splice(lista.indexOf(p), 1);
+    const i = destino ? lista.indexOf(destino) + (despues ? 1 : 0) : lista.length;
+    lista.splice(i, 0, p);
+    lista.forEach((x, k) => { x.orden = k; });           // se ve al momento
+    plantillas.sort(porOrden);
+    pintar();
+    await guardarOrdenBD(lista);
+  }
+  // guarda solo las que han cambiado respecto a lo que hay en la base de datos
+  const enBD = new Map(plantillas.map((p) => [p.id, p.orden]));
+  async function guardarOrdenBD(lista) {
+    try {
+      for (const [k, p] of lista.entries()) {
+        if (enBD.get(p.id) === k) continue;
+        await db.actualizarPlantilla(p.id, { orden: k }); enBD.set(p.id, k);
+      }
+    } catch (ex) { toast('No se ha guardado el orden: ' + ex.message, 'error'); }
+  }
+  async function moverPaso(p, paso) {
+    const lista = delGrupo(p.grupo).sort(porOrden);
+    const vecino = lista[lista.indexOf(p) + paso];
+    if (vecino) await mover(p, vecino, paso > 0);
+  }
+  let arrastrada = null;
+  function arrastrable(tr, p) {
+    // se puede agarrar la fila por cualquier sitio salvo los campos de texto y desplegables
+    tr.addEventListener('mousedown', (e) => { tr.draggable = !e.target.closest('input, select, textarea, button:not(.asa-fila)'); });
+    tr.addEventListener('dragstart', (e) => { arrastrada = p; tr.classList.add('arrastrando'); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', p.id); } catch { /* ok */ } });
+    tr.addEventListener('dragend', () => { arrastrada = null; tr.draggable = false; document.querySelectorAll('.tabla-plantillas tr').forEach((r) => r.classList.remove('arrastrando', 'suelta-antes', 'suelta-despues')); });
+    tr.addEventListener('dragover', (e) => {
+      if (!arrastrada || arrastrada.grupo !== p.grupo || arrastrada === p) return;
+      e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+      const r = tr.getBoundingClientRect(), abajo = e.clientY > r.top + r.height / 2;
+      tr.classList.toggle('suelta-antes', !abajo); tr.classList.toggle('suelta-despues', abajo);
+    });
+    tr.addEventListener('dragleave', () => tr.classList.remove('suelta-antes', 'suelta-despues'));
+    tr.addEventListener('drop', (e) => {
+      if (!arrastrada || arrastrada.grupo !== p.grupo) return;
+      e.preventDefault();
+      const abajo = tr.classList.contains('suelta-despues');
+      const mov = arrastrada; arrastrada = null;
+      mover(mov, p, abajo);
+    });
   }
 
   const totales = {};
@@ -106,17 +162,18 @@ async function renderPlantillas(cont, ctx) {
   }
   function pintar() {
     for (const [g] of GRUPOS) {
-      clear(secciones[g], plantillas.filter((p) => p.grupo === g).length
-        ? plantillas.filter((p) => p.grupo === g).map(fila)
-        : h('tr', {}, h('td', { colspan: 12, class: 'empty' }, 'Sin plantillas. Añade una o pulsa "Sugerir desde los gastos".')));
+      const lista = plantillas.filter((p) => p.grupo === g).sort(porOrden);
+      clear(secciones[g], lista.length
+        ? lista.map(fila)
+        : h('tr', {}, h('td', { colspan: 13, class: 'empty' }, 'Sin plantillas. Añade una o pulsa "Sugerir desde los gastos".')));
     }
     pintarTotales();
   }
   async function anadir(grupo, datos = {}) {
     try {
       const p = await db.crearPlantilla({ grupo, empresa: datos.empresa || (grupo === 'nomina' ? 'Nueva persona' : 'Nueva empresa'), concepto: datos.concepto ?? (grupo === 'nomina' ? 'Nómina {mes}' : '{mes}'),
-        tipo: datos.tipo || (grupo === 'nomina' ? 'Nomina' : 'Factura'), periodicidad: 'Mensual', orden: plantillas.length, ...datos, grupo });
-      plantillas.push(p); pintar();
+        tipo: datos.tipo || (grupo === 'nomina' ? 'Nomina' : 'Factura'), periodicidad: 'Mensual', orden: Math.max(-1, ...plantillas.filter((x) => x.grupo === grupo).map((x) => x.orden ?? 0)) + 1, ...datos, grupo });
+      plantillas.push(p); enBD.set(p.id, p.orden); pintar();
       return p;
     } catch (ex) { toast('No se ha creado: ' + ex.message, 'error'); return null; }
   }
@@ -180,7 +237,7 @@ async function renderPlantillas(cont, ctx) {
 
   clear(cont,
     h('div', { class: 'section-head' }, h('div', {}, h('h2', {}, 'Plantillas de gastos'),
-      h('div', { class: 'count' }, 'Gastos que se repiten cada mes y nóminas. Desde Gastos > "Generar gastos del mes" se crean todos de una vez. En el concepto, {mes} se cambia por el mes.')),
+      h('div', { class: 'count' }, 'Gastos que se repiten cada mes y nóminas. Cada plantilla va a su centro; las de centro «General» se generan en cualquiera. Desde Gastos > "Generar gastos del mes" se crean todos de una vez. En el concepto, {mes} se cambia por el mes.')),
       h('div', { class: 'section-actions' }, h('button', { class: 'btn primary', onclick: crearDesdeGastos, title: 'Crea las que faltan y actualiza importes, día y método de las que ya hay. No borra nada.' }, 'Crear / actualizar plantillas'),
         h('button', { class: 'btn', onclick: sugerir }, 'Sugerir desde los gastos'))),
     sugCont,
@@ -210,7 +267,9 @@ export async function generarGastosDelMes(ctx, { curso, gastos, onCreados }) {
   const resumen = h('div', { class: 'muted small' });
   let filas = [];
   function pintar() {
-    const lista = plantillas.filter((p) => !selGrupo.value || p.grupo === selGrupo.value);
+    // con un centro elegido: las plantillas de ese centro y las generales (sin centro); sin centro elegido: todas
+    const centroSel = ctx.centroActual();
+    const lista = plantillas.filter((p) => (!selGrupo.value || p.grupo === selGrupo.value) && (!centroSel || !p.centro_id || p.centro_id === centroSel.id)).sort(porOrden);
     filas = propuestaDesdePlantillas(lista, { curso, mes: selMes.value, existentes: gastos, centroPorDefecto: ctx.centroActual()?.id || ctx.centroPrincipal()?.id }).map((x) => ({
       ...x, chk: h('input', { type: 'checkbox', checked: !x.duplicado, 'aria-label': `Crear ${x.gasto.empresa} ${x.gasto.concepto}`, onchange: total }),
       imp: h('input', { type: 'text', class: 'cell', inputmode: 'decimal', value: x.gasto.cantidad ? x.gasto.cantidad.toFixed(2).replace('.', ',') : '', 'aria-label': `Importe ${x.gasto.empresa}`, oninput: total }),

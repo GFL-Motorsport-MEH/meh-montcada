@@ -3,6 +3,7 @@
 import { h, clear, fmtEUR2, fmtFecha, fmtFechaCorta, num, MESES, MESES_CORTO, capitalizar, tituloCategoria, normalizar, cargando, descargarCSV, mesDeFecha, hoyISO, toast, confirmar } from '../ui.js';
 import { ordenGuardado, guardarOrden } from '../orden-compartido.js';
 import { abrirGastoForm } from './gasto-form.js';
+import { vista, leerV, guardarV, filtroFecha, pasaFecha, fechaActiva, describirFecha, crearAviso, FECHA_VACIA } from '../vista.js';
 import { moverGastosACentro, actualizarGasto, getListas, agrupar, getGastosPendientes } from '../db.js';
 import { generarGastosDelMes } from './plantillas.js';
 import { abrirEscaner } from './escaner.js';
@@ -56,7 +57,7 @@ export async function renderGastos(view, ctx) {
   if (!state.listas) { try { state.listas = await getListas(); } catch { state.listas = []; } }
   ctx.cargarSugerencias(); // empresas y valores más usados, en segundo plano
 
-  const f = { q: '', cat: '', sub: '', mes: '', estado: '' };
+  const f = vista('gastos.f', { q: '', estado: '' }); // la búsqueda y el estado se mantienen al refrescar
   let orden = { campo: 'fecha_factura', asc: false };
   let limite = POR_PAGINA;
   const varios = state.centros.length > 1;
@@ -153,7 +154,7 @@ export async function renderGastos(view, ctx) {
   const lista = (opciones, fn, aria) => ({ tipo: 'select', opciones, valor: fn, aria });
   const COLDEF = [
     { cls: 'c-sel', th: () => h('th', { scope: 'col', class: 'col-check' }, chkTodos) },
-    { cls: 'c-fecha', label: 'F. fact.', title: 'Fecha de la factura', orden: (g) => g.fecha_factura || '', filtro: texto((g) => `${fmtFechaCorta(g.fecha_factura)} ${fmtFecha(g.fecha_factura)}`) },
+    { cls: 'c-fecha', label: 'F. fact.', title: 'Fecha de la factura', orden: (g) => g.fecha_factura || '', filtro: { tipo: 'fecha', valor: (g) => g.fecha_factura || '' } },
     { cls: 'c-cont', label: 'Contab.', title: 'Fecha contable: mes y año en que se contabiliza', orden: (g) => MESES.indexOf(g.mes), filtro: lista(MESES.map((m) => [m, etiquetaContable(m)]), (g) => g.mes || mesDeFecha(g.fecha_pago || g.fecha_factura), 'Mes') },
     { cls: 'c-tipo', label: 'Tipo', orden: (g) => g.tipo || '', filtro: lista(LISTAS.tipo.map((v) => [v, v]), (g) => g.tipo, 'Filtro tipo') },
     { cls: 'c-emp', label: 'Empresa', orden: (g) => g.empresa || '', filtro: texto((g) => g.empresa) },
@@ -174,6 +175,9 @@ export async function renderGastos(view, ctx) {
   const COLS = COLDEF.map((c) => [c.cls]);
   const cf = new Map(); // filtros por columna: índice -> valor
   const controlesFiltro = [];
+  const ctlPorIdx = new Map();
+  let aviso = null;
+  const guardaCf = () => { guardarV('gastos.cf', Object.fromEntries([...cf].map(([i, v]) => [COLDEF[i].cls, v]))); aviso?.actualizar(); };
 
   const ths = COLDEF.map((c, i) => {
     if (c.th) { const t = c.th(); t.classList.add(...c.cls.split(' ')); return t; }
@@ -194,20 +198,22 @@ export async function renderGastos(view, ctx) {
     const t = h('th', { class: `${c.cls} th-filtro` });
     if (c.limpiar) {
       t.append(h('button', { type: 'button', class: 'ib', title: 'Quitar todos los filtros', 'aria-label': 'Quitar todos los filtros', onclick: () => {
-        cf.clear(); f.q = ''; fQ.value = ''; f.estado = ''; fEstado.value = ''; controlesFiltro.forEach((x) => { x.value = ''; }); pintarSubsFiltro(); alFiltrar();
+        quitarFiltros();
       } }, '✕'));
       return t;
     }
     if (!c.filtro) return t;
     let ctl;
-    if (c.filtro.tipo === 'select') {
+    if (c.filtro.tipo === 'fecha') {
+      ctl = filtroFecha(cf.get(i), (d) => { if (fechaActiva(d)) cf.set(i, d); else cf.delete(i); guardaCf(); alFiltrar(); }, { compacto: true, etiqueta: c.label });
+    } else if (c.filtro.tipo === 'select') {
       ctl = h('select', { class: 'ff', 'aria-label': c.filtro.aria }, h('option', { value: '' }, /c-tick|c-ico/.test(c.cls) ? '–' : c.cls === 'c-cat' ? 'Todas' : 'Todos'), c.filtro.opciones.map(([v, l]) => h('option', { value: v }, l)));
-      ctl.addEventListener('change', () => { if (ctl.value) cf.set(i, ctl.value); else cf.delete(i); if (c.cls === 'c-cat') { cf.delete(iSub); pintarSubsFiltro(); } alFiltrar(); });
+      ctl.addEventListener('change', () => { if (ctl.value) cf.set(i, ctl.value); else cf.delete(i); if (c.cls === 'c-cat') { cf.delete(iSub); pintarSubsFiltro(); } guardaCf(); alFiltrar(); });
     } else {
       ctl = h('input', { type: 'search', class: 'ff', placeholder: c.filtro.tipo === 'importe' ? '>100' : 'Filtrar', title: c.filtro.tipo === 'importe' ? 'Ejemplos: 100 · >100 · <50 · 100-200' : 'Contiene…', 'aria-label': `Filtro ${c.label}` });
-      ctl.addEventListener('input', () => { const v = ctl.value.trim(); if (v) cf.set(i, v); else cf.delete(i); alFiltrar(); });
+      ctl.addEventListener('input', () => { const v = ctl.value.trim(); if (v) cf.set(i, v); else cf.delete(i); guardaCf(); alFiltrar(); });
     }
-    controlesFiltro.push(ctl);
+    controlesFiltro.push(ctl); ctlPorIdx.set(i, ctl);
     t.append(ctl);
     return t;
   });
@@ -219,7 +225,40 @@ export async function renderGastos(view, ctx) {
     selSubFiltro.replaceChildren(h('option', { value: '' }, 'Todas'), ...subs.map((x) => h('option', { value: x.id }, x.nombre)));
     selSubFiltro.disabled = !cat;
   }
-  pintarSubsFiltro();
+  // restaurar los filtros de columna guardados (los que ya no existen se descartan)
+  { const g = leerV('gastos.cf', {});
+    for (const [cls, v] of Object.entries(g || {})) { const i = COLDEF.findIndex((c) => c.cls === cls && c.filtro); if (i >= 0 && v) cf.set(i, v); }
+    for (const [i, v] of [...cf]) {
+      const ctl = ctlPorIdx.get(i); const fl = COLDEF[i].filtro;
+      if (!ctl) { cf.delete(i); continue; }
+      if (fl.tipo === 'fecha') { if (typeof v !== 'object') cf.delete(i); continue; }
+      if (typeof v !== 'string') { cf.delete(i); continue; }
+      if (fl.tipo === 'select' && i === iSub) continue;
+      if (fl.tipo === 'select' && !fl.opciones.some(([o]) => o === v)) { cf.delete(i); continue; }
+      ctl.value = v;
+    }
+    pintarSubsFiltro();
+    const vs = cf.get(iSub); if (vs !== undefined) { selSubFiltro.value = vs; if (selSubFiltro.value !== vs) cf.delete(iSub); }
+    guardaCf(); }
+
+  function quitarFiltros() {
+    cf.clear(); f.q = ''; fQ.value = ''; f.estado = ''; fEstado.value = '';
+    for (const x of controlesFiltro) { if (x.poner) x.poner(FECHA_VACIA); else x.value = ''; }
+    pintarSubsFiltro(); guardaCf(); alFiltrar();
+  }
+  aviso = crearAviso({
+    obtener: () => [
+      ['Búsqueda', f.q.trim() ? `«${f.q.trim()}»` : ''],
+      ['Estado', f.estado ? fEstado.selectedOptions[0]?.textContent || f.estado : ''],
+      ...[...cf].map(([i, v]) => {
+        const c = COLDEF[i]; const et = c.title || c.label || 'Columna';
+        if (c.filtro.tipo === 'fecha') return [et, describirFecha(v)];
+        if (c.filtro.tipo === 'select') return [et, c.filtro.opciones.find(([o]) => o === v)?.[1] || subPorId.get(v)?.nombre || catPorId.get(v)?.nombre || v];
+        return [et, c.filtro.tipo === 'importe' ? `importe ${v}` : `contiene «${v}»`];
+      }),
+    ],
+    limpiar: quitarFiltros,
+  });
 
   function pasaImporte(v, expr) {
     const n = (t) => Number(String(t).replace(/\s|€/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'));
@@ -232,7 +271,7 @@ export async function renderGastos(view, ctx) {
   function filtrados() {
     const q = normalizar(f.q.trim());
     const enCentro = new Set(ctx.filtrarCentro(gastos));
-    const activos = [...cf.entries()].map(([i, v]) => [COLDEF[i].filtro, v, normalizar(v)]);
+    const activos = [...cf.entries()].map(([i, v]) => [COLDEF[i].filtro, v, typeof v === 'string' ? normalizar(v) : '']);
     const c = orden.campo >= 0 ? COLDEF[orden.campo] : null;
     const dir = orden.asc ? 1 : -1;
     return gastos.filter((g) => {
@@ -247,6 +286,7 @@ export async function renderGastos(view, ctx) {
       if (f.estado === 'comentarios' && !(g.comentarios || '').trim()) return false;
       if (q && !normalizar(`${g.empresa} ${g.concepto} ${g.factura_nr} ${g.comentarios} ${g.cantidad}`).includes(q)) return false;
       for (const [fl, v, vn] of activos) {
+        if (fl.tipo === 'fecha' && !pasaFecha(fl.valor(g), v)) return false;
         if (fl.tipo === 'select' && fl.valor(g) !== v) return false;
         if (fl.tipo === 'texto' && !normalizar(fl.valor(g) || '').includes(vn)) return false;
         if (fl.tipo === 'importe' && !pasaImporte(fl.valor(g), v)) return false;
@@ -457,6 +497,7 @@ export async function renderGastos(view, ctx) {
     chkTodos.checked = lista.length > 0 && lista.every((g) => seleccion.has(g.id));
     pintarAviso();
     pintarBarra();
+    aviso.actualizar();
     clear(pie,
       h('span', {}, lista.length > limite ? `Mostrando ${limite} de ${lista.length}` : `${lista.length} gastos`),
       lista.length > limite ? h('button', { class: 'btn', onclick: () => { limite += POR_PAGINA * 3; pintar(); } }, 'Mostrar más') : null);
@@ -477,8 +518,8 @@ export async function renderGastos(view, ctx) {
     ctx.setGastos(curso.id, gastos);
     pintar();
   }
-  function nuevoGasto(inicial) {
-    abrirGastoForm({ gasto: null, ctx, inicial, onGuardado: (nuevo) => reemplazar(null, nuevo), onBorrado: () => {} });
+  function nuevoGasto(inicial, escaneo) {
+    abrirGastoForm({ gasto: null, ctx, inicial, escaneo, onGuardado: (nuevo) => reemplazar(null, nuevo), onBorrado: () => {} });
   }
   function exportar() {
     const cols = ['fecha_factura', 'mes', 'contable', 'tipo', 'empresa', 'factura_nr', 'concepto', 'fecha_pago', 'cantidad', 'categoria', 'subcategoria', 'periodicidad', 'metodo_pago', 'pago', 'check_banca', 'fiscontal', 'fiscontal_fecha', 'sin_factura', 'link_factura', 'nif', 'iban', 'swift', 'comentarios'];
@@ -518,7 +559,8 @@ export async function renderGastos(view, ctx) {
   }
   if (ctx.state.filtroInicial) { f.estado = ctx.state.filtroInicial; ctx.state.filtroInicial = null; }
   if (/pendientes/.test(window.location.hash)) f.estado = 'revisar';
-  fEstado.value = f.estado;
+  if (f.estado && ![...fEstado.options].some((o) => o.value === f.estado)) f.estado = '';
+  fEstado.value = f.estado; fQ.value = f.q;
 
   clear(view,
     avisoRevision,
@@ -528,9 +570,10 @@ export async function renderGastos(view, ctx) {
       h('div', { class: 'section-actions' },
         h('button', { class: 'btn', onclick: exportar }, 'Exportar CSV'),
         h('button', { class: 'btn', onclick: () => generarGastosDelMes(ctx, { curso, gastos, onCreados: (creados) => { gastos.unshift(...creados); ctx.setGastos(curso.id, gastos); pintar(); } }) }, 'Generar gastos del mes'),
-        h('button', { class: 'btn', onclick: () => abrirEscaner(ctx, { onDatos: (inicial) => nuevoGasto(inicial) }) }, 'Escanear factura'),
+        h('button', { class: 'btn', onclick: () => abrirEscaner(ctx, { onDatos: (inicial, info) => nuevoGasto(inicial, info) }) }, 'Escanear factura'),
         h('button', { class: 'btn primary', onclick: () => nuevoGasto() }, '+ Nuevo gasto'))),
     h('div', { class: 'filters filters-gastos' }, h('div', { class: 'search' }, fQ), fEstado),
+    aviso,
     barra, empresasDL,
     h('div', { class: 'table-wrap' }, h('table', { class: 'data tabla-gastos' + (conCentro ? ' con-centro' : '') },
       h('colgroup', {}, COLS.map(([c]) => h('col', { class: c }))),

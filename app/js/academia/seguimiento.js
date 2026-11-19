@@ -1,9 +1,10 @@
 // Seguimiento: contactos que aún no son alumnos (captación) y feed de anotaciones de todos los alumnos.
+import { vista as vistaEstado, leerV, guardarV, vincular, escuchar, crearAviso, busqueda } from '../vista.js';
 import { h, clear, cargando, toast, confirmar, fmtFecha, normalizar } from '../ui.js';
 import * as api from './api.js';
 import { campo, txt, area, fecha, sel, drawer, cabecera, tabla, pill, pillColor, selColor, colorLista, edad, edadNumerica, nivelPorEdad, PALETA_LISTAS, nombreAlumno, guardarBoton, buscadorAlumno, refrescar } from './kit.js';
 
-let vista = 'contactos';
+let vista = 'contactos'; // se recuerda al refrescar (se lee al pintar)
 
 export async function renderSeguimiento(view, ctx) {
   clear(view, cargando());
@@ -13,13 +14,20 @@ export async function renderSeguimiento(view, ctx) {
   const puedeListas = ctx.esAdmin() || ctx.edita('ac_alumnos');
   const editor = ctx.edita('ac_seguimiento');
   const verContactos = ctx.ve('ac_seguimiento'); // con «lo suyo» no hay contactos de captación, solo anotaciones de sus alumnos
+  vista = leerV('seguimiento.vista', 'contactos');
   if (!verContactos) vista = 'notas';
   const recargar = () => { refrescar(); };
   const cont = h('div');
-  const f = { q: '', sit: '', con: '', tipo: '' };
+  const f = vistaEstado('seguimiento.f', { q: '', sit: '', con: '', tipo: '' });
+  if (!['contactos', 'notas'].includes(vista)) vista = 'contactos';
   const seg = h('div', { class: 'segmented', role: 'tablist' }, [...(verContactos ? [['contactos', 'Contactos (captación)']] : []), ['notas', 'Anotaciones de alumnos']].map(([k, l]) =>
-    h('button', { class: 'seg-btn', role: 'tab', type: 'button', 'aria-selected': String(vista === k), onclick: () => { vista = k; seg.querySelectorAll('.seg-btn').forEach((b) => b.setAttribute('aria-selected', String(b.textContent === l))); f.q = ''; pintar(); } }, l)));
-  const buscar = h('input', { type: 'search', placeholder: 'Buscar…', oninput: (e) => { f.q = e.target.value; pintarLista(); } });
+    h('button', { class: 'seg-btn', role: 'tab', type: 'button', 'aria-selected': String(vista === k), onclick: () => { vista = k; guardarV('seguimiento.vista', k); seg.querySelectorAll('.seg-btn').forEach((b) => b.setAttribute('aria-selected', String(b.textContent === l))); f.q = ''; pintar(); } }, l)));
+  const buscar = vincular(f, 'q', h('input', { type: 'search', placeholder: 'Buscar…', oninput: (e) => { f.q = e.target.value; pintarLista(); } }));
+  const aviso = crearAviso({
+    obtener: () => (vista === 'contactos' ? [['Búsqueda', busqueda(f.q)], ['Situación', f.sit], ['Cómo nos conoció', f.con]] : [['Búsqueda', busqueda(f.q)], ['Tipo', f.tipo]]),
+    limpiar: () => { f.q = ''; f.sit = ''; f.con = ''; f.tipo = ''; pintar(); },
+  });
+  escuchar(f, () => aviso.actualizar());
   const filtroSel = h('span', { style: 'display:contents' });
   const lista = h('div');
 
@@ -73,7 +81,7 @@ export async function renderSeguimiento(view, ctx) {
   }
   const nuevo = editor ? h('button', { class: 'btn primary small', type: 'button', onclick: () => (vista === 'contactos' ? abrirContacto(null, { ls, alumnos, ctx, recargar }) : abrirNota({ alumnos, ctx, recargar })) }, '+ Nuevo') : null;
   const gestionar = verContactos && puedeListas ? h('button', { class: 'btn small', type: 'button', onclick: () => abrirListas({ recargar }) }, '⚙ Listas') : null;
-  clear(view, cabecera('Seguimiento', verContactos ? 'Captación de nuevos alumnos y notas del día a día' : 'Notas del día a día de tus alumnos', verContactos ? seg : null, gestionar, nuevo), h('div', { class: 'filters filters-3b' }, buscar, filtroSel), lista);
+  clear(view, cabecera('Seguimiento', verContactos ? 'Captación de nuevos alumnos y notas del día a día' : 'Notas del día a día de tus alumnos', verContactos ? seg : null, gestionar, nuevo), h('div', { class: 'filters filters-3b' }, buscar, filtroSel), aviso, lista);
   pintar();
 }
 

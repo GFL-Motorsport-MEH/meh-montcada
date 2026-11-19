@@ -1,6 +1,6 @@
 // Supabase simulado para probar el módulo Academia (sin red). Un solo usuario admin ya con sesión.
 const hoy = new Date().toISOString().slice(0, 10);
-const ADMIN = { id: 'u-admin', email: 'admin@test.es', nombre: 'Admin Prueba', rol: window.__ROL || 'admin', activo: true, debe_cambiar_password: false, created_at: hoy };
+const ADMIN = { id: 'u-admin', email: 'admin@test.es', nombre: 'Admin Prueba', rol: window.__ROL || 'admin', centro_id: window.__CENTRO_PERFIL || null, activo: true, debe_cambiar_password: false, created_at: hoy };
 const CURSOS = [{ id: 'c1', nombre: '2025.26', fecha_inicio: '2025-09-01', fecha_fin: '2026-08-31' }, { id: 'c2', nombre: '2026.27', fecha_inicio: '2026-09-01', fecha_fin: '2027-08-31' }];
 const L = (lista, ...vals) => vals.map((valor, i) => ({ id: `l-${lista}-${i}`, lista, valor, orden: i }));
 const ACAD = ['ac_alumnos', 'ac_pagos', 'ac_remesas', 'ac_seguimiento', 'ac_tutorias', 'ac_bajas', 'ac_grupos', 'ac_calendario', 'ac_recogidas', 'ac_tareas', 'ac_biblioteca', 'ac_documentos', 'ac_programaciones', 'ac_formularios', 'ac_portal'];
@@ -13,9 +13,12 @@ const PERMISOS_DB = [
   P('profesora', 'ac_grupos', 'propio', false), P('profesora', 'ac_calendario', 'todo', false), P('profesora', 'ac_tutorias', 'propio', true), P('profesora', 'ac_seguimiento', 'propio', true), P('profesora', 'ac_biblioteca', 'todo', true), P('profesora', 'ac_documentos', 'todo', false), P('profesora', 'ac_portal', 'propio', false), ...TR.map((k) => P('profesora', k, 'propio', false)),
   P('escaner', 'escaner', 'todo', true),
 ];
+const AL = ['al_ficha', 'al_notas', 'al_tareas', 'al_informes', 'al_comunicaciones', 'al_documentos', 'al_actividades'];
+PERMISOS_DB.push(...AL.map((k) => P('direccion', k, 'todo', true)), ...AL.map((k) => P('coordinacion', k, 'todo', true)),
+  P('profesora', 'al_ficha', 'propio', false), P('profesora', 'al_notas', 'propio', true), P('profesora', 'al_tareas', 'propio', true), P('profesora', 'al_informes', 'propio', true), P('profesora', 'al_comunicaciones', 'propio', true), P('profesora', 'al_actividades', 'todo', false));
 const db = {
   roles: ROLES_DB, rol_permisos: PERMISOS_DB,
-  profiles: [ADMIN], cursos: CURSOS, categorias: [], subcategorias: [], centros: [{ id: 'ce1', nombre: 'MONTCADA', principal: true, activo: true, orden: 0 }], gastos: [], listas: [], empresas: [],
+  profiles: [ADMIN], cursos: CURSOS, categorias: [], subcategorias: [], centros: [{ id: 'ce1', nombre: 'MONTCADA', principal: true, activo: true, orden: 0 }, { id: 'ce2', nombre: 'ALCANTARILLA', principal: false, activo: true, orden: 1 }], gastos: [], listas: [], empresas: [],
   ac_listas: [...L('modalidad', 'Babies', 'Kids', 'Teens', 'Adults'), ...L('metodo_pago', 'Domiciliacion', 'Efectivo'), ...L('motivo_baja', 'Incompatibilidad horaria', 'Otros'), ...L('categoria_documento', 'Protocolo', 'Familias'), ...L('situacion_contacto', 'POSIBLE ALUMNO', 'EN ESPERA', 'APUNTADO'), ...L('como_conocio', 'Colegio', 'Instagram', 'Correo'), { id: 'l-cc-fam', lista: 'como_conocio', valor: 'Familia de un alumno', orden: 9, pide_alumno: true }, ...[['BABIES', 0, 3], ['KIDS', 4, 11], ['TEENS', 12, 17], ['ADULTS', 18, 120]].map(([valor, edad_min, edad_max], i) => ({ id: `l-nc-${i}`, lista: 'nivel_contacto', valor, orden: i, edad_min, edad_max })), ...L('nivel_contacto', 'LEVEL 1'), ...L('descuento', 'Hermanos')],
   ac_formularios: [], ac_formulario_respuestas: [], ac_responsables: [], ac_responsables_priv: [], ac_vinculos: [], ac_profesoras: [], ac_aulas: [], ac_alumnos: [], ac_inscripciones: [], ac_grupos: [], ac_sesiones: [], ac_alumno_grupo: [], ac_remesas: [], ac_remesas_lista: [], ac_domiciliaciones: [], ac_domiciliacion_notas: [], ac_cuota_cambios: [], ac_remesa_envios: [], ac_remesa_envio_resumen: [], ac_remesa_envio_lineas: [], ac_cuotas: [], ac_wp_precios: [], ac_bajas: [], ac_contactos: [], ac_tutorias: [], ac_anotaciones: [], ac_tareas: [], ac_mejoras_software: [], ac_reuniones: [], ac_reunion_temas: [], ac_documentos: [], ac_prestamos: [], ac_biblioteca_items: [], ac_recogidas: [], ac_recogidas_pagos: [], ac_autorizados: [], ac_autorizados_priv: [], ac_calendario_dias: [], ac_calendario_marcas: [], ac_descuentos: [], ac_cuotas_tarifa: [], ac_nivel_historial: [], ac_portal_docs: [], tr_contratos: [], tr_horario: [], tr_horas: [], ui_preferencias: [], ui_orden_tablas: [],
 };
@@ -37,16 +40,24 @@ const REL = {
   ac_formulario_respuestas: { alumno: ['ac_alumnos', 'alumno_id', 'uno'] }, ac_tutorias: { alumno: ['ac_alumnos', 'alumno_id', 'uno'], profesora: ['ac_profesoras', 'profesora_id', 'uno'] },
   ac_anotaciones: { alumno: ['ac_alumnos', 'alumno_id', 'uno'], profesora: ['ac_profesoras', 'profesora_id', 'uno'] },
 };
+Object.assign(db, { al_evaluaciones: [], al_tareas_extra: [], al_informes: [], al_mensajes: [], al_documentos_familia: [], al_actividades: [], al_actividad_inscritos: [] });
+for (const t of ['al_evaluaciones', 'al_tareas_extra', 'al_informes']) REL[t] = { profesora: ['ac_profesoras', 'profesora_id', 'uno'] };
 let session = { user: { id: ADMIN.id, email: ADMIN.email }, access_token: 'x' };
 const listeners = [];
 let nextId = 1;
 window.__mock = { db, calls: [] };
+if (typeof window.__SEED === 'function') window.__SEED(); // datos de partida que pone cada prueba (antes de que la app lea nada)
 
 class Q {
   constructor(t) { this.t = t; this.f = []; this.orders = []; this.op = 'select'; }
   select(cols, opts) { this.cols = cols || '*'; this.ret = true; if (opts?.count) this.cnt = true; return this; }
   eq(c, v) { this.f.push((r) => r[c] === v); return this; }
   is(c, v) { this.f.push((r) => (r[c] ?? null) === v); return this; }
+  or(txt) { // solo «col.is.null,col.eq.valor»
+    const ps = String(txt).split(',').map((x) => x.split('.'));
+    this.f.push((r) => ps.some(([c, op, v]) => (op === 'is' ? (r[c] ?? null) === null : r[c] === v)));
+    return this;
+  }
   in(c, vs) { this.f.push((r) => vs.includes(r[c])); return this; }
   order(c, o = {}) { this.orders.push([c, o.ascending !== false]); return this; }
   range(a, b) { this.rng = [a, b]; return this; }
@@ -122,7 +133,7 @@ export function createClient() {
         }
         if (body?.accion === 'crear') {
           if (body.email && ps.some((x) => x.email === body.email)) return { data: { error: 'Ya existe un usuario con ese email' }, error: null };
-          const perfil = { id: 'u-' + (ps.length + 1), email: body.email || null, nombre: body.nombre, rol: body.rol, activo: true, debe_cambiar_password: !!body.email, created_at: hoy };
+          const perfil = { id: 'u-' + (ps.length + 1), email: body.email || null, nombre: body.nombre, rol: body.rol, centro_id: body.centro_id || null, activo: true, debe_cambiar_password: !!body.email, created_at: hoy };
           ps.push(perfil); return { data: { perfil }, error: null };
         }
         if (body?.accion === 'email') {
@@ -147,7 +158,7 @@ export function createClient() {
         }
         return { data: n, error: null };
       }
-      if (fn === 'equipo_tareas') return { data: db.profiles.map((x) => ({ id: x.id, nombre: x.nombre, email: x.email, rol: x.rol, siglas: x.siglas })), error: null };
+      if (fn === 'equipo_tareas') return { data: db.profiles.map((x) => ({ id: x.id, nombre: x.nombre, email: x.email, rol: x.rol, siglas: x.siglas, centro_id: x.centro_id || null })), error: null };
       return { data: null, error: { message: 'función desconocida' } };
     },
     auth: {

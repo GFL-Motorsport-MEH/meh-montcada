@@ -1,5 +1,6 @@
 // Grupos: listado de grupos del curso con su profesora, aula, horario y alumnos (nombres completos); ficha del grupo; profesoras y aulas.
 // Los horarios (por franjas, parrilla semanal, por profesora/aula) están en horarios.js y el calendario anual en calendario.js.
+import { leerV, guardarV } from '../vista.js';
 import { h, clear, cargando, toast, confirmar, normalizar } from '../ui.js';
 import * as api from './api.js';
 import { avisosAlumnoGrupo, confirmarAvisos } from './avisos.js';
@@ -12,6 +13,7 @@ const activos = (g) => g.miembros.filter((m) => !m.fecha_baja);
 
 export async function renderGrupos(view, ctx) {
   clear(view, cargando());
+  vistaActual = leerV('grupos.vista', 'lista'); verAlumnos = leerV('grupos.verAlumnos', true); // se recuerdan al refrescar
   const curso = ctx.cursoActual();
   const [todosGrupos, profes, aulas, alumnos, ls] = await Promise.all([api.grupos(curso.id), api.profesoras(), api.aulas(), api.alumnos(), api.listas()]);
   // con el permiso «lo suyo» solo se enseñan los grupos de esta profesora (la base de datos ya limita los alumnos)
@@ -24,9 +26,9 @@ export async function renderGrupos(view, ctx) {
   const aluPor = new Map(alumnos.map((a) => [a.id, a]));
   const nombresAlumnos = (g) => activos(g).map((m) => aluPor.get(m.alumno_id)).filter(Boolean).map(nombreAlumno).sort((a, b) => a.localeCompare(b, 'es'));
   const cont = h('div');
-  if (propio && vistaActual === 'recursos') vistaActual = 'lista';
+  if (!['lista', 'recursos'].includes(vistaActual) || (propio && vistaActual === 'recursos')) vistaActual = 'lista';
   const seg = h('div', { class: 'segmented', role: 'tablist' }, [['lista', 'Grupos'], ...(propio ? [] : [['recursos', 'Profesoras y aulas']])].map(([k, l]) =>
-    h('button', { class: 'seg-btn', role: 'tab', type: 'button', 'aria-selected': String(vistaActual === k), onclick: () => { vistaActual = k; seg.querySelectorAll('.seg-btn').forEach((b) => b.setAttribute('aria-selected', String(b.textContent === l))); pintar(); } }, l)));
+    h('button', { class: 'seg-btn', role: 'tab', type: 'button', 'aria-selected': String(vistaActual === k), onclick: () => { vistaActual = k; guardarV('grupos.vista', k); seg.querySelectorAll('.seg-btn').forEach((b) => b.setAttribute('aria-selected', String(b.textContent === l))); pintar(); } }, l)));
 
   function pintar() {
     if (vistaActual === 'lista') {
@@ -42,7 +44,7 @@ export async function renderGrupos(view, ctx) {
       ], grupos.slice().sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { numeric: true })), { onClick: (g) => abrirGrupo(g, { ctx, curso, profes, aulas, alumnos, ls, recargar }), vacio: 'Aún no hay grupos en este curso. Crea el primero con «+ Nuevo grupo».' }));
     } else clear(cont, recursos(profes, aulas, editor, recargar));
   }
-  const chkAl = h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: verAlumnos, onchange: (e) => { verAlumnos = e.target.checked; pintar(); } }), ' Ver alumnos');
+  const chkAl = h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: verAlumnos, onchange: (e) => { verAlumnos = e.target.checked; guardarV('grupos.verAlumnos', verAlumnos); pintar(); } }), ' Ver alumnos');
   clear(view, cabecera(`Grupos · ${curso.nombre}`, propio ? `${grupos.length} grupos tuyos` : `${grupos.length} grupos`, seg, chkAl, editor && !propio ? h('a', { class: 'btn small', href: '#/ac_horarios_importar' }, 'Importar del Excel') : null, editor && !propio ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrirGrupo(null, { ctx, curso, profes, aulas, alumnos, ls, recargar }) }, '+ Nuevo grupo') : null),
     propio && !yo ? h('div', { class: 'banner warn' }, 'Tu usuario todavía no está enlazado a una ficha de profesora, así que no se te asigna ningún grupo. Pide a un administrador que lo enlace en Usuarios.') : null, cont);
   pintar();

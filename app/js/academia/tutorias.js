@@ -1,6 +1,7 @@
 // Tutorías: cada una cuelga de un alumno y, al marcarla como hecha, deja una anotación en su seguimiento.
 import { h, clear, cargando, toast, confirmar, fmtFecha, hoyISO, normalizar } from '../ui.js';
 import * as api from './api.js';
+import { vista, vincular, avisoFiltros, busqueda } from '../vista.js';
 import { campo, txt, area, fecha, sel, drawer, cabecera, tabla, pill, nombreAlumno, hhmm, guardarBoton, buscadorAlumno, refrescar } from './kit.js';
 
 export async function renderTutorias(view, ctx) {
@@ -11,7 +12,8 @@ export async function renderTutorias(view, ctx) {
   const yo = propio ? ctx.miProfesora(profes) : null;
   const editor = ctx.edita('ac_tutorias') && (!propio || !!yo);
   const recargar = () => { api.invalidar(); refrescar(); };
-  const f = { q: '', estado: 'pendiente' };
+  const f = vista('tutorias.f', { q: '', estado: 'pendiente' }); // se recuerda al refrescar
+  const ESTADOS_T = [['', 'Todas'], ['pendiente', 'Pendientes'], ['hecha', 'Hechas'], ['cancelada', 'Canceladas']];
   const hoy = hoyISO();
   const cont = h('div');
   function pintar() {
@@ -26,7 +28,9 @@ export async function renderTutorias(view, ctx) {
   clear(view, cabecera('Tutorías', propio ? 'Tus reuniones con familias' : 'Reuniones con familias, enlazadas al seguimiento de cada alumno', ctx.ve('ac_formularios') ? h('button', { class: 'btn small', type: 'button', onclick: () => { location.hash = '#/ac_formularios'; } }, 'Solicitudes de familias') : null,
     editor ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrir(null, { alumnos, profes, curso, ctx, recargar }) }, '+ Nueva tutoría') : null),
     propio && !yo ? h('div', { class: 'banner warn' }, 'Tu usuario todavía no está enlazado a una ficha de profesora, así que no se te asigna ninguna tutoría. Pide a un administrador que lo enlace en Usuarios.') : null,
-    h('div', { class: 'filters filters-2' }, h('input', { type: 'search', placeholder: 'Buscar alumno o motivo…', oninput: (e) => { f.q = e.target.value; pintar(); } }), sel([['', 'Todas'], ['pendiente', 'Pendientes'], ['hecha', 'Hechas'], ['cancelada', 'Canceladas']], f.estado, { onchange: (e) => { f.estado = e.target.value; pintar(); } })), cont);
+    h('div', { class: 'filters filters-2' }, vincular(f, 'q', h('input', { type: 'search', placeholder: 'Buscar alumno o motivo…', oninput: (e) => { f.q = e.target.value; pintar(); } })),
+      vincular(f, 'estado', sel(ESTADOS_T, f.estado, { onchange: (e) => { f.estado = e.target.value; pintar(); } }))),
+    avisoFiltros(f, { etiquetas: { q: 'Búsqueda', estado: 'Estado' }, formato: { q: busqueda, estado: (v) => ESTADOS_T.find(([k]) => k === v)?.[1] || v }, alLimpiar: () => pintar() }), cont);
   pintar();
 }
 

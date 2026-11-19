@@ -1,4 +1,4 @@
-// Módulo Academia (en desarrollo): gestión diaria de la academia.
+// Módulo Academia: gestión diaria de la academia.
 // De momento muestra lo que ya se puede saber con los datos existentes y el plan del módulo.
 import { h, clear, cargando, fmtEUR, normalizar } from '../ui.js';
 import * as db from '../db.js';
@@ -23,7 +23,6 @@ export async function renderAcademia(view, ctx) {
   const kpi = (label, valor, sub) => h('div', { class: 'card kpi' }, h('div', { class: 'label' }, label), h('div', { class: 'value' }, valor), sub ? h('div', { class: 'sub' }, sub) : null);
 
   clear(view,
-    h('div', { class: 'banner' }, h('span', {}, h('strong', {}, 'Módulo en desarrollo. '), 'Aquí irá la gestión diaria de la academia. Mientras tanto, estas cifras salen de la facturación importada del CRM.')),
     h('div', { class: 'section-head' }, h('div', {}, h('h2', {}, `Academia · ${curso.nombre}`), h('div', { class: 'count' }, 'Resumen del curso a partir de los recibos'))),
     h('div', { class: 'kpi-row' },
       kpi('Alumnos con recibos', String(alumnos.size), 'Alumnos distintos con algún recibo en el curso'),

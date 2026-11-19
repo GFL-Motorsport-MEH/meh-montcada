@@ -4,11 +4,12 @@ import { h, clear, cargando, toast, confirmar, fmtFecha, hoyISO, normalizar, fmt
 import * as api from './api.js';
 import { campo, txt, area, fecha, sel, drawer, cabecera, tabla, pill, nombreAlumno, hhmm, DIAS, DIAS_CORTO, guardarBoton, buscadorAlumno, refrescar, esVerdad } from './kit.js';
 import { parseFecha } from './importar.js';
+import { vista as vistaEstado, leerV, guardarV, vincular, crearAviso, busqueda } from '../vista.js';
 
 const SERVICIOS = [['tarde', 'Tarde (colegio → academia)'], ['extraescolar', 'Extraescolar'], ['otro', 'Otro']];
 const servicioTxt = (v) => (SERVICIOS.find(([k]) => k === v) || [0, v])[1].replace(/ \(.*\)/, '');
 const diasTxt = (dias) => (dias || []).slice().sort().map((d) => DIAS_CORTO[d]).join(' ');
-let f = { q: '', servicio: '', centro: '', dia: '', falta: false, pq: '', pmes: '' };
+let f = null; // filtros (se crean al pintar, ya con el usuario conocido; se recuerdan al refrescar)
 const PRECIO = 10; // cada pago de recogida: 10 € en efectivo
 const DOCS = [['doc_autorizacion', 'autorizacion', 'Autorización'], ['doc_dni_padres', 'dni_padres', 'DNI padres']];
 const faltaDoc = (r) => DOCS.some(([c]) => !r[c]);
@@ -32,16 +33,20 @@ let vista = 'dia';
 export async function renderRecogidas(view, ctx) {
   clear(view, cargando());
   const curso = ctx.cursoActual(); const editor = ctx.edita('ac_recogidas');
+  f = vistaEstado('recogidas.f', { q: '', servicio: '', centro: '', dia: '', diaFecha: '', pq: '', pmes: '' });
+  vista = leerV('recogidas.vista', 'dia');
+  if (!['dia', 'todas', 'pagos'].includes(vista)) vista = 'dia';
   const [recs, alumnos, auts, pagos] = await Promise.all([api.recogidas(curso.id), api.alumnos(), api.autorizados(), api.recogidasPagos(curso.id)]);
   const autDe = new Map(); for (const a of auts) (autDe.get(a.alumno_id) || autDe.set(a.alumno_id, []).get(a.alumno_id)).push(a);
   const recargar = () => { refrescar(); };
   const centros = [...new Set(recs.map((r) => r.centro).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
-  if (!f.dia) { const d = new Date().getDay(); f.dia = String(d >= 1 && d <= 5 ? d : 1); }
+  if (!f.dia || f.diaFecha !== hoyISO()) { const d = new Date().getDay(); f.dia = String(d >= 1 && d <= 5 ? d : 1); f.diaFecha = hoyISO(); } // la hoja del día arranca cada día en el de hoy
   const cont = h('div'); const resumen = h('div', { class: 'small muted' }); const aviso = h('div');
   const ctxDocs = { editor, recargar };
   const quienes = (r) => (autDe.get(r.alumno_id) || []).map((a) => `${a.nombre}${a.parentesco ? ` (${a.parentesco})` : ''}${a.telefono ? ` ${a.telefono}` : ''}`);
 
   function pintar() {
+    avisoF.actualizar();
     if (vista === 'pagos') { pintarPagos(); return; }
     const q = normalizar(f.q);
     let filas = recs.filter((r) => r.activa && (!f.servicio || r.servicio === f.servicio) && (!f.centro || r.centro === f.centro) && (!q || normalizar(`${nombreAlumno(r.alumno)} ${r.centro || ''} ${quienes(r).join(' ')}`).includes(q)));
@@ -62,10 +67,10 @@ export async function renderRecogidas(view, ctx) {
     ];
     clear(cont, tabla(cols, filas.slice(0, 3000), { onClick: (r) => abrir(r, { alumnos, autDe, centros, curso, ctx, recargar }), vacio: recs.length ? 'No hay recogidas con este filtro.' : 'Todavía no hay recogidas. Usa «Importar del Excel» o «+ Nueva recogida».' }));
   }
-  const seg = h('div', { class: 'segmented', role: 'tablist' }, [['dia', 'Hoja del día'], ['todas', 'Todas'], ['pagos', 'Pagos']].map(([k, l]) => h('button', { class: 'seg-btn', role: 'tab', type: 'button', 'aria-selected': String(vista === k), onclick: () => { vista = k; seg.querySelectorAll('.seg-btn').forEach((b) => b.setAttribute('aria-selected', String(b.textContent === l))); selDia.hidden = k !== 'dia'; selServ.hidden = selCentro.hidden = k === 'pagos'; pintar(); } }, l)));
+  const seg = h('div', { class: 'segmented', role: 'tablist' }, [['dia', 'Hoja del día'], ['todas', 'Todas'], ['pagos', 'Pagos']].map(([k, l]) => h('button', { class: 'seg-btn', role: 'tab', type: 'button', 'aria-selected': String(vista === k), onclick: () => { vista = k; guardarV('recogidas.vista', k); seg.querySelectorAll('.seg-btn').forEach((b) => b.setAttribute('aria-selected', String(b.textContent === l))); selDia.hidden = k !== 'dia'; selServ.hidden = selCentro.hidden = k === 'pagos'; pintar(); } }, l)));
   // ---- pagos de recogidas: cada uno 10 € en efectivo; totales; «Llevar a Ingresos» solo cuando se pulsa ----
   function pintarPagos() {
-    clear(aviso); resumen.textContent = '';
+    avisoF.actualizar(); clear(aviso); resumen.textContent = '';
     const q = normalizar(f.pq);
     const lista = pagos.filter((p) => (!f.pmes || mesDe(p.fecha) === f.pmes) && (!q || normalizar(nombreAlumno(p.alumno)).includes(q))).sort((a, b) => b.fecha.localeCompare(a.fecha) || nombreAlumno(a.alumno).localeCompare(nombreAlumno(b.alumno), 'es'));
     const suma = (l) => l.reduce((s, p) => s + Number(p.importe), 0);
@@ -74,7 +79,7 @@ export async function renderRecogidas(view, ctx) {
     const meses = MESES.filter((m) => pagos.some((p) => mesDe(p.fecha) === m));
     const porMes = meses.map((m) => { const l = pagos.filter((p) => mesDe(p.fecha) === m); return [m, l.length, suma(l)]; });
     const filtros = h('div', { class: 'filters filters-3' }, h('input', { type: 'search', placeholder: 'Buscar alumno…', value: f.pq, oninput: (e) => { f.pq = e.target.value; pintarPagos(); } }),
-      sel([['', 'Todos los meses'], ...meses.map((m) => [m, m[0].toUpperCase() + m.slice(1)])], f.pmes, { onchange: (e) => { f.pmes = e.target.value; pintarPagos(); } }),
+      sel([['', 'Todos los meses'], ...meses.map((m) => [m, m[0].toUpperCase() + m.slice(1)])], meses.includes(f.pmes) ? f.pmes : '', { onchange: (e) => { f.pmes = e.target.value; pintarPagos(); } }),
       h('div', { class: 'ac-fila' }, editor ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrirPago(null, { recs, alumnos, curso, recargar }) }, '+ Añadir pago') : null,
         editor ? h('button', { class: 'btn small', type: 'button', disabled: !pend.length, title: 'Suma estos pagos a la hoja Ingresos (fila Activities · Recogidas). Solo se hace cuando tú lo pides.', onclick: () => llevarAIngresos(pend) }, `Llevar a Ingresos (${pend.length} · ${fmtEUR2(suma(pend))})`) : null));
     async function llevarAIngresos(l) {
@@ -92,11 +97,18 @@ export async function renderRecogidas(view, ctx) {
   const selServ = sel([['', 'Todos los servicios'], ...SERVICIOS], f.servicio, { onchange: (e) => { f.servicio = e.target.value; pintar(); } });
   const selCentro = sel([['', 'Todos los centros'], ...centros], f.centro, { onchange: (e) => { f.centro = e.target.value; pintar(); } });
   selServ.hidden = selCentro.hidden = vista === 'pagos';
+  vincular(f, 'servicio', selServ); vincular(f, 'centro', selCentro); vincular(f, 'dia', selDia);
+  if (f.centro && !centros.includes(f.centro)) f.centro = '';
+  const avisoF = crearAviso({
+    obtener: () => (vista === 'pagos' ? [['Búsqueda', busqueda(f.pq)], ['Mes', f.pmes]] : [['Búsqueda', busqueda(f.q)], ['Servicio', f.servicio ? servicioTxt(f.servicio) : ''], ['Centro', f.centro]]),
+    limpiar: () => { f.q = ''; f.servicio = ''; f.centro = ''; f.pq = ''; f.pmes = ''; pintar(); },
+  });
+  seg.addEventListener('click', () => avisoF.actualizar());
   clear(view, cabecera(`Recogidas · ${curso.nombre}`, 'Quién recoge a cada niño, de dónde y a qué hora',
     h('a', { class: 'btn small', href: '#/ac_recogidas_importar' }, 'Importar del Excel'), h('button', { class: 'btn small', type: 'button', onclick: () => window.print() }, 'Imprimir'),
     editor ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrir(null, { alumnos, autDe, centros, curso, ctx, recargar }) }, '+ Nueva recogida') : null),
-    h('div', { class: 'filters filters-4' }, h('input', { type: 'search', placeholder: 'Buscar alumno, centro o persona…', oninput: (e) => { f.q = e.target.value; pintar(); } }),
-      h('div', {}, seg, selDia), selServ, selCentro), aviso, resumen, cont);
+    h('div', { class: 'filters filters-4' }, vincular(f, 'q', h('input', { type: 'search', placeholder: 'Buscar alumno, centro o persona…', oninput: (e) => { f.q = e.target.value; pintar(); } })),
+      h('div', {}, seg, selDia), selServ, selCentro), avisoF, aviso, resumen, cont);
   pintar();
 }
 

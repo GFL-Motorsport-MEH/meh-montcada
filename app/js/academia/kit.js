@@ -1,5 +1,7 @@
 // Piezas de interfaz compartidas por las pantallas de Academia.
 import { h, clear, normalizar } from '../ui.js';
+import { colorPersona } from '../personas.js';
+import { leerV, guardarV, filtroFecha, pasaFecha, aISO, fechaActiva, describirFecha, crearAviso, FECHA_VACIA } from '../vista.js';
 import { ordenGuardado, guardarOrden } from '../orden-compartido.js';
 
 export const DIAS = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
@@ -77,7 +79,7 @@ export function drawer({ titulo, ancho, onCerrar }) {
 }
 
 // color estable por nombre y círculo con las siglas de una persona (o «?» si no hay nadie asignado)
-export const colorDe = (s) => { let x = 0; for (const c of String(s)) x = (x * 31 + c.charCodeAt(0)) >>> 0; return `hsl(${x % 360} 42% 40%)`; };
+export const colorDe = (s) => { const c = colorPersona(s); if (c) return c; let x = 0; for (const c of String(s)) x = (x * 31 + c.charCodeAt(0)) >>> 0; return `hsl(${x % 360} 42% 40%)`; };
 export const iniciales = (n) => String(n).trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() || '').join('');
 export const avatarDe = (nombre, siglas) => (nombre
   ? h('span', { class: 'ac-av', title: nombre, style: `background:${colorDe(nombre)}` }, siglas || iniciales(nombre))
@@ -90,7 +92,8 @@ export function cabecera(titulo, sub, ...acciones) {
 
 // tabla con columnas [{t:'Título', v:(fila)=>nodo|texto, num?:bool, s?:(fila)=>valor para ordenar/filtrar, sin?:true para no ordenar ni filtrar}].
 // Pulsar un título ordena (A→Z, Z→A, sin orden); bajo los títulos hay un filtro por columna (lista si tiene pocos valores distintos).
-// El orden y los filtros se recuerdan mientras no se recargue la página (por tabla, según sus títulos).
+// El orden (de todo el equipo) y los filtros (de cada usuario) se recuerdan al refrescar la página (por tabla, según sus títulos).
+// Las columnas de fecha filtran entre fechas / posterior / anterior / igual; las de estado, tipo, nivel… son siempre un desplegable.
 const ESTADO_TABLAS = new Map();
 const textoCelda = (c, f) => {
   const v = c.s ? c.s(f) : c.v(f);
@@ -112,20 +115,34 @@ const comparar = (a, b) => {
   return a.localeCompare(b, 'es', { numeric: true, sensitivity: 'base' });
 };
 
+const ES_ESTADO = /estado|situaci[oó]n|^tipo$|nivel|servicio|m[eé]todo|modo|banco|centro|categor[ií]a|^pagad|^pago$|^cobr|^cuota$/i;
+const hashCorto = (t) => { let x = 5381; for (const c of t) x = ((x << 5) + x + c.charCodeAt(0)) >>> 0; return x.toString(36); };
+
 export function tabla(cols, filas, { onClick, vacio = 'Sin datos todavía.', clase = '', ordenable = true } = {}) {
   if (!filas.length) return h('div', { class: 'card empty' }, vacio);
   const clave = cols.map((c) => c.t).join('|');
+  const claveLS = 'tabla.' + hashCorto(clave);
   let est = ESTADO_TABLAS.get(clave);
-  if (!est) { // la última ordenación elegida por cualquiera del equipo (servidor)
+  if (!est) { // orden: la última elegida por cualquiera del equipo (servidor); filtros: los de este usuario (se mantienen al refrescar)
     const g = ordenGuardado('tabla:' + clave);
     const col = g && g.t ? cols.findIndex((c) => c.t === g.t) : -1;
-    est = { col, dir: col >= 0 && g.dir === -1 ? -1 : 1, filtros: {} };
+    const f = leerV(claveLS, null)?.filtros;
+    est = { col, dir: col >= 0 && g.dir === -1 ? -1 : 1, filtros: f && typeof f === 'object' ? f : {} };
   }
   ESTADO_TABLAS.set(clave, est);
+  const guardaFiltros = () => guardarV(claveLS, { filtros: est.filtros });
   const util = ordenable && filas.length > 1;
   const textos = util ? filas.map((f) => cols.map((c) => (c.sin || !c.t ? '' : textoCelda(c, f)))) : [];
   const filtrable = cols.map((c, j) => util && !c.sin && !!c.t && textos.some((t) => t[j] !== ''));
   const distintos = cols.map((c, j) => (filtrable[j] ? [...new Set(textos.map((t) => t[j]).filter(Boolean))] : []));
+  // fechas: todas las celdas con texto son «dd/mm/aaaa»; estados y listas cortas: siempre un desplegable con sus opciones
+  const esFecha = cols.map((c, j) => filtrable[j] && distintos[j].length > 0 && distintos[j].every((t) => comoFecha(t) !== null));
+  const esLista = cols.map((c, j) => filtrable[j] && !esFecha[j] && distintos[j].length > 1 && (ES_ESTADO.test(c.t.trim()) || (distintos[j].length <= 14 && filas.length > 12)));
+  cols.forEach((c, j) => { // un filtro guardado que ya no existe (otro valor de lista, otro tipo de columna) se descarta
+    const v = est.filtros[c.t];
+    if (v === undefined) return;
+    if (!filtrable[j] || (esFecha[j] ? typeof v !== 'object' : typeof v !== 'string') || (esLista[j] && !distintos[j].includes(v))) delete est.filtros[c.t];
+  });
   const nota = h('div', { class: 'ac-tabla-nota count' });
   const tbody = h('tbody');
   const ths = cols.map((c, j) => {
@@ -133,31 +150,43 @@ export function tabla(cols, filas, { onClick, vacio = 'Sin datos todavía.', cla
     if (filtrable[j]) th.addEventListener('click', () => { if (est.col !== j) { est.col = j; est.dir = 1; } else if (est.dir === 1) est.dir = -1; else { est.col = -1; est.dir = 1; } guardarOrden('tabla:' + clave, { t: est.col >= 0 ? cols[est.col].t : null, dir: est.dir }); pinta(); });
     return th;
   });
+  const ctrls = [];
   const controles = cols.map((c, j) => {
     if (!filtrable[j]) return h('th', {});
-    const lista = distintos[j].length > 1 && distintos[j].length <= 14 && filas.length > 12;
-    const el = lista
+    if (esFecha[j]) {
+      const el = filtroFecha(est.filtros[c.t], (d) => { if (fechaActiva(d)) est.filtros[c.t] = d; else delete est.filtros[c.t]; guardaFiltros(); pinta(); }, { compacto: true, etiqueta: c.t });
+      ctrls[j] = (v) => el.poner(v);
+      return h('th', { class: 'ac-filtro' }, el);
+    }
+    const el = esLista[j]
       ? h('select', { 'aria-label': 'Filtrar ' + c.t }, h('option', { value: '' }, 'Todos'), distintos[j].sort((a, b) => a.localeCompare(b, 'es', { numeric: true })).map((v) => h('option', { value: v }, v)))
       : h('input', { type: 'search', placeholder: 'Filtrar', 'aria-label': 'Filtrar ' + c.t });
-    el.value = est.filtros[j] || '';
-    el.addEventListener(lista ? 'change' : 'input', () => { est.filtros[j] = el.value; pinta(); });
+    el.value = est.filtros[c.t] || '';
+    el.addEventListener(esLista[j] ? 'change' : 'input', () => { if (el.value) est.filtros[c.t] = el.value; else delete est.filtros[c.t]; guardaFiltros(); pinta(); });
+    ctrls[j] = (v) => { el.value = v || ''; };
     return h('th', { class: 'ac-filtro' }, el);
+  });
+  const aviso = crearAviso({
+    obtener: () => cols.map((c, j) => { const v = est.filtros[c.t]; return [c.t, v === undefined ? '' : esFecha[j] ? describirFecha(v) : v]; }),
+    limpiar: () => { est.filtros = {}; guardaFiltros(); ctrls.forEach((fn, j) => fn && fn(esFecha[j] ? FECHA_VACIA : '')); pinta(); },
   });
   function pinta() {
     let idx = filas.map((_, i) => i);
-    const activos = Object.entries(est.filtros).filter(([, v]) => v);
+    const activos = cols.map((c, j) => [j, est.filtros[c.t]]).filter(([, v]) => v !== undefined && v !== '');
     for (const [j, v] of activos) {
-      const q = normalizar(v); const exacto = distintos[j].length > 1 && distintos[j].length <= 14 && filas.length > 12;
-      idx = idx.filter((i) => (exacto ? textos[i][j] === v : normalizar(textos[i][j]).includes(q)));
+      if (esFecha[j]) { idx = idx.filter((i) => pasaFecha(aISO(textos[i][j]), v)); continue; }
+      const q = normalizar(v);
+      idx = idx.filter((i) => (esLista[j] ? textos[i][j] === v : normalizar(textos[i][j]).includes(q)));
     }
     if (est.col >= 0) idx.sort((x, y) => est.dir * comparar(textos[x][est.col], textos[y][est.col]));
     ths.forEach((th, j) => { th.querySelector('.ac-orden').textContent = est.col === j ? (est.dir === 1 ? '▲' : '▼') : ''; });
     nota.textContent = util && (activos.length || est.col >= 0) ? `${idx.length} de ${filas.length} filas${activos.length ? ' · filtradas' : ''}` : '';
+    aviso.actualizar();
     clear(tbody, idx.length ? idx.map((i) => { const f = filas[i]; return h('tr', { class: onClick ? 'clickable' : '', onclick: onClick ? () => onClick(f) : null }, cols.map((c) => h('td', { class: c.num ? 'num' : '' }, c.v(f)))); })
       : h('tr', {}, h('td', { colspan: cols.length, class: 'empty' }, 'Ningún dato coincide con los filtros de la tabla.')));
   }
   pinta();
-  return h('div', { class: 'table-wrap card-tabla' }, nota, h('table', { class: 'data ac-tabla ' + clase },
+  return h('div', { class: 'table-wrap card-tabla' }, aviso, nota, h('table', { class: 'data ac-tabla ' + clase },
     h('thead', {}, h('tr', {}, ths), util && filtrable.some(Boolean) ? h('tr', { class: 'ac-fila-filtros' }, controles) : null), tbody));
 }
 

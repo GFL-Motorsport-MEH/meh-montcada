@@ -2,6 +2,7 @@
 // storytimes, fechas temáticas, camps, vacaciones, días sin clase y eventos. Un día puede tener varias marcas (p. ej. festivo dentro de un camp).
 // Clic en un día = editarlo; Mayús + clic en otro día = marcar todo el rango. El horario semanal está en «Horarios».
 // Segunda pestaña: el calendario de Google de la academia (se incrusta; hay que haber iniciado sesión en Google o tenerlo compartido).
+import { leerV, guardarV } from '../vista.js';
 import { h, clear, cargando, toast, confirmar } from '../ui.js';
 import * as api from './api.js';
 import { campo, sel, txt, fecha, drawer, guardarBoton } from './kit.js';
@@ -55,10 +56,11 @@ export function rangoCurso(curso) {
 }
 
 export async function renderCalendario(view, ctx) {
+  vistaCal = leerV('calendario.vista', 'curso'); if (!['curso', 'google'].includes(vistaCal)) vistaCal = 'curso';
   const curso = ctx.cursoActual();
   const cuerpo = h('div', { class: 'ac-cal-cuerpo' });
   const seg = h('div', { class: 'segmented', role: 'tablist' }, [['curso', 'Calendario del curso'], ['google', 'Google Calendar']].map(([k, l]) =>
-    h('button', { class: 'seg-btn', role: 'tab', type: 'button', 'aria-selected': String(vistaCal === k), onclick: () => { vistaCal = k; seg.querySelectorAll('.seg-btn').forEach((b) => b.setAttribute('aria-selected', String(b.textContent === l))); pintar(); } }, l)));
+    h('button', { class: 'seg-btn', role: 'tab', type: 'button', 'aria-selected': String(vistaCal === k), onclick: () => { vistaCal = k; guardarV('calendario.vista', k); seg.querySelectorAll('.seg-btn').forEach((b) => b.setAttribute('aria-selected', String(b.textContent === l))); pintar(); } }, l)));
   clear(view, h('div', { class: 'section-head' }, h('div', {}, h('h2', {}, `Calendario · ${curso.nombre}`)), h('div', { class: 'section-actions' }, seg)), cuerpo);
   async function pintar() {
     if (vistaCal === 'google') { clear(cuerpo, googleCalendar()); return; }

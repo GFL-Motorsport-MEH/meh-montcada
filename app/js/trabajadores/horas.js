@@ -1,5 +1,6 @@
 // TRABAJADORES · Bolsa de horas: movimientos (horas de más a favor, horas devueltas, ajustes); el saldo es la suma.
 // Cada trabajador ve el saldo y los movimientos suyos; quien gestiona (permiso «todo» + editar) ve el equipo y los apunta.
+import { leerV, guardarV, crearAviso } from '../vista.js';
 import { h, clear, cargando, toast, confirmar, fmtFecha, hoyISO } from '../ui.js';
 import * as api from './api.js';
 import { campo, sel, txt, numero, fecha, tabla, cabecera, refrescar } from '../academia/kit.js';
@@ -9,6 +10,7 @@ let verPersona = '';
 
 export async function renderHoras(view, ctx) {
   clear(view, cargando());
+  verPersona = leerV('trab.horas.persona', ''); // el trabajador elegido se recuerda al refrescar
   const yo = ctx.state.perfil;
   const gestiona = ctx.ve('tr_horas') && ctx.edita('tr_horas');
   const veTodos = ctx.ve('tr_horas');
@@ -38,7 +40,10 @@ export async function renderHoras(view, ctx) {
   if (veTodos) {
     const filtro = sel([['', 'Todos los trabajadores'], ...personas.map((u) => [u.id, nombreUsuario(u)])], verPersona, { onchange: (e) => { verPersona = e.target.value; pintar(); }, 'aria-label': 'Trabajador' });
     const cont = h('div');
-    const pintar = () => clear(cont, tabla(cols(true, gestiona), movs.filter((m) => !verPersona || m.profile_id === verPersona), { vacio: 'No hay movimientos.' }));
+    const avisoH = crearAviso({ obtener: () => [['Trabajador', verPersona ? personas.find((u) => u.id === verPersona) ? nombreUsuario(personas.find((u) => u.id === verPersona)) : '' : '']], limpiar: () => { verPersona = ''; filtro.value = ''; pintar(); } });
+    if (verPersona && !personas.some((u) => u.id === verPersona)) verPersona = '';
+    filtro.value = verPersona;
+    const pintar = () => { guardarV('trab.horas.persona', verPersona); avisoH.actualizar(); clear(cont, tabla(cols(true, gestiona), movs.filter((m) => !verPersona || m.profile_id === verPersona), { vacio: 'No hay movimientos.' })); };
     const resumen = tabla([
       { t: 'Trabajador', v: (u) => h('button', { class: 'link-btn', type: 'button', onclick: () => { verPersona = u.id; filtro.value = u.id; pintar(); } }, nombreUsuario(u)) , s: nombreUsuario },
       { t: 'Saldo', num: true, s: (u) => sal.get(u.id) || 0, v: (u) => h('strong', { class: claseSaldo(sal.get(u.id) || 0) }, fmtHoras(sal.get(u.id) || 0, true)) },
@@ -58,7 +63,7 @@ export async function renderHoras(view, ctx) {
       } }, 'Añadir movimiento');
       return h('div', { class: 'form-section' }, h('h3', {}, 'Apuntar horas'), campo('Trabajador', F.quien), campo('Fecha', F.fecha), campo('Tipo', F.tipo), campo('Horas (en «ajuste» o «saldo inicial», con − si restan)', F.horas), campo('Concepto', F.concepto, { full: true }), h('div', { class: 'full' }, anadir));
     })() : null;
-    partes.push(h('div', { class: 'card' }, h('h3', { class: 'sub-titulo' }, 'Movimientos del equipo'), h('div', { class: 'filters' }, filtro), cont, alta));
+    partes.push(h('div', { class: 'card' }, h('h3', { class: 'sub-titulo' }, 'Movimientos del equipo'), h('div', { class: 'filters' }, filtro), avisoH, cont, alta));
     pintar();
   }
   clear(view, ...partes);

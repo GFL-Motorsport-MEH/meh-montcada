@@ -1,6 +1,7 @@
 // Control > Conciliación bancaria: cuentas, importar extractos (CSV/Excel), conciliar con los gastos y revisar lo pendiente.
 import { h, clear, cargando, toast, confirmar, fmtEUR2, fmtFecha, num, normalizar, leerHojaArchivo, descargarCSV } from '../ui.js';
 import * as db from '../db.js';
+import { vista, filtroFecha, pasaFecha, describirFecha, crearAviso, vincular as vincularCampo, FECHA_VACIA } from '../vista.js';
 import { registrarSeccion } from './control.js';
 import { parsearExtracto, ponerClaves, cuentaDeArchivo, conciliar, candidatosGasto } from '../banco.js';
 import { abrirGastoForm } from './gasto-form.js';
@@ -20,7 +21,8 @@ async function renderConciliacion(cont, ctx) {
   const gastoPorId = () => new Map(todosGastos().map((g) => [g.id, g]));
   const nombreCentro = (id) => ctx.tituloCentro(state.centros.find((c) => c.id === id)?.nombre || '');
   const nombreCuenta = (id) => cuentas.find((c) => c.id === id)?.nombre || '—';
-  const f = { cuenta: '', estado: 'pendiente', tipo: 'pagos', q: '' };
+  const f = vista('conciliacion.f', { cuenta: '', estado: 'pendiente', tipo: 'pagos', q: '', fecha: { ...FECHA_VACIA } });
+  if (f.cuenta && !cuentas.some((c) => c.id === f.cuenta)) f.cuenta = '';
   let limite = 150;
 
   // ---- actualizar gastos en la caché de la app ----
@@ -166,12 +168,21 @@ async function renderConciliacion(cont, ctx) {
   // ---- filtros y lista ----
   const filtrosEl = h('div', { class: 'filters filters-conc' });
   const fQ = h('input', { type: 'search', placeholder: 'Buscar concepto o importe…', 'aria-label': 'Buscar movimiento', oninput: () => { f.q = fQ.value; pintar(); } });
+  fQ.value = f.q;
+  const fFecha = filtroFecha(f.fecha, (d) => { f.fecha = d; pintar(); }, { etiqueta: 'Fecha del movimiento' });
+  vincularCampo(f, 'fecha', fFecha);
+  const aviso = crearAviso({
+    obtener: () => [['Búsqueda', f.q.trim() ? `«${f.q.trim()}»` : ''], ['Cuenta', f.cuenta ? nombreCuenta(f.cuenta) : ''], ['Estado', f.estado ? ESTADOS.find(([v]) => v === f.estado)?.[1] : ''],
+      ['Tipo', f.tipo ? (f.tipo === 'pagos' ? 'Pagos (gastos)' : 'Cobros (ingresos)') : ''], ['Fecha', describirFecha(f.fecha)]],
+    limpiar: () => { f.q = ''; fQ.value = ''; f.cuenta = ''; f.estado = ''; f.tipo = ''; f.fecha = { ...FECHA_VACIA }; pintarFiltros(); pintar(); },
+  });
   function pintarFiltros() {
     clear(filtrosEl, h('div', { class: 'search' }, fQ),
       h('select', { 'aria-label': 'Cuenta', onchange: (e) => { f.cuenta = e.target.value; pintar(); } }, h('option', { value: '' }, 'Todas las cuentas'), cuentas.map((c) => h('option', { value: c.id, selected: c.id === f.cuenta }, c.nombre))),
       h('select', { 'aria-label': 'Estado', onchange: (e) => { f.estado = e.target.value; pintar(); } }, ESTADOS.map(([v, t]) => h('option', { value: v, selected: v === f.estado }, t))),
       h('select', { 'aria-label': 'Tipo de movimiento', onchange: (e) => { f.tipo = e.target.value; pintar(); } },
-        [['pagos', 'Pagos (gastos)'], ['cobros', 'Cobros (ingresos)'], ['', 'Pagos y cobros']].map(([v, t]) => h('option', { value: v, selected: v === f.tipo }, t))));
+        [['pagos', 'Pagos (gastos)'], ['cobros', 'Cobros (ingresos)'], ['', 'Pagos y cobros']].map(([v, t]) => h('option', { value: v, selected: v === f.tipo }, t))),
+      fFecha);
   }
   const contador = h('div', { class: 'count' });
   const tbody = h('tbody');
@@ -182,10 +193,12 @@ async function renderConciliacion(cont, ctx) {
     return movs.filter((m) => (!f.cuenta || m.cuenta_id === f.cuenta) && (!f.estado || m.estado === f.estado)
       && (!f.tipo || (f.tipo === 'pagos' ? num(m.importe) < 0 : num(m.importe) > 0))
       && (!state.centroId || (m.centro_id || ctx.centroPrincipal()?.id) === state.centroId)
+      && pasaFecha(m.fecha, f.fecha)
       && (!q || normalizar(`${m.concepto} ${num(m.importe).toFixed(2).replace('.', ',')} ${m.importe}`).includes(q)))
       .sort((a, b) => b.fecha.localeCompare(a.fecha));
   }
   function pintar() {
+    aviso.actualizar();
     const lista = filtrados();
     const porId = gastoPorId();
     contador.textContent = `${lista.length} movimientos · ${fmtEUR2(lista.reduce((s, m) => s + num(m.importe), 0))}`;
@@ -222,7 +235,7 @@ async function renderConciliacion(cont, ctx) {
         h('button', { class: 'btn', onclick: exportar }, 'Exportar CSV'),
         h('button', { class: 'btn', onclick: () => archivo.click() }, 'Importar extracto'),
         h('button', { class: 'btn primary', onclick: autoConciliar }, 'Conciliar automáticamente'))),
-    cuentasEl, resumenGastos, filtrosEl,
+    cuentasEl, resumenGastos, filtrosEl, aviso,
     h('div', { class: 'table-wrap' }, h('table', { class: 'data tabla-movs' },
       h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'Fecha'), h('th', { scope: 'col' }, 'Concepto'), h('th', { scope: 'col', class: 'num' }, 'Importe'),
         state.centros.length > 1 ? h('th', { scope: 'col' }, 'Centro') : null, h('th', { scope: 'col' }, 'Estado'), h('th', { scope: 'col' }, ''))),

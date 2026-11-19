@@ -1,6 +1,7 @@
 // Pestaña Facturación: hoja "Fact Meharic" + macro de importación del CRM.
 import { h, clear, fmtEUR2, fmtFecha, fmtFechaCorta, num, normalizar, cargando, descargarCSV, toast, confirmar, leerHojaArchivo } from '../ui.js';
 import * as db from '../db.js';
+import { vista, leerV, guardarV, filtroFecha, pasaFecha, describirFecha, crearAviso, vincular, FECHA_VACIA } from '../vista.js';
 import { filasCRMaRegistros, separarNuevas, huecosRecibos, resumenTrimestral, METODOS_FACT, esVerdadero } from '../facturacion.js';
 
 const POR_PAGINA = 100;
@@ -10,14 +11,15 @@ export async function renderFacturacion(view, ctx) {
   if (!ctx.state.facturacion) ctx.state.facturacion = await db.getFacturacion(); // no depende del curso: se carga una vez
   let lineas = ctx.state.facturacion;
   const curso = ctx.cursoActual();
-  const f = { q: '', desde: curso.fecha_inicio || '', hasta: curso.fecha_fin || '', metodo: '', tipo: '', comp: '' };
+  // por defecto, el rango del curso; lo que se elija se mantiene al refrescar (por curso)
+  const fechaCurso = { modo: 'entre', a: curso.fecha_inicio || '', b: curso.fecha_fin || '' };
+  const f = vista(`facturacion.f.${curso.id}`, { q: '', fecha: fechaCurso, metodo: '', tipo: '', comp: '' });
   let limite = POR_PAGINA;
-  let porRecibo = true;
+  let porRecibo = leerV('facturacion.porRecibo', true);
 
   const re = () => { limite = POR_PAGINA; pintar(); };
   const fQ = h('input', { type: 'search', placeholder: 'Buscar alumno, recibo, factura, descripción…', 'aria-label': 'Buscar', oninput: () => { f.q = fQ.value; re(); } });
-  const fDesde = h('input', { type: 'date', value: f.desde, 'aria-label': 'Desde', onchange: () => { f.desde = fDesde.value; re(); } });
-  const fHasta = h('input', { type: 'date', value: f.hasta, 'aria-label': 'Hasta', onchange: () => { f.hasta = fHasta.value; re(); } });
+  const fFecha = filtroFecha(f.fecha, (d) => { f.fecha = d; re(); }, { etiqueta: 'Fecha de pago' });
   const opciones = (campo) => [...new Set(lineas.map((l) => l[campo]).filter(Boolean))].sort();
   const fMet = h('select', { 'aria-label': 'Método de pago', onchange: () => { f.metodo = fMet.value; re(); } },
     h('option', { value: '' }, 'Todos los métodos'), opciones('metodo_pago').map((m) => h('option', { value: m }, m)));
@@ -27,6 +29,15 @@ export async function renderFacturacion(view, ctx) {
     h('option', { value: '' }, 'Cualquier comprobación'), h('option', { value: 'sin_mimag' }, 'Sin comprobar MIMAG'),
     h('option', { value: 'sin_fiscontal' }, 'Sin contabilizar FISCONTAL'), h('option', { value: 'hueco' }, 'Recibos tras un hueco'));
 
+  // los valores guardados que ya no existen en los datos se descartan
+  for (const [k, ops] of [['metodo', opciones('metodo_pago')], ['tipo', opciones('tipo_operacion')]]) if (f[k] && !ops.includes(f[k])) f[k] = '';
+  vincular(f, 'q', fQ); vincular(f, 'fecha', fFecha); vincular(f, 'metodo', fMet); vincular(f, 'tipo', fTipo); vincular(f, 'comp', fComp);
+  const mismaFecha = (d) => d.modo === fechaCurso.modo && d.a === fechaCurso.a && d.b === fechaCurso.b;
+  const aviso = crearAviso({
+    obtener: () => [['Búsqueda', f.q.trim() ? `«${f.q.trim()}»` : ''], ['Fecha de pago', mismaFecha(f.fecha) ? '' : describirFecha(f.fecha)],
+      ['Método', f.metodo], ['Operación', f.tipo], ['Comprobación', f.comp ? fComp.selectedOptions[0]?.textContent : '']],
+    limpiar: () => { f.q = ''; f.fecha = { ...fechaCurso }; f.metodo = ''; f.tipo = ''; f.comp = ''; re(); },
+  });
   const contador = h('div', { class: 'count' });
   const kpis = h('div', { class: 'kpi-row kpi-4' });
   const resumenEl = h('div');
@@ -39,8 +50,7 @@ export async function renderFacturacion(view, ctx) {
   function filtradas(conTexto = true) {
     const q = conTexto ? normalizar(f.q.trim()) : '';
     return lineas.filter((l) => {
-      if (f.desde && (!l.fecha_pago || l.fecha_pago < f.desde)) return false;
-      if (f.hasta && (!l.fecha_pago || l.fecha_pago > f.hasta)) return false;
+      if (!pasaFecha(l.fecha_pago, f.fecha)) return false;
       if (f.metodo && l.metodo_pago !== f.metodo) return false;
       if (f.tipo && l.tipo_operacion !== f.tipo) return false;
       if (f.comp === 'sin_mimag' && esVerdadero(l.mimag_comprobacion)) return false;
@@ -128,6 +138,7 @@ export async function renderFacturacion(view, ctx) {
       const base = f.q.trim() ? filtradas(false).sort((a, b) => (b.fecha_pago || '').localeCompare(a.fecha_pago || '') || String(b.num_recibo).localeCompare(String(a.num_recibo), 'es', { numeric: true })) : orden;
       filasVista = agrupar(base).filter((ls) => coinciden.has(ls[0].num_recibo || `id:${ls[0].id}`));
     } else filasVista = orden.map((l) => [l]);
+    aviso.actualizar();
     contador.textContent = `${lista.length} de ${lineas.length} líneas` + (porRecibo ? ` · ${filasVista.length} recibos` : '');
     pintarResumen(lista);
     clear(tbody, filasVista.length ? filasVista.slice(0, limite).map(fila) : h('tr', {}, h('td', { colspan: 11, class: 'empty' }, 'Ninguna línea coincide con los filtros.')));
@@ -181,12 +192,13 @@ export async function renderFacturacion(view, ctx) {
         h('button', { class: 'btn', onclick: exportar }, 'Exportar CSV'),
         h('button', { class: 'btn primary', onclick: () => archivo.click() }, 'Importar CRM'))),
     kpis,
-    h('div', { class: 'filters filters-fact' }, h('div', { class: 'search' }, fQ), fDesde, fHasta, fMet, fTipo, fComp),
+    h('div', { class: 'filters filters-fact' }, h('div', { class: 'search' }, fQ), fFecha, fMet, fTipo, fComp),
+    aviso,
     h('h3', { class: 'sub-titulo' }, 'Resumen por trimestre (fecha de pago)'), resumenEl,
     huecosEl,
     h('div', { class: 'tabla-cab' }, h('div', { class: 'segmented', role: 'tablist', 'aria-label': 'Agrupación' },
-      ['Por recibo', 'Por línea'].map((t, i) => { const b = h('button', { class: 'seg-btn', role: 'tab', 'aria-selected': String(i === 0), onclick: () => {
-        porRecibo = i === 0; b.parentNode.querySelectorAll('.seg-btn').forEach((x) => x.setAttribute('aria-selected', String(x === b))); limite = POR_PAGINA; pintar(); } }, t); return b; }))),
+      ['Por recibo', 'Por línea'].map((t, i) => { const b = h('button', { class: 'seg-btn', role: 'tab', 'aria-selected': String((i === 0) === porRecibo), onclick: () => {
+        porRecibo = i === 0; guardarV('facturacion.porRecibo', porRecibo); b.parentNode.querySelectorAll('.seg-btn').forEach((x) => x.setAttribute('aria-selected', String(x === b))); limite = POR_PAGINA; pintar(); } }, t); return b; }))),
     h('div', { class: 'table-wrap' }, h('table', { class: 'data tabla-fact' },
       h('colgroup', {}, ['c-fecha', 'c-alumno', 'c-id', 'c-recibo', 'c-factura', 'c-desc', 'c-modalidad', 'c-metodo', 'c-importe', 'c-chk', 'c-chk'].map((c) => h('col', { class: c }))),
       h('thead', {}, h('tr', {}, ['F. pago', 'Alumno', 'ID CRM', 'Recibo', 'Factura', 'Descripción', 'Modalidad', 'Método'].map((t) => h('th', { scope: 'col' }, t)),

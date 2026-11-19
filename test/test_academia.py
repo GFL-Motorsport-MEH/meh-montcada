@@ -748,7 +748,11 @@ try:
         page.locator(".modulos .modulo", has_text="Trabajadores").click(); page.wait_for_timeout(600)
         check(page.evaluate("document.body.dataset.modulo") == "trabajadores", "se abre el módulo Trabajadores")
         tt = [t.strip() for t in page.locator(".tabs .tab").all_inner_texts()]
-        check(tt == ["Mi portal", "Contrato y horario", "Bolsa de horas", "Documentos", "Equipo"], f"pestañas de Trabajadores {tt}")
+        check(tt == ["Mi portal", "Contrato y horario", "Bolsa de horas", "Documentos", "Equipo", "Configuración"], f"pestañas de Trabajadores {tt}")
+        ir(page, "ajustes")
+        page.wait_for_selector(".aj-card")
+        check(page.locator(".aj-tab input[type=color]").count() >= 5, "Configuración: colores de pestañas")
+        check(page.locator(".aj-persona").count() >= 1, "Configuración: colores de personas")
         yo = page.evaluate("window.__mock.db.profiles[0].id")
         ir(page, "tr_contrato")
         page.get_by_role("button", name="+ Nuevo contrato").click(); page.wait_for_timeout(300)

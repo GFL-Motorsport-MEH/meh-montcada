@@ -1,4 +1,5 @@
 // Biblioteca: préstamos de libros y «mascotas viajeras», enlazados al alumno. Importa el Excel BIBLIOTECA-MASCOTAS.
+import { vista as vistaEstado, leerV, guardarV, vincular, avisoFiltros, busqueda } from '../vista.js';
 import { h, clear, cargando, toast, confirmar, fmtFecha, hoyISO, normalizar } from '../ui.js';
 import * as api from './api.js';
 import { parseFecha } from './importar.js';
@@ -9,16 +10,18 @@ const TIPOS = [['libro', 'Libro'], ['mascota', 'Mascota viajera']];
 const claveNombre = (s) => normalizar(String(s ?? '')).split(/\s+/).filter(Boolean).sort().join(' ');
 const t = (v) => (v === null || v === undefined ? '' : String(v).trim());
 const DIAS_PLAZO = 14;
-let vista = 'prestamos'; // pestaña abierta: préstamos o stock
+let vista = 'prestamos'; // pestaña abierta: préstamos o stock (se recuerda al refrescar; se lee al pintar)
 const quien = (p) => (p.alumno ? nombreAlumno(p.alumno) : p.alumno_texto || (p.alumno_id ? 'Alumno de otro grupo' : '—'));
 
 export async function renderBiblioteca(view, ctx) {
   clear(view, cargando());
+  vista = leerV('biblioteca.vista', 'prestamos');
   const [prestamos, alumnos, items] = await Promise.all([api.prestamos(), api.alumnos(), api.bibItems()]);
   const editor = ctx.edita('ac_biblioteca');
   const recargar = () => { api.invalidar(); refrescar(); };
   const hoy = hoyISO();
-  const f = { q: '', tipo: '', estado: 'fuera' };
+  const f = vistaEstado('biblioteca.f', { q: '', tipo: '', estado: 'fuera' });
+  const ESTADOS_B = [['fuera', 'Sin devolver'], ['tarde', `Con retraso (>${DIAS_PLAZO} d)`], ['devuelto', 'Devueltos'], ['', 'Todos']];
   const dias = (p) => Math.floor((new Date(hoy) - new Date(p.fecha_salida)) / 864e5);
   const tarde = (p) => !p.fecha_devolucion && p.fecha_salida && dias(p) > DIAS_PLAZO;
   const cont = h('div'); const resumen = h('div', { class: 'small muted' });
@@ -38,7 +41,7 @@ export async function renderBiblioteca(view, ctx) {
     ], filas.slice(0, 3000), { onClick: (p) => abrir(p, { alumnos, items, ctx, recargar }), vacio: 'No hay préstamos con este filtro.' }));
   }
   const sinEnlazar = prestamos.filter((p) => !p.alumno_id && (p.alumno_texto || '').trim()).length;
-  const cambiar = (v) => { vista = v; refrescar(); };
+  const cambiar = (v) => { vista = v; guardarV('biblioteca.vista', v); refrescar(); };
   const pestanas = h('div', { class: 'bib-tabs' },
     h('button', { type: 'button', class: 'btn small' + (vista === 'prestamos' ? ' primary' : ''), onclick: () => cambiar('prestamos') }, 'Préstamos'),
     h('button', { type: 'button', class: 'btn small' + (vista === 'stock' ? ' primary' : ''), onclick: () => cambiar('stock') }, `Stock (${items.length})`));
@@ -54,9 +57,11 @@ export async function renderBiblioteca(view, ctx) {
     editor && sinEnlazar ? h('button', { class: 'btn small', type: 'button', title: 'Enlaza los nombres escritos a mano con la ficha del alumno que más se parece', onclick: () => enlazarAutomatico({ prestamos, alumnos, recargar }) }, `Enlazar alumnos (${sinEnlazar})`) : null,
     editor ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrir(null, { alumnos, items, ctx, recargar }) }, '+ Nuevo préstamo') : null),
     pestanas, leyenda,
-    h('div', { class: 'filters filters-3' }, h('input', { type: 'search', placeholder: 'Buscar alumno, adulto o libro…', oninput: (e) => { f.q = e.target.value; pintar(); } }),
-      sel([['', 'Libros y mascotas'], ...TIPOS], f.tipo, { onchange: (e) => { f.tipo = e.target.value; pintar(); } }),
-      sel([['fuera', 'Sin devolver'], ['tarde', `Con retraso (>${DIAS_PLAZO} d)`], ['devuelto', 'Devueltos'], ['', 'Todos']], f.estado, { onchange: (e) => { f.estado = e.target.value; pintar(); } })), resumen, cont);
+    h('div', { class: 'filters filters-3' }, vincular(f, 'q', h('input', { type: 'search', placeholder: 'Buscar alumno, adulto o libro…', oninput: (e) => { f.q = e.target.value; pintar(); } })),
+      vincular(f, 'tipo', sel([['', 'Libros y mascotas'], ...TIPOS], f.tipo, { onchange: (e) => { f.tipo = e.target.value; pintar(); } })),
+      vincular(f, 'estado', sel(ESTADOS_B, f.estado, { onchange: (e) => { f.estado = e.target.value; pintar(); } }))),
+    avisoFiltros(f, { etiquetas: { q: 'Búsqueda', tipo: 'Tipo', estado: 'Estado' }, formato: { q: busqueda, tipo: (v) => TIPOS.find(([k]) => k === v)?.[1] || v, estado: (v) => ESTADOS_B.find(([k]) => k === v)?.[1] || v }, alLimpiar: () => pintar() }),
+    resumen, cont);
   pintar();
 }
 
