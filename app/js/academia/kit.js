@@ -87,10 +87,14 @@ const textoCelda = (c, f) => {
   return (v.textContent !== undefined ? v.textContent : String(v)).replace(/\s+/g, ' ').trim();
 };
 const comoNumero = (t) => { const m = /^-?\s*\d[\d.,]*/.exec(t.replace(/[€%\s]/g, '')); return m && /^-?[\d.,]+$/.test(t.replace(/[€%\s]/g, '')) ? parseFloat(m[0].replace(/\./g, (x, i, str) => (str.includes(',') ? '' : x)).replace(',', '.')) : null; };
+// «15/06/2026» o «15/06/26» → número aaaammdd, para ordenar por la fecha real y no por el día
+const comoFecha = (t) => { const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/.exec(t); return m ? (m[3].length === 2 ? 2000 + +m[3] : +m[3]) * 10000 + +m[2] * 100 + +m[1] : null; };
 const comparar = (a, b) => {
   if (a === b) return 0;
-  if (a === '') return 1; // los vacíos siempre al final
-  if (b === '') return -1;
+  if (a === '' || a === '—') return 1; // los vacíos siempre al final
+  if (b === '' || b === '—') return -1;
+  const fa = comoFecha(a); const fb = comoFecha(b);
+  if (fa !== null && fb !== null) return fa - fb;
   const na = comoNumero(a); const nb = comoNumero(b);
   if (na !== null && nb !== null) return na - nb;
   return a.localeCompare(b, 'es', { numeric: true, sensitivity: 'base' });
