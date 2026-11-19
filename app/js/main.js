@@ -25,6 +25,8 @@ import { crearPermisos } from './permisos.js';
 import './views/config-listas.js';
 import './views/config-centros.js';
 import './views/config-cuotas.js';
+import './views/config-onedrive.js';
+import * as onedrive from './onedrive.js';
 import './views/plantillas.js';
 import './views/conciliacion.js';
 import './views/factcheck.js';

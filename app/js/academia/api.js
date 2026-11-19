@@ -1,6 +1,7 @@
 // Acceso a datos del módulo Academia (tablas ac_*). Una pequeña caché de 60 s evita repetir consultas al cambiar de pestaña;
 // cualquier escritura la vacía entera.
 import { supabase, traducirError } from '../db.js';
+import * as od from '../onedrive.js';
 import { registrarPersonas } from '../personas.js';
 
 const PAGE = 1000;
@@ -241,6 +242,8 @@ export const nivelHistorial = () => memo('nivelHistorial', async () => delCentro
 export const portalDocs = () => memo('portalDocs', async () => (await delCentroPersonas(await all('ac_portal_docs'))).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')));
 // archivos del portal del trabajador (bucket privado «trabajadores»; ruta = <id del usuario>/<fecha>-<nombre>)
 export async function subirPortal(profileId, file) {
+  // con OneDrive conectado, el archivo va allí («od:<id>» en la columna ruta); si no, a Supabase Storage
+  if ((await od.estado()).conectado) return od.subir('portal', profileId, file);
   const limpio = file.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w.\-]+/g, '_');
   const ruta = `${profileId}/${Date.now()}-${limpio}`;
   const { error } = await supabase.storage.from('trabajadores').upload(ruta, file, { contentType: file.type || 'application/pdf', upsert: false });
@@ -248,11 +251,18 @@ export async function subirPortal(profileId, file) {
   return ruta;
 }
 export async function urlPortal(ruta) {
+  if (od.esOD(ruta)) { // la fila se busca con la sesión del usuario: si no la ve, no hay enlace
+    const { data } = await supabase.from('ac_portal_docs').select('id').eq('ruta', ruta).maybeSingle();
+    if (!data) throw new Error('No tienes acceso a este documento.');
+    return od.enlace('ac_portal_docs', data.id);
+  }
   const { data, error } = await supabase.storage.from('trabajadores').createSignedUrl(ruta, 600);
   if (error) throw new Error(traducirError(error));
   return data.signedUrl;
 }
-export async function quitarArchivoPortal(ruta) { await supabase.storage.from('trabajadores').remove([ruta]); }
+export async function quitarArchivoPortal(ruta) {
+  if (od.esOD(ruta)) { await od.quitar('portal', ruta).catch(() => {}); return; }
+  await supabase.storage.from('trabajadores').remove([ruta]); }
 export const responsables = () => memo('responsables', () => all('ac_responsables'));
 // actividades del módulo Alumnos (salidas, talleres…): tabla de centro, por eso se lee desde aquí
 export const alActividades = () => memo('alact', () => all('al_actividades').then((l) => l.sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')))));

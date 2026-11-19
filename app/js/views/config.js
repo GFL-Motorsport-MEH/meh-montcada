@@ -127,7 +127,7 @@ async function renderEmpresas(cont, ctx) {
 }
 
 export async function renderConfig(view, ctx) {
-  const SECCIONES = [...SECCIONES_BASE, ctx.esAdmin() ? ['historial', 'Historial y copias'] : null].filter(Boolean);
+  const SECCIONES = [...SECCIONES_BASE, ctx.esAdmin() ? ['onedrive', 'OneDrive'] : null, ctx.esAdmin() ? ['historial', 'Historial y copias'] : null].filter(Boolean);
   let sec = leerPref();
   if (!SECCIONES.some(([id]) => id === sec)) sec = 'empresas';
   const seg = h('div', { class: 'segmented', role: 'tablist', 'aria-label': 'Sección de configuración' });
