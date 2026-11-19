@@ -21,7 +21,7 @@ export async function renderPortal(view, ctx) {
   const veTodos = ctx.ve('ac_portal');
   const [docs, equipo] = await Promise.all([api.portalDocs(), veTodos ? api.usuarios().catch(() => []) : Promise.resolve([])]);
   const nombreDe = new Map([...equipo, yo].filter(Boolean).map((u) => [u.id, u.nombre || u.email || '—']));
-  const recargar = () => { api.invalidar(); refrescar(); };
+  const recargar = () => { refrescar(); };
 
   const cols = (conQuitar, conPersona) => [
     ...(conPersona ? [{ t: 'Trabajador', v: (d) => nombreDe.get(d.profile_id) || '—' }] : []),

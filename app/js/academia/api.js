@@ -55,6 +55,11 @@ const CLAVES = {
   ac_cuotas: /^cuo/, ac_inscripciones: /^ins/, ac_wp_precios: /^wpp/, ac_remesas: /^rem/,
   ac_grupos: /^(grupos|ag|gruposTodos)/, ac_sesiones: /^grupos/, ac_alumno_grupo: /^(grupos|ag|gruposTodos)/,
   ac_recogidas: /^rec/, ac_recogidas_pagos: /^rpag/, ac_tareas: /^tareas$/, ac_prestamos: /^prestamos$/, ac_contactos: /^contactos$/,
+  ac_cuotas_tarifa: /^cuotasTarifa$/, ac_descuentos: /^(descuentos|listas)$/, ac_listas: /^listas$/, ac_autorizados: /^autorizados$/, ac_autorizados_priv: /^$/,
+  ac_anotaciones: /^anot/, ac_reuniones: /^reuniones$/, ac_reunion_temas: /^temas$/, ac_portal_docs: /^portalDocs$/, ac_documentos: /^documentos$/,
+  ac_biblioteca_items: /^bibitems$/, ac_bajas: /^bajas$/, ac_tutorias: /^tutorias$/, ac_nivel_historial: /^nivelHistorial$/, ac_calendario_marcas: /^cal/,
+  ac_profesoras: /^profesoras$/, ac_aulas: /^aulas$/, ac_vinculos: /^vinculos$/, ac_responsables: /^(responsables|alumnos)$/,
+  ac_alumnos: /^(alumnos|bajas|prestamos|tutorias|anot|rec|rpag|ag)/,
 };
 // tablas cuyas filas se parchean en la propia caché sin volver a descargar nada (la fila ya viene completa de la escritura)
 const PARCHEABLES = new Set(['ac_cuotas', 'ac_inscripciones', 'ac_wp_precios', 'ac_remesas', 'ac_recogidas_pagos']);
@@ -70,7 +75,7 @@ function tocar(tabla, ids, cambio) { // cambio: fila completa devuelta por la ba
     c.t = Date.now();
   }
 }
-function invalidarTabla(tabla) {
+export function invalidarTabla(tabla) {
   const re = CLAVES[tabla];
   if (!re) return invalidar(); // tabla sin reglas: lo seguro es vaciar todo
   for (const key of [...cache.keys()]) if (re.test(key)) cache.delete(key);
@@ -138,17 +143,17 @@ export async function insMany(tabla, filas, { lote = 200, onConflict, ignorar = 
     const r = chk(await q.select());
     out.push(...(r || []));
   }
-  invalidar();
+  invalidarTabla(tabla);
   return out;
 }
 export async function upd(tabla, id, parche) { const r = chk(await supabase.from(tabla).update(parche).eq('id', id).select().single()); tocar(tabla, [id], r); return r; }
 export async function del(tabla, id) { chk(await supabase.from(tabla).delete().eq('id', id)); invalidarTabla(tabla); }
-export async function delMany(tabla, ids, lote = 100) { for (let i = 0; i < ids.length; i += lote) chk(await supabase.from(tabla).delete().in('id', ids.slice(i, i + lote))); invalidar(); }
-export async function delWhere(tabla, col, valor) { chk(await supabase.from(tabla).delete().eq(col, valor)); invalidar(); }
+export async function delMany(tabla, ids, lote = 100) { for (let i = 0; i < ids.length; i += lote) chk(await supabase.from(tabla).delete().in('id', ids.slice(i, i + lote))); invalidarTabla(tabla); }
+export async function delWhere(tabla, col, valor) { chk(await supabase.from(tabla).delete().eq(col, valor)); invalidarTabla(tabla); }
 export async function guardarPrivados(responsable_id, datos) {
   chk(await supabase.from('ac_responsables_priv').upsert({ responsable_id, ...datos }, { onConflict: 'responsable_id' }));
 }
-export async function generarCuotas(curso, mes) { const r = chk(await supabase.rpc('ac_generar_cuotas', { p_curso: curso, p_mes: mes })); invalidar(); return r; }
+export async function generarCuotas(curso, mes) { const r = chk(await supabase.rpc('ac_generar_cuotas', { p_curso: curso, p_mes: mes })); invalidarTabla('ac_cuotas'); return r; }
 export async function updMany(tabla, ids, parche, lote = 100) {
   for (let i = 0; i < ids.length; i += lote) chk(await supabase.from(tabla).update(parche).in('id', ids.slice(i, i + lote)));
   tocar(tabla, ids, parche);

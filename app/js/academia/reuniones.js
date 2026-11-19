@@ -55,7 +55,7 @@ export async function renderReuniones(view, ctx, { conmutador, verTarea } = {}) 
     s.addEventListener('change', () => onchange(s.value));
     return s;
   };
-  const recargar = () => { api.invalidar(); refrescar(); };
+  const recargar = () => { refrescar(); };
   const cuerpo = h('div', { class: 'ac-reu-cuerpo' });
   const pintarLuego = () => recargar(); // el enrutador vuelve a dibujar la pantalla entera
 

@@ -11,7 +11,7 @@ async function renderCuotas(cont, ctx) {
   const [cuotas, descuentos, ls] = await Promise.all([api.cuotasTarifa(), api.descuentos(), api.listas()]);
   const editor = ctx.edita('fact') || ctx.edita('ac_pagos');
   const modalidades = ls.modalidad || [];
-  const recargar = () => { api.invalidar(); renderCuotas(cont, ctx); };
+  const recargar = () => { renderCuotas(cont, ctx); };
   const guardar = async (tabla, id, parche) => { try { await api.upd(tabla, id, parche); toast('Guardado'); } catch (ex) { toast('No se ha guardado: ' + ex.message, 'error'); } };
   const quitar = async (tabla, f, que) => {
     if (!await confirmar({ titulo: `Quitar ${que}`, texto: `Se quitará «${f.nombre}» de la configuración. Las inscripciones ya guardadas no cambian.`, ok: 'Quitar', peligro: true })) return;

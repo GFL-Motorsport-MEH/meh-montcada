@@ -11,7 +11,7 @@ export async function renderSeguimiento(view, ctx) {
   const editor = ctx.edita('ac_seguimiento');
   const verContactos = ctx.ve('ac_seguimiento'); // con «lo suyo» no hay contactos de captación, solo anotaciones de sus alumnos
   if (!verContactos) vista = 'notas';
-  const recargar = () => { api.invalidar(); refrescar(); };
+  const recargar = () => { refrescar(); };
   const cont = h('div');
   const f = { q: '', sit: '', tipo: '' };
   const seg = h('div', { class: 'segmented', role: 'tablist' }, [...(verContactos ? [['contactos', 'Contactos (captación)']] : []), ['notas', 'Anotaciones de alumnos']].map(([k, l]) =>

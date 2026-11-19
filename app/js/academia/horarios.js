@@ -58,7 +58,7 @@ export async function renderHorarios(view, ctx) {
   // quien solo ve «lo suyo» no ve los alumnos de grupos ajenos (la base de datos no se los da)
   const veMiembros = (g) => !propio || (yo && (g.profesora_id === yo.id || g.sesiones.some((s) => s.profesora_id === yo.id)));
   const sesiones = grupos.filter((g) => g.activo).flatMap((g) => g.sesiones.map((s) => ({ g, s, prof: s.profesora_id || g.profesora_id || null, aula: s.aula_id || g.aula_id || null, ini: aMin(s.hora_inicio), fin: aMin(s.hora_fin) })));
-  const recargar = () => { api.invalidar(); refrescar(); };
+  const recargar = () => { refrescar(); };
   const cont = h('div', { class: 'ac-cal-cont' });
   const aviso = h('div');
   const barra = h('div', { class: 'ac-barra' });

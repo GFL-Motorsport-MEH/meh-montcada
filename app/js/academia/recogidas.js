@@ -34,7 +34,7 @@ export async function renderRecogidas(view, ctx) {
   const curso = ctx.cursoActual(); const editor = ctx.edita('ac_recogidas');
   const [recs, alumnos, auts, pagos] = await Promise.all([api.recogidas(curso.id), api.alumnos(), api.autorizados(), api.recogidasPagos(curso.id)]);
   const autDe = new Map(); for (const a of auts) (autDe.get(a.alumno_id) || autDe.set(a.alumno_id, []).get(a.alumno_id)).push(a);
-  const recargar = () => { api.invalidar(); refrescar(); };
+  const recargar = () => { refrescar(); };
   const centros = [...new Set(recs.map((r) => r.centro).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
   if (!f.dia) { const d = new Date().getDay(); f.dia = String(d >= 1 && d <= 5 ? d : 1); }
   const cont = h('div'); const resumen = h('div', { class: 'small muted' }); const aviso = h('div');
