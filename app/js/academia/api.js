@@ -42,20 +42,45 @@ function memo(key, fn) {
     const edad = Date.now() - c.t;
     if (edad < TTL || !c.listo) return c.p;
     if (edad < MAX_EDAD) { // refresco en segundo plano; si falla se conserva lo anterior
-      c.t = Date.now();
-      fn().then((v) => { if (cache.get(key) === c) { c.p = Promise.resolve(v); } }, () => { c.t = 0; });
+      c.t = Date.now(); const v0 = c.v || 0;
+      fn().then((v) => { if (cache.get(key) === c && (c.v || 0) === v0) c.p = Promise.resolve(v); }, () => { c.t = 0; });
       return c.p;
     }
   }
   return cargar(key, fn).p;
 }
 export const invalidar = () => cache.clear();
+// Invalidación fina: una escritura solo afecta a las lecturas de su tabla (y a las que la incluyen), no a toda la caché.
+const CLAVES = {
+  ac_cuotas: /^cuo/, ac_inscripciones: /^ins/, ac_wp_precios: /^wpp/, ac_remesas: /^rem/,
+  ac_grupos: /^(grupos|ag|gruposTodos)/, ac_sesiones: /^grupos/, ac_alumno_grupo: /^(grupos|ag|gruposTodos)/,
+  ac_recogidas: /^rec/, ac_recogidas_pagos: /^rpag/, ac_tareas: /^tareas$/, ac_prestamos: /^prestamos$/, ac_contactos: /^contactos$/,
+};
+// tablas cuyas filas se parchean en la propia caché sin volver a descargar nada (la fila ya viene completa de la escritura)
+const PARCHEABLES = new Set(['ac_cuotas', 'ac_inscripciones', 'ac_wp_precios', 'ac_remesas', 'ac_recogidas_pagos']);
+function tocar(tabla, ids, cambio) { // cambio: fila completa devuelta por la base de datos, o parche a mezclar
+  const re = CLAVES[tabla];
+  if (!re || !PARCHEABLES.has(tabla) || !ids?.length) return invalidarTabla(tabla);
+  const set = new Set(ids);
+  for (const [key, c] of cache) {
+    if (!re.test(key)) continue;
+    if (!c.listo) { cache.delete(key); continue; }
+    c.v = (c.v || 0) + 1; // un refresco que empezó antes de este cambio ya no puede pisarlo
+    c.p = c.p.then((filas) => (Array.isArray(filas) ? filas.map((f) => (set.has(f.id) ? { ...f, ...cambio } : f)) : filas));
+    c.t = Date.now();
+  }
+}
+function invalidarTabla(tabla) {
+  const re = CLAVES[tabla];
+  if (!re) return invalidar(); // tabla sin reglas: lo seguro es vaciar todo
+  for (const key of [...cache.keys()]) if (re.test(key)) cache.delete(key);
+}
 // Renueva por detrás todo lo que la app ya ha descargado (se llama cada pocos minutos mientras está abierta).
 export function refrescarTodo() {
   for (const [key, c] of cache) {
     if (!c.listo || Date.now() - c.t < TTL) continue;
-    c.t = Date.now();
-    c.fn().then((v) => { if (cache.get(key) === c) c.p = Promise.resolve(v); }, () => { c.t = 0; });
+    c.t = Date.now(); const v0 = c.v || 0;
+    c.fn().then((v) => { if (cache.get(key) === c && (c.v || 0) === v0) c.p = Promise.resolve(v); }, () => { c.t = 0; });
   }
 }
 
@@ -104,7 +129,7 @@ export const usuarios = () => memo('usuarios', async () => chk(await supabase.rp
 export const privados = (ids) => (ids?.length ? supabase.from('ac_responsables_priv').select('*').in('responsable_id', ids).then(chk) : Promise.resolve([]));
 
 // ---------- escrituras ----------
-export async function ins(tabla, fila) { const r = chk(await supabase.from(tabla).insert(fila).select().single()); invalidar(); return r; }
+export async function ins(tabla, fila) { const r = chk(await supabase.from(tabla).insert(fila).select().single()); invalidarTabla(tabla); return r; }
 export async function insMany(tabla, filas, { lote = 200, onConflict, ignorar = false } = {}) {
   const out = [];
   for (let i = 0; i < filas.length; i += lote) {
@@ -116,8 +141,8 @@ export async function insMany(tabla, filas, { lote = 200, onConflict, ignorar = 
   invalidar();
   return out;
 }
-export async function upd(tabla, id, parche) { const r = chk(await supabase.from(tabla).update(parche).eq('id', id).select().single()); invalidar(); return r; }
-export async function del(tabla, id) { chk(await supabase.from(tabla).delete().eq('id', id)); invalidar(); }
+export async function upd(tabla, id, parche) { const r = chk(await supabase.from(tabla).update(parche).eq('id', id).select().single()); tocar(tabla, [id], r); return r; }
+export async function del(tabla, id) { chk(await supabase.from(tabla).delete().eq('id', id)); invalidarTabla(tabla); }
 export async function delMany(tabla, ids, lote = 100) { for (let i = 0; i < ids.length; i += lote) chk(await supabase.from(tabla).delete().in('id', ids.slice(i, i + lote))); invalidar(); }
 export async function delWhere(tabla, col, valor) { chk(await supabase.from(tabla).delete().eq(col, valor)); invalidar(); }
 export async function guardarPrivados(responsable_id, datos) {
@@ -126,7 +151,7 @@ export async function guardarPrivados(responsable_id, datos) {
 export async function generarCuotas(curso, mes) { const r = chk(await supabase.rpc('ac_generar_cuotas', { p_curso: curso, p_mes: mes })); invalidar(); return r; }
 export async function updMany(tabla, ids, parche, lote = 100) {
   for (let i = 0; i < ids.length; i += lote) chk(await supabase.from(tabla).update(parche).in('id', ids.slice(i, i + lote)));
-  invalidar();
+  tocar(tabla, ids, parche);
 }
 export const descuentos = () => memo('descuentos', () => all('ac_descuentos').then((l) => l.sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre))));
 export const cuotasTarifa = () => memo('cuotasTarifa', () => all('ac_cuotas_tarifa').then((l) => l.sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre))));
