@@ -255,7 +255,7 @@ try:
         ir(page, "ac_remesas"); ir(page, "ac_pagos")
 
         print("8. remesa")
-        ir(page, "ac_remesas")
+        ir(page, "ac_remesas_mensuales")
         page.locator(".section-actions select").first.select_option("noviembre")
         page.get_by_role("button", name="Crear remesa del mes").click()
         # la cuota de noviembre ya está pagada → no hay pendientes que domiciliar
@@ -263,7 +263,7 @@ try:
         check(len(db(page, "ac_remesas")) == 0, "no crea remesa si no hay cuotas pendientes")
         ir(page, "ac_pagos")
         page.locator("td.ac-cel.pagado .pc-p").last.click(); page.wait_for_timeout(400)   # noviembre vuelve a pendiente
-        ir(page, "ac_remesas")
+        ir(page, "ac_remesas_mensuales")
         page.locator(".section-actions select").first.select_option("noviembre")
         page.get_by_role("button", name="Crear remesa del mes").click(); page.wait_for_timeout(300)
         page.locator(".dialog-actions .btn.primary").click(); page.wait_for_timeout(600)
@@ -280,6 +280,29 @@ try:
         check([c for c in db(page, "ac_cuotas") if c["mes"] == "noviembre"][0]["estado"] == "pagado", "marcar remesa como cobrada")
         page.screenshot(path=str(SHOTS / "ac_remesa.png"))
         page.keyboard.press("Escape")
+
+        print("8b. domiciliaciones y remesas")
+        ins = db(page, "ac_inscripciones")[0]
+        page.evaluate("([a, c]) => window.__mock.db.ac_cuota_cambios.push({ id: 'cc1', alumno_id: a, curso_id: c, anterior: 60, nueva: 65, fecha: new Date().toISOString().slice(0, 7) + '-10' })", [ins["alumno_id"], ins["curso_id"]])
+        ir(page, "ac_remesas"); ir(page, "ac_remesas")   # la segunda carga ya trae el cambio de cuota (caché que refresca por detrás)
+        expect(page.locator("body")).to_contain_text("Resumen de remesas")
+        expect(page.locator("table.ac-domi")).to_contain_text("Foz, Anna")
+        page.locator("details summary").click()
+        page.get_by_placeholder("Nombre (p. ej. 22 o BBVA 7 - VIER)").fill("1")
+        page.get_by_role("button", name="Añadir remesa").click(); page.wait_for_timeout(400)
+        rl = db(page, "ac_remesas_lista")
+        check(len(rl) == 1 and rl[0]["banco"] == "SABADELL" and rl[0]["capacidad"] == 20, "remesa Sabadell nueva con máximo de 20 cobros")
+        page.locator("table.ac-domi tr", has_text="Foz, Anna").locator("select").first.select_option(index=1); page.wait_for_timeout(400)
+        dm = db(page, "ac_domiciliaciones")
+        check(len(dm) == 1 and dm[0]["remesa_id"] == rl[0]["id"], "al elegir remesa se guarda la domiciliación del alumno")
+        expect(page.locator("body")).to_contain_text("1/20")
+        expect(page.locator("td.ac-cuota-cambio")).to_have_count(1)
+        expect(page.locator("td.ac-cuota-cambio")).to_have_count(1)
+        page.get_by_role("button", name="REMESAS ENVIADAS").click(); page.wait_for_timeout(300)
+        page.locator(".dialog-actions .btn.primary").click(); page.wait_for_timeout(700)
+        ev = db(page, "ac_remesa_envios"); rs = db(page, "ac_remesa_envio_resumen"); ln = db(page, "ac_remesa_envio_lineas")
+        check(len(ev) == 1 and len(rs) == 1 and float(rs[0]["total"]) == 65 and len(ln) == 1, "REMESAS ENVIADAS guarda el resumen y las líneas del mes")
+        page.screenshot(path=str(SHOTS / "ac_remesas_domi.png"))
 
         print("9. calendario sin solapes y con solape")
         ir(page, "ac_horarios")

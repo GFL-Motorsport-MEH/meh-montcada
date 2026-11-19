@@ -381,7 +381,7 @@ function pintarTabsBase(actual) {
 }
 
 // La pestaña Ingresos abre su primera sub-pestaña accesible y, dentro de ellas, muestra la barra de sub-pestañas.
-const subtabCobro = (id, actual) => id === actual || (id === 'ac_pagos' && actual === 'ac_pagos_importar');
+const subtabCobro = (id, actual) => id === actual || (id === 'ac_pagos' && actual === 'ac_pagos_importar') || (id === 'ac_remesas' && actual === 'ac_remesas_mensuales');
 function pestanaIngresos(actual) {
   const subs = SUBTABS_INGRESOS.filter(([id]) => puedeRuta(id));
   if (!subs.length) return null;

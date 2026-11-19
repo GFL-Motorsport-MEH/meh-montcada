@@ -52,6 +52,7 @@ function memo(key, fn) {
 export const invalidar = () => cache.clear();
 // Invalidación fina: una escritura solo afecta a las lecturas de su tabla (y a las que la incluyen), no a toda la caché.
 const CLAVES = {
+  ac_remesas_lista: /^rlista$/, ac_domiciliaciones: /^domis$/, ac_cuota_cambios: /^ccamb/, ac_remesa_envios: /^renv/, ac_remesa_envio_resumen: /^renv/, ac_remesa_envio_lineas: /^renvl/,
   ac_cuotas: /^cuo/, ac_inscripciones: /^ins/, ac_wp_precios: /^wpp/, ac_remesas: /^rem/,
   ac_grupos: /^(grupos|ag|gruposTodos)/, ac_sesiones: /^grupos/, ac_alumno_grupo: /^(grupos|ag|gruposTodos)/,
   ac_recogidas: /^rec/, ac_recogidas_pagos: /^rpag/, ac_tareas: /^tareas$/, ac_prestamos: /^prestamos$/, ac_contactos: /^contactos$/,
@@ -129,6 +130,12 @@ export const inscripciones = (curso) => memo('ins' + curso, () => all('ac_inscri
 export const cuotas = (curso) => memo('cuo' + curso, () => all('ac_cuotas', '*', (q) => q.eq('curso_id', curso)));
 export const wpPrecios = (curso) => memo('wpp' + curso, () => all('ac_wp_precios', '*', (q) => q.eq('curso_id', curso)));
 export const remesas = (curso) => memo('rem' + curso, () => all('ac_remesas', '*', (q) => q.eq('curso_id', curso)).then((l) => l.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))));
+export const remesasLista = () => memo('rlista', () => all('ac_remesas_lista').then((l) => l.sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre, 'es', { numeric: true }))));
+export const domiciliaciones = () => memo('domis', () => all('ac_domiciliaciones'));
+// sin caché: son pocas filas y el resaltado de cuota cambiada tiene que ser el de ahora mismo
+export const cuotaCambios = (curso) => all('ac_cuota_cambios', '*', (q) => q.eq('curso_id', curso));
+export const remesaEnvios = (curso) => memo('renv' + curso, () => all('ac_remesa_envios', '*, resumen:ac_remesa_envio_resumen(*)', (q) => q.eq('curso_id', curso)));
+export const remesaEnvioLineas = (envio) => memo('renvl' + envio, () => all('ac_remesa_envio_lineas', '*', (q) => q.eq('envio_id', envio)));
 export const bajas = () => memo('bajas', () => all('ac_bajas', '*, alumno:ac_alumnos(id,num,apellidos,nombre,nivel,modalidad,estado)'));
 export const contactos = () => memo('contactos', () => all('ac_contactos'));
 export const tutorias = () => memo('tutorias', () => all('ac_tutorias', '*, alumno:ac_alumnos(id,apellidos,nombre), profesora:ac_profesoras(id,nombre)'));
@@ -162,7 +169,10 @@ export async function insMany(tabla, filas, { lote = 200, onConflict, ignorar = 
   invalidarTabla(tabla);
   return out;
 }
-export async function upd(tabla, id, parche) { const r = chk(await supabase.from(tabla).update(parche).eq('id', id).select().single()); tocar(tabla, [id], r); return r; }
+export async function upd(tabla, id, parche) {
+  const r = chk(await supabase.from(tabla).update(parche).eq('id', id).select().single()); tocar(tabla, [id], r);
+  return r;
+}
 export async function del(tabla, id) { chk(await supabase.from(tabla).delete().eq('id', id)); invalidarTabla(tabla); }
 export async function delMany(tabla, ids, lote = 100) { for (let i = 0; i < ids.length; i += lote) chk(await supabase.from(tabla).delete().in('id', ids.slice(i, i + lote))); invalidarTabla(tabla); }
 export async function delWhere(tabla, col, valor) { chk(await supabase.from(tabla).delete().eq(col, valor)); invalidarTabla(tabla); }

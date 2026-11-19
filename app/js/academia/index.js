@@ -3,6 +3,7 @@ import { renderResumen } from './resumen.js';
 import { renderAlumnos } from './alumnos.js';
 import { renderPagos } from './pagos.js';
 import { renderRemesas } from './remesas.js';
+import { renderRemesasMensuales } from './remesas_mensuales.js';
 import { renderSeguimiento } from './seguimiento.js';
 import { renderTutorias } from './tutorias.js';
 import { renderBajas } from './bajas.js';
@@ -40,6 +41,7 @@ export const RUTAS_ACADEMIA = {
   ac_resumen: F('Resumen', renderResumen, 'ac_resumen'),
   ac_pagos: F('Pagos', renderPagos, 'ac_pagos'),
   ac_remesas: F('Remesas', renderRemesas, 'ac_remesas'),
+  ac_remesas_mensuales: F('Remesas mensuales', renderRemesasMensuales, 'ac_remesas'),
   ac_pagos_importar: F('Importar pagos', renderImportarPagos, 'ac_pagos', true),
   ac_alumnos: R('Alumnos', renderAlumnos, 'ac_alumnos'),
   ac_seguimiento: R('Seguimiento', renderSeguimiento, 'ac_seguimiento'),
