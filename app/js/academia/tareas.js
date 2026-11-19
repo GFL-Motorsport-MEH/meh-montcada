@@ -4,6 +4,7 @@
 import { h, clear, cargando, toast, confirmar, hoyISO, normalizar } from '../ui.js';
 import * as api from './api.js';
 import { cabecera, refrescar, colorDe, iniciales } from './kit.js';
+import { renderMejoras } from './mejoras.js';
 import { renderReuniones, llevarAReunion, nombreReunion, proxima, fechaCorta as fechaReu } from './reuniones.js';
 
 const PRIO = ['Normal', 'Importante', 'Urgente'];
@@ -59,9 +60,10 @@ const sel = (opciones, valor, extra = {}) => h('select', extra, opciones.map(([v
 // Tareas y Reuniones comparten pantalla: un conmutador arriba cambia de una a otra
 export async function renderTareas(view, ctx) {
   const ir = (seccion, q) => { S.seccion = seccion; if (q != null) { S.q = q; S.hechas = true; S.quien = 'todas'; S.area = 'all'; S.spec = null; } refrescar(); };
-  const conmutador = h('div', { class: 'segmented ac-conm', role: 'group', 'aria-label': 'Sección' }, [['tareas', 'Tareas'], ['reuniones', 'Reuniones']].map(([k, l]) =>
+  const conmutador = h('div', { class: 'segmented ac-conm', role: 'group', 'aria-label': 'Sección' }, [['tareas', 'Tareas'], ['reuniones', 'Reuniones'], ['mejoras', 'Mejoras software']].map(([k, l]) =>
     h('button', { class: 'seg-btn', type: 'button', dataset: { k }, 'aria-selected': String(S.seccion === k), onclick: () => ir(k) }, l)));
   if (S.seccion === 'reuniones') return renderReuniones(view, ctx, { conmutador, verTarea: (titulo) => ir('tareas', titulo) });
+  if (S.seccion === 'mejoras') return renderMejoras(view, ctx, { conmutador });
   return renderLista(view, ctx, conmutador);
 }
 

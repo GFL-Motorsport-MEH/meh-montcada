@@ -324,6 +324,8 @@ td.ac-cel.cambio { outline: 2px solid var(--warning); outline-offset: -2px; }
 .ac-conm .seg-btn { font-weight: 600; }
 .ac-conm .seg-btn[data-k="tareas"] { color: #2a5bd7; }
 .ac-conm .seg-btn[data-k="reuniones"] { color: #7a3fc0; }
+.ac-conm .seg-btn[data-k="mejoras"] { color: #b4540a; }
+.ac-conm .seg-btn[data-k="mejoras"][aria-selected="true"] { background: #b4540a; color: #fff; }
 .ac-conm .seg-btn[data-k="tareas"][aria-selected="true"] { background: #2a5bd7; color: #fff; }
 .ac-conm .seg-btn[data-k="reuniones"][aria-selected="true"] { background: #7a3fc0; color: #fff; }
 .ac-punto { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: baseline; background: var(--text-muted); }
@@ -450,3 +452,13 @@ table.data.ac-compacta { font-size: 11.5px; min-width: 0; }
 .ac-rventana { max-height: 88vh; }
 .ac-domi tr.ac-baja td { opacity: .6; }
 .mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; white-space: nowrap; }
+
+/* Mejoras software */
+.ac-mej-nueva { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.ac-mej-nueva textarea, .ac-mej-txt { width: 100%; resize: vertical; }
+.ac-mej-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ac-mej-lista { display: flex; flex-direction: column; gap: 6px; }
+.ac-mej { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; padding: 8px 10px; border: 1px solid var(--border, #ddd); border-left: 4px solid #b4540a; border-radius: 6px; background: #fff; }
+.ac-mej .ac-mej-meta { grid-column: 2; }
+.ac-mej.hecha { opacity: .6; border-left-color: #43a85b; }
+.ac-mej.hecha .ac-mej-txt { text-decoration: line-through; }
