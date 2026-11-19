@@ -77,7 +77,7 @@ async function renderPlantillas(cont, ctx) {
     selCat.addEventListener('change', () => { const cat = ctx.state.taxonomia.find((c) => c.id === selCat.value); const unica = cat?.subcategorias.length === 1 ? cat.subcategorias[0].id : null;
       guardar(p, { categoria_id: selCat.value || null, subcategoria_id: unica }, selCat).then(pintarSub); });
     selSub.addEventListener('change', () => guardar(p, { subcategoria_id: selSub.value || null, categoria_id: selCat.value || null }, selSub).then(pintarSub));
-    const cen = varios ? h('select', { 'aria-label': `Centro · ${p.empresa}`, class: 'gc' }, h('option', { value: '' }, 'Principal'),
+    const cen = varios ? h('select', { 'aria-label': `Centro · ${p.empresa}`, class: 'gc' }, h('option', { value: '' }, 'General'),
       ctx.state.centros.map((c) => h('option', { value: c.id, selected: c.id === p.centro_id }, ctx.tituloCentro(c.nombre)))) : null;
     cen?.addEventListener('change', () => guardar(p, { centro_id: cen.value || null }, cen));
     const act = h('input', { type: 'checkbox', checked: p.activo !== false, 'aria-label': `Activa · ${p.empresa}`, onchange: () => guardar(p, { activo: act.checked }).then(() => tr.classList.toggle('inactiva', !act.checked)) });
@@ -237,7 +237,7 @@ async function renderPlantillas(cont, ctx) {
 
   clear(cont,
     h('div', { class: 'section-head' }, h('div', {}, h('h2', {}, 'Plantillas de gastos'),
-      h('div', { class: 'count' }, 'Gastos que se repiten cada mes y nóminas. Desde Gastos > "Generar gastos del mes" se crean todos de una vez. En el concepto, {mes} se cambia por el mes.')),
+      h('div', { class: 'count' }, 'Gastos que se repiten cada mes y nóminas. Cada plantilla va a su centro; las de centro «General» se generan en cualquiera. Desde Gastos > "Generar gastos del mes" se crean todos de una vez. En el concepto, {mes} se cambia por el mes.')),
       h('div', { class: 'section-actions' }, h('button', { class: 'btn primary', onclick: crearDesdeGastos, title: 'Crea las que faltan y actualiza importes, día y método de las que ya hay. No borra nada.' }, 'Crear / actualizar plantillas'),
         h('button', { class: 'btn', onclick: sugerir }, 'Sugerir desde los gastos'))),
     sugCont,
@@ -267,7 +267,9 @@ export async function generarGastosDelMes(ctx, { curso, gastos, onCreados }) {
   const resumen = h('div', { class: 'muted small' });
   let filas = [];
   function pintar() {
-    const lista = plantillas.filter((p) => !selGrupo.value || p.grupo === selGrupo.value).sort(porOrden);
+    // con un centro elegido: las plantillas de ese centro y las generales (sin centro); sin centro elegido: todas
+    const centroSel = ctx.centroActual();
+    const lista = plantillas.filter((p) => (!selGrupo.value || p.grupo === selGrupo.value) && (!centroSel || !p.centro_id || p.centro_id === centroSel.id)).sort(porOrden);
     filas = propuestaDesdePlantillas(lista, { curso, mes: selMes.value, existentes: gastos, centroPorDefecto: ctx.centroActual()?.id || ctx.centroPrincipal()?.id }).map((x) => ({
       ...x, chk: h('input', { type: 'checkbox', checked: !x.duplicado, 'aria-label': `Crear ${x.gasto.empresa} ${x.gasto.concepto}`, onchange: total }),
       imp: h('input', { type: 'text', class: 'cell', inputmode: 'decimal', value: x.gasto.cantidad ? x.gasto.cantidad.toFixed(2).replace('.', ',') : '', 'aria-label': `Importe ${x.gasto.empresa}`, oninput: total }),
