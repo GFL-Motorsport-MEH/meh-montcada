@@ -40,7 +40,7 @@ try:
             check(any(quiere in x for x in t), f"profesora ve {quiere}")
         for no in ["Pagos", "Remesas", "Alumnos", "Bajas", "Recogidas", "Tareas"]:
             check(not any(x.startswith(no) for x in t), f"profesora NO ve {no}")
-        check([m.split("\n")[0].strip() for m in pg.locator(".modulos .modulo").all_inner_texts()] == ["Academia", "Trabajadores"], "profesora ve los módulos Academia y Trabajadores (no Facturación)")
+        check([m.split("\n")[0].strip() for m in pg.locator(".modulos .modulo").all_inner_texts()] == ["Academia", "Trabajadores", "Alumnos"], "profesora ve los módulos Academia, Trabajadores y Alumnos (no Facturación)")
         pg.close()
 
         print("1b. profesora: módulo Trabajadores con lo suyo y sin Equipo")

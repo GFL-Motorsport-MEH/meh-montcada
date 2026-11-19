@@ -1,0 +1,19 @@
+/* Módulo Alumnos (se carga al entrar; reutiliza las tablas y formularios de Academia) */
+.al-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; align-items: start; }
+.al-card-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.al-card h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); margin: 0; }
+.al-datos { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13.5px; margin: 0; }
+.al-datos dt { color: var(--text-muted); }
+.al-datos dd { margin: 0; font-weight: 600; }
+.al-lista { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-direction: column; gap: 5px; font-size: 13.5px; }
+.al-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.al-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+.al-baja { color: var(--critical); }
+.al-filtro { display: inline-flex; gap: 6px; align-items: center; }
+.al-barra { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.al-dest { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.al-bulk { margin-top: 10px; }
+.al-bulk table { width: 100%; }
+.al-bulk td { padding: 3px 6px; }
+.al-bulk input { width: 100%; }
+@media (max-width: 700px) { .al-grid { grid-template-columns: 1fr; } }

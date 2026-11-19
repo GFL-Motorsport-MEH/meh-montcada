@@ -16,6 +16,7 @@ import { renderControl } from './views/control.js';
 import { renderConfig } from './views/config.js';
 import { RUTAS_ACADEMIA, TABS_ACADEMIA } from './academia/index.js';
 import { RUTAS_TRABAJADORES, TABS_TRABAJADORES } from './trabajadores/index.js';
+import { RUTAS_ALUMNOS, TABS_ALUMNOS } from './alumnos/index.js';
 import { precargar as precargarAcademia, refrescarTodo as refrescarAcademia, setCentro } from './academia/api.js';
 import { renderEscanerVista } from './views/escaner-vista.js';
 import * as historial from './deshacer.js';
@@ -102,11 +103,12 @@ const ctx = {
 };
 
 // ---------- módulos y rutas ----------
-// Tres módulos: Facturación (contabilidad), Academia (gestión diaria) y Trabajadores (portal del trabajador, contratos, horas y documentos).
+// Cuatro módulos: Facturación (contabilidad), Academia (gestión diaria), Trabajadores (portal del trabajador, contratos, horas y documentos) y Alumnos (ficha, notas, informes y documentación de las familias; base del portal de padres).
 const MODULOS = [
   { id: 'facturacion', titulo: 'Facturación', sub: 'Contabilidad, cobros y control', inicio: 'panel' },
   { id: 'academia', titulo: 'Academia', sub: 'Alumnos, horarios y seguimiento', inicio: 'ac_alumnos' },
   { id: 'trabajadores', titulo: 'Trabajadores', sub: 'Portal, contratos, horas y documentos', inicio: 'tr_portal' },
+  { id: 'alumnos', titulo: 'Alumnos', sub: 'Ficha, notas, informes y familias', inicio: 'al_ficha' },
 ];
 // perm = permiso que da acceso a la pantalla (ver permisos.js); edita = hace falta poder editar
 async function renderSinAcceso(view) {
@@ -123,12 +125,13 @@ const RUTAS = {
   facturacion: { titulo: 'Facturación', render: renderFacturacion, modulo: 'facturacion', perm: 'fact' },
   control: { titulo: 'Control', render: renderControl, modulo: 'facturacion', perm: 'fact' },
   config: { titulo: 'Listados y datos', render: renderConfig, modulo: 'facturacion', perm: 'fact', edita: true },
-  // Configuración (ajustes de la app) es común a los tres módulos: se muestra dentro del último módulo en el que estabas
+  // Configuración (ajustes de la app) es común a todos los módulos: se muestra dentro del último módulo en el que estabas
   ajustes: { titulo: 'Configuración', render: renderAjustes, get modulo() { return ultimoModulo; } },
   usuarios: { titulo: 'Usuarios', render: renderUsuarios, admin: true, modulo: 'facturacion' },
   sin_acceso: { titulo: 'Sin acceso', render: renderSinAcceso, modulo: 'facturacion' },
   ...RUTAS_ACADEMIA, // módulo Academia (todo su código está en js/academia/)
   ...RUTAS_TRABAJADORES, // módulo Trabajadores (js/trabajadores/)
+  ...RUTAS_ALUMNOS, // módulo Alumnos (js/alumnos/)
 };
 function puedeRuta(r) {
   const x = RUTAS[r];
@@ -142,7 +145,7 @@ function puedeRuta(r) {
 }
 // primera pantalla de un módulo a la que este usuario puede entrar
 function primeraRuta(modulo) {
-  const orden = modulo === 'academia' ? TABS_ACADEMIA.map((t) => t[0]) : modulo === 'trabajadores' ? TABS_TRABAJADORES.map((t) => t[0]) : ['panel', 'gastos', 'escaner', 'ingresos', 'ac_pagos', 'ac_remesas', 'facturacion', 'balance', 'control', 'config', 'usuarios'];
+  const orden = modulo === 'academia' ? TABS_ACADEMIA.map((t) => t[0]) : modulo === 'trabajadores' ? TABS_TRABAJADORES.map((t) => t[0]) : modulo === 'alumnos' ? TABS_ALUMNOS.map((t) => t[0]) : ['panel', 'gastos', 'escaner', 'ingresos', 'ac_pagos', 'ac_remesas', 'facturacion', 'balance', 'control', 'config', 'usuarios'];
   return orden.find(puedeRuta) || null;
 }
 // Ingresos tiene dos sub-pestañas: Resumen de Pagos (la cuadrícula, que se rellena con los pagos marcados en Pagos) y Facturación.
@@ -162,7 +165,7 @@ function rutaActual() {
   const mismo = RUTAS[r] && primeraRuta(RUTAS[r].modulo); // pantalla sin permiso de un módulo al que sí tiene acceso: a la primera de ese módulo
   if (mismo) return mismo;
   // sin permiso (o ruta que no existe): a la primera pantalla que le toca
-  return (ctx.veAlgo('fact') && primeraRuta('facturacion')) || primeraRuta('academia') || primeraRuta('trabajadores') || primeraRuta('facturacion') || 'sin_acceso';
+  return (ctx.veAlgo('fact') && primeraRuta('facturacion')) || primeraRuta('academia') || primeraRuta('trabajadores') || primeraRuta('alumnos') || primeraRuta('facturacion') || 'sin_acceso';
 }
 function irAModulo(id) {
   let destino = primeraRuta(id);
@@ -312,6 +315,7 @@ const COLOR_PESTANA = {
   Alumnos: '#9db4e8', Seguimiento: '#b7a6e0', 'Tutorías': '#8fcfd6', Bajas: '#f2b5a0', Grupos: '#9fd4b0', Horarios: '#f0d58a', Calendario: '#e8a9c4', Recogidas: '#b5c98a', Tareas: '#d4b99a',
   'Biblioteca y Mascotas': '#a9c6e0', Protocolos: '#c2c6cc', Programaciones: '#e8c19a',
   'Mi portal': '#c9b6e4', 'Contrato y horario': '#9db4e8', 'Bolsa de horas': '#f0d58a', Documentos: '#8fcfd6', Equipo: '#b5c98a',
+  Ficha: '#9db4e8', Notas: '#f0d58a', 'Tareas y material': '#9fd4b0', 'Informes y notas': '#b7a6e0', Comunicaciones: '#8fcfd6', 'Documentación': '#e8a9c4', Actividades: '#e8c19a',
 };
 function colorearTabs() {
   const A = ajustes();
@@ -326,7 +330,7 @@ alCambiarAjustes(() => { if (state.arrancado) colorearTabs(); });
 ctx.pestanasPorModulo = () => {
   const fact = [['panel', 'Panel'], ['gastos', 'Gastos'], ['escaner', 'Escáner'], ['ingresos', 'Ingresos'], ...TABS_COBROS, ['balance', 'Balance'], ['control', 'Control'], ['config', 'Listados y datos'], ['usuarios', 'Usuarios']];
   const pack = (m, lista) => ({ titulo: m.titulo, nombres: lista.filter(([id]) => puedeRuta(id)).map(([, n]) => n) });
-  return [pack(MODULOS[0], fact), pack(MODULOS[1], TABS_ACADEMIA), pack(MODULOS[2], TABS_TRABAJADORES)].filter((g) => g.nombres.length)
+  return [pack(MODULOS[0], fact), pack(MODULOS[1], TABS_ACADEMIA), pack(MODULOS[2], TABS_TRABAJADORES), pack(MODULOS[3], TABS_ALUMNOS)].filter((g) => g.nombres.length)
     .map((g, i, a) => (i === a.length - 1 ? { ...g, nombres: [...g.nombres, 'Configuración'] } : g));
 };
 ctx.colorPestanaBase = (n) => COLOR_PESTANA[n];
@@ -403,6 +407,10 @@ function pintarTabsBase(actual) {
   }
   if (modulo === 'trabajadores') {
     clear(tabsEl, TABS_TRABAJADORES.filter(([id]) => puedeRuta(id)).map(([id, label]) => tab(id, label)), tab('ajustes', 'Configuración'));
+    return;
+  }
+  if (modulo === 'alumnos') {
+    clear(tabsEl, TABS_ALUMNOS.filter(([id]) => puedeRuta(id)).map(([id, label]) => tab(id, label)), tab('ajustes', 'Configuración'));
     return;
   }
   if (ctx.soloEscaner()) { clear(tabsEl, tab('escaner', 'Escáner')); return; }

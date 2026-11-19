@@ -13,6 +13,9 @@ const PERMISOS_DB = [
   P('profesora', 'ac_grupos', 'propio', false), P('profesora', 'ac_calendario', 'todo', false), P('profesora', 'ac_tutorias', 'propio', true), P('profesora', 'ac_seguimiento', 'propio', true), P('profesora', 'ac_biblioteca', 'todo', true), P('profesora', 'ac_documentos', 'todo', false), P('profesora', 'ac_portal', 'propio', false), ...TR.map((k) => P('profesora', k, 'propio', false)),
   P('escaner', 'escaner', 'todo', true),
 ];
+const AL = ['al_ficha', 'al_notas', 'al_tareas', 'al_informes', 'al_comunicaciones', 'al_documentos', 'al_actividades'];
+PERMISOS_DB.push(...AL.map((k) => P('direccion', k, 'todo', true)), ...AL.map((k) => P('coordinacion', k, 'todo', true)),
+  P('profesora', 'al_ficha', 'propio', false), P('profesora', 'al_notas', 'propio', true), P('profesora', 'al_tareas', 'propio', true), P('profesora', 'al_informes', 'propio', true), P('profesora', 'al_comunicaciones', 'propio', true), P('profesora', 'al_actividades', 'todo', false));
 const db = {
   roles: ROLES_DB, rol_permisos: PERMISOS_DB,
   profiles: [ADMIN], cursos: CURSOS, categorias: [], subcategorias: [], centros: [{ id: 'ce1', nombre: 'MONTCADA', principal: true, activo: true, orden: 0 }, { id: 'ce2', nombre: 'ALCANTARILLA', principal: false, activo: true, orden: 1 }], gastos: [], listas: [], empresas: [],
@@ -37,10 +40,13 @@ const REL = {
   ac_formulario_respuestas: { alumno: ['ac_alumnos', 'alumno_id', 'uno'] }, ac_tutorias: { alumno: ['ac_alumnos', 'alumno_id', 'uno'], profesora: ['ac_profesoras', 'profesora_id', 'uno'] },
   ac_anotaciones: { alumno: ['ac_alumnos', 'alumno_id', 'uno'], profesora: ['ac_profesoras', 'profesora_id', 'uno'] },
 };
+Object.assign(db, { al_evaluaciones: [], al_tareas_extra: [], al_informes: [], al_mensajes: [], al_documentos_familia: [], al_actividades: [], al_actividad_inscritos: [] });
+for (const t of ['al_evaluaciones', 'al_tareas_extra', 'al_informes']) REL[t] = { profesora: ['ac_profesoras', 'profesora_id', 'uno'] };
 let session = { user: { id: ADMIN.id, email: ADMIN.email }, access_token: 'x' };
 const listeners = [];
 let nextId = 1;
 window.__mock = { db, calls: [] };
+if (typeof window.__SEED === 'function') window.__SEED(); // datos de partida que pone cada prueba (antes de que la app lea nada)
 
 class Q {
   constructor(t) { this.t = t; this.f = []; this.orders = []; this.op = 'select'; }
