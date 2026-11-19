@@ -21,6 +21,8 @@ export async function renderPagos(view, ctx) {
   const cuotaPor = new Map(cuotas.map((c) => [`${c.alumno_id}|${c.concepto}|${c.mes}`, c]));
   const editor = ctx.edita('ac_pagos');
   const f = { q: '', soloPend: false, modo: '', nivel: '', recibo: '' };
+  const orden = { k: 'nombre', dir: 1 };
+  const RANGO = { pendiente: 0, devuelto: 1, pagado: 2, exento: 3 };
   const filasBase = alumnos.filter((a) => (inscPor.get(a.id)?.activa && a.estado !== 'baja') || (a.estado === 'inscrito' && inscPor.has(a.id)) || cuotas.some((c) => c.alumno_id === a.id));
   const sinInsc = alumnos.filter((a) => a.estado === 'inscrito' && !inscPor.has(a.id)).length;
   const precioWp = (a) => { const p = precios.find((x) => norm(x.nivel) === norm(a.nivel) && norm(a.nivel)); return p ? Number(p.importe) : null; };
@@ -40,10 +42,10 @@ export async function renderPagos(view, ctx) {
     kv.cob.textContent = fmtEUR2(t.pagado); kv.pen.textContent = fmtEUR2(t.total - t.pagado);
     kv.rec.textContent = String(cuotas.filter((c) => c.estado === 'pagado' && !c.recibo_hecho).length); kv.al.textContent = String(filasBase.length);
   }
-  const pie = h('tfoot');
+  const resumen = h('tr', { class: 'ac-resumen' });
   function pintarPie() {
-    const col = (c) => { const t = totales(c); return h('th', { class: 'num', title: `Cobrado ${fmtEUR2(t.pagado)} de ${fmtEUR2(t.total)}` }, fmtN(t.pagado), h('div', { class: 'muted small' }, `de ${fmtN(t.total)}`)); };
-    clear(pie, h('tr', {}, h('th', { colspan: 5 }, 'Cobrado / total (€)'), COLS.map((k) => col(cuotas.filter((c) => c.concepto === k.c && c.mes === k.m)))));
+    const col = (c) => { const t = totales(c); return h('th', { class: 'num', title: `Cobrado ${fmtEUR2(t.pagado)} de ${fmtEUR2(t.total)} · pendiente ${fmtEUR2(t.total - t.pagado)}` }, h('b', {}, fmtN(t.pagado)), h('span', { class: 'ac-de' }, `/${fmtN(t.total)}`)); };
+    clear(resumen, h('th', { colspan: 5, class: 'l' }, 'Cobrado / total (€)'), COLS.map((k) => col(cuotas.filter((c) => c.concepto === k.c && c.mes === k.m))));
   }
 
   // ---------- celdas ----------
@@ -152,6 +154,7 @@ export async function renderPagos(view, ctx) {
   const onKey = (e) => { if (e.key === 'Escape' && seleccion.size && !document.querySelector('.overlay') && e.target.tagName !== 'INPUT') setSel(new Set()); };
   document.addEventListener('mouseup', onUp); document.addEventListener('keydown', onKey);
   const quitar = new MutationObserver(() => { if (!view.isConnected && !barra.isConnected) { document.removeEventListener('mouseup', onUp); document.removeEventListener('keydown', onKey); quitar.disconnect(); } });
+  const zoomBox = h('span', { class: 'ac-zoom' });
   const cuerpo = h('tbody');
   cuerpo.addEventListener('mousedown', (e) => {
     if (e.button !== 0 || e.target.closest('button,input,a')) return;
@@ -170,13 +173,27 @@ export async function renderPagos(view, ctx) {
   // ---------- filtros y tabla ----------
   const modos = [...new Set(filasBase.map((a) => a.metodo_pago).filter(Boolean))].sort();
   const niveles = [...new Set(filasBase.map((a) => a.nivel).filter(Boolean))].sort((x, y) => x.localeCompare(y, 'es', { numeric: true }));
+  const txt = (x, y) => String(x || '').localeCompare(String(y || ''), 'es', { numeric: true });
+  const porNombre = (x, y) => txt(x.apellidos, y.apellidos) || txt(x.nombre, y.nombre);
+  function comparar(x, y) {
+    const k = orden.k; let r = 0;
+    if (k === 'num') r = Number(x.num || 1e9) - Number(y.num || 1e9);
+    else if (k === 'nivel') r = txt(x.nivel, y.nivel);
+    else if (k === 'modo') r = txt(x.metodo_pago, y.metodo_pago);
+    else if (k === 'cuota') r = Number(inscPor.get(x.id)?.cuota_mensual || 0) - Number(inscPor.get(y.id)?.cuota_mensual || 0);
+    else if (k.startsWith('c')) { const ci = Number(k.slice(1)); const rg = (a) => { const c = cuotaDe(a, ci); return c ? RANGO[c.estado] ?? 4 : 4; }; r = rg(x) - rg(y) || (Number(cuotaDe(x, ci)?.importe || 0) - Number(cuotaDe(y, ci)?.importe || 0)); }
+    return (r || porNombre(x, y)) * (r ? orden.dir : 1);
+  }
+  const cabs = new Map();
+  function ordenar(k) { orden.dir = orden.k === k ? -orden.dir : 1; orden.k = k; pintarFlechas(); pintar(); }
+  function pintarFlechas() { for (const [k, th] of cabs) { const fl = th.querySelector('.ac-fl'); fl.textContent = orden.k === k ? (orden.dir > 0 ? '▲' : '▼') : ''; th.setAttribute('aria-sort', orden.k === k ? (orden.dir > 0 ? 'ascending' : 'descending') : 'none'); } }
   function pintar() {
     const q = normalizar(f.q); const mi = MESES.indexOf(mesActual());
     rows = filasBase.filter((a) => (!q || normalizar(nombreAlumno(a)).includes(q) || String(a.num || '') === f.q.trim())
       && (!f.modo || a.metodo_pago === f.modo) && (!f.nivel || a.nivel === f.nivel)
       && (!f.soloPend || cuotas.some((c) => c.alumno_id === a.id && c.estado === 'pendiente' && (c.mes === '' || MESES.indexOf(c.mes) <= mi)))
       && (!f.recibo || cuotas.some((c) => c.alumno_id === a.id && c.estado === 'pagado' && !c.recibo_hecho)))
-      .sort((x, y) => (x.apellidos || '').localeCompare(y.apellidos || '', 'es') || (x.nombre || '').localeCompare(y.nombre || '', 'es'));
+      .sort(comparar);
     celdas.clear(); seleccion.clear(); ancla = null; pintarBarra();
     clear(cuerpo, rows.map((a, r) => h('tr', {},
       h('td', { class: 'ac-id muted' }, a.num ? String(Math.round(a.num)) : ''),
@@ -236,13 +253,15 @@ export async function renderPagos(view, ctx) {
     }));
   }
 
-  const th = (t, cls) => h('th', { class: cls || '' }, t);
+  const th = (k, t, cls, extra) => { const el = h('th', { class: 'ac-ord ' + (cls || ''), title: 'Clic para ordenar', onclick: () => ordenar(k) }, t, h('span', { class: 'ac-fl' }), extra || null); cabs.set(k, el); return el; };
   const tb = h('table', { class: 'data ac-pg' },
-    h('thead', {}, h('tr', {}, th('ID'), th('Alumno', 'l'), th('Nivel'), th('Modo pago'), th('Cuota', 'num'),
-      COLS.map((k) => h('th', { class: 'ac-mes' }, k.t, h('div', { class: 'ac-sub' }, '€ · P · R')))), ), cuerpo, pie);
+    h('colgroup', {}, ['38px', '128px', '60px', '88px', '54px'].map((w) => h('col', { style: `width:${w}` })), COLS.map(() => h('col'))),
+    h('thead', {}, resumen, h('tr', {}, th('num', 'ID'), th('nombre', 'Alumno', 'l'), th('nivel', 'Nivel'), th('modo', 'Modo pago'), th('cuota', 'Cuota'),
+      COLS.map((k, ci) => th('c' + ci, k.t, 'ac-mes', h('div', { class: 'ac-sub' }, '€ · P · R'))))), cuerpo);
+  pintarFlechas();
   pintar(); pintarPie(); pintarKpis();
   clear(view,
-    cabecera(`Pagos · ${curso.nombre}`, 'Por mes: cuantía · P (pagado) · R (recibo hecho). Arrastra o usa Ctrl/Mayús+clic para elegir varias celdas.', mesSel, btnGen, btnWp, btnPrecios, h('a', { class: 'btn small', href: '#/ac_pagos_importar' }, 'Importar del CRM'), ctx.veAlgo('fact') ? h('a', { class: 'btn small', href: '#/ingresos', title: 'El cuadro de Ingresos se rellena con los pagos marcados aquí' }, 'Ver Resumen de Pagos →') : null),
+    cabecera(`Pagos · ${curso.nombre}`, 'Por mes: cuantía · P (pagado) · R (recibo hecho). Arrastra o usa Ctrl/Mayús+clic para elegir varias celdas.', mesSel, btnGen, btnWp, btnPrecios, zoomBox, h('a', { class: 'btn small', href: '#/ac_pagos_importar' }, 'Importar del CRM'), ctx.veAlgo('fact') ? h('a', { class: 'btn small', href: '#/ingresos', title: 'El cuadro de Ingresos se rellena con los pagos marcados aquí' }, 'Ver Resumen de Pagos →') : null),
     sinInsc ? h('div', { class: 'banner warn' }, `${sinInsc} alumnos inscritos todavía no tienen cuota fijada en este curso: escribe su cuota en la fila (si no aparecen aquí, ábrelos desde Alumnos).`) : null,
     kpisEl,
     h('div', { class: 'filters filters-4' }, h('input', { type: 'search', placeholder: 'Buscar alumno o ID…', oninput: (e) => { f.q = e.target.value; pintar(); } }),
@@ -250,6 +269,13 @@ export async function renderPagos(view, ctx) {
       sel([['', 'Todos los niveles'], ...niveles.map((n) => [n, n])], '', { onchange: (e) => { f.nivel = e.target.value; pintar(); } }),
       sel([['', 'Todos los recibos'], ['sin', 'Cobrados sin recibo hecho']], '', { onchange: (e) => { f.recibo = e.target.value; pintar(); } })),
     h('label', { class: 'check ac-pg-chk' }, h('input', { type: 'checkbox', onchange: (e) => { f.soloPend = e.target.checked; pintar(); } }), ' Solo con pagos pendientes hasta este mes'),
-    h('div', { class: 'table-wrap card-tabla' }, tb), barra);
+    h('div', { class: 'table-wrap card-tabla ac-pg-wrap' }, tb), barra);
   quitar.observe(document.body, { childList: true, subtree: true });
+  // zoom de la tabla (botones, Ctrl+rueda); se recuerda en este navegador
+  let zoom = Number((() => { try { return localStorage.getItem('ac_pagos_zoom'); } catch { return null; } })()) || 1;
+  const aplicarZoom = (z) => { zoom = Math.min(1.8, Math.max(0.6, Math.round(z * 100) / 100)); tb.style.zoom = zoom; zoomEt.textContent = Math.round(zoom * 100) + '%'; try { localStorage.setItem('ac_pagos_zoom', String(zoom)); } catch { /* sin almacenamiento */ } };
+  const zoomEt = h('span', { class: 'ac-zoom-et', title: 'Clic: 100%', onclick: () => aplicarZoom(1) });
+  zoomBox.append(h('button', { type: 'button', class: 'btn small', title: 'Alejar (Ctrl+rueda)', onclick: () => aplicarZoom(zoom - 0.1) }, '−'), zoomEt, h('button', { type: 'button', class: 'btn small', title: 'Acercar (Ctrl+rueda)', onclick: () => aplicarZoom(zoom + 0.1) }, '+'));
+  tb.parentElement.addEventListener('wheel', (e) => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); aplicarZoom(zoom + (e.deltaY < 0 ? 0.1 : -0.1)); }, { passive: false });
+  aplicarZoom(zoom);
 }
