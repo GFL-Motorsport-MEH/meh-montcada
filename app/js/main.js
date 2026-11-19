@@ -365,7 +365,7 @@ function pintarTabsBase(actual) {
   const mods = modulosVisibles();
   modulosEl.hidden = mods.length < 2;
   clear(modulosEl, mods.map((m) => h('button', { type: 'button', class: 'modulo', 'aria-pressed': String(m.id === modulo), title: m.sub, onclick: () => irAModulo(m.id) },
-    h('span', { class: 'modulo-titulo' }, m.titulo), m.id === 'academia' ? h('span', { class: 'soon' }, 'en desarrollo') : null)));
+    h('span', { class: 'modulo-titulo' }, m.titulo))));
   const tab = (id, label) => h('a', { class: 'tab', href: `#/${id}`, 'aria-current': id === actual ? 'page' : false }, label);
   const proximamente = (label) => h('span', { class: 'tab disabled', title: 'Próximamente' }, label, h('span', { class: 'soon' }, 'pronto'));
   subTabsEl.hidden = true; clear(subTabsEl);
