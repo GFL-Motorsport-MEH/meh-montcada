@@ -73,6 +73,12 @@ export async function renderGastos(view, ctx) {
   // ---------- selección y acciones en bloque ----------
   const seleccion = new Set();
   const barra = h('div', { class: 'barra-seleccion', hidden: true });
+  // altura de la barra fija (0 si está oculta), para que las cabeceras de la tabla se peguen debajo de ella
+  if (typeof ResizeObserver !== 'undefined') {
+    const root = document.documentElement;
+    const ro = new ResizeObserver(() => { if (!barra.isConnected) { root.style.removeProperty('--barra-h'); ro.disconnect(); return; } root.style.setProperty('--barra-h', barra.hidden ? '0px' : `${barra.offsetHeight}px`); });
+    ro.observe(barra);
+  }
   const chkTodos = h('input', { type: 'checkbox', 'aria-label': 'Seleccionar todos los gastos filtrados', onchange: () => {
     const lista = filtrados();
     if (chkTodos.checked) lista.forEach((g) => seleccion.add(g.id)); else seleccion.clear();

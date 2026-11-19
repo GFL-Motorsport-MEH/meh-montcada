@@ -753,3 +753,10 @@ table.tabla-falta thead th .flecha { font-size: 10px; }
 .tab.arrastrando { opacity: .45; cursor: grabbing; }
 .tab-reset { margin-left: auto; align-self: center; font: 500 11.5px var(--font-body); color: var(--text-muted); background: none; border: none; cursor: pointer; white-space: nowrap; padding: 4px 8px; }
 .tab-reset:hover { color: var(--text-primary); text-decoration: underline; }
+
+/* Gastos: la barra de acciones sobre la selección (resaltar, pagar, mover…) se queda fija bajo la cabecera al bajar,
+   y las cabeceras de la tabla pasan a pegarse justo debajo de ella */
+@media (min-width: 761px) {
+  .barra-seleccion { position: sticky; top: var(--cab, 0px); z-index: 20; padding: 6px 12px; box-shadow: 0 2px 6px rgba(0,0,0,.12); }
+  main table.data.tabla-gastos > thead { top: calc(var(--cab, 0px) + var(--barra-h, 0px)); }
+}
