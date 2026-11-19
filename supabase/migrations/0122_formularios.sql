@@ -81,4 +81,4 @@ select f.id, s.created_at,
 from public.ac_tutorias_solicitudes s cross join public.ac_formularios f
 where f.slug = 'tutoria'
 on conflict do nothing;
-comment on table public.ac_tutorias_solicitudes is 'OBSOLETA: sustituida por ac_formulario_respuestas (migración 0121). Borrar cuando se compruebe la copia.';
+comment on table public.ac_tutorias_solicitudes is 'OBSOLETA: sustituida por ac_formulario_respuestas (migración 0122). Borrar cuando se compruebe la copia.';
