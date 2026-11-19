@@ -640,7 +640,7 @@ table.tabla-gastos td.c-imp input { font-weight: 700; }
 td.celda-fecha { position: relative; }
 .cal-oculto { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
 /* miniresumen junto al curso */
-.mini-resumen { display: inline-flex; gap: 2px; align-items: center; font-size: 10.5px; }
+.mini-resumen { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; align-items: center; font-size: 10.5px; padding: 4px 0 0; }
 .mini-resumen[hidden] { display: none; }
 .mini-resumen .mr { border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); border-radius: 10px; padding: 1px 7px; cursor: pointer; font: inherit; white-space: nowrap; }
 .mini-resumen .mr b { color: var(--text-primary); }

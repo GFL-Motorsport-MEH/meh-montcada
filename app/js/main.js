@@ -182,14 +182,13 @@ function pintarShell() {
         h('div', {}, h('div', { class: 'brand-name' }, h('span', { class: 'nombre-largo' }, 'My English House — Montcada'), h('span', { class: 'nombre-corto' }, 'MEH Montcada')), h('div', { class: 'brand-sub' }, 'Gestión y contabilidad'))),
       ctx.soloEscaner() ? null : modulosEl,
       h('div', { class: 'header-controls' }, ctx.soloEscaner() ? null : centroSelect(), ctx.soloEscaner() ? null : cursoSel,
-        ctx.veAlgo('fact') ? resumenEl : null,
         ctx.puedeEditar() ? botonDeshacer() : null,
         h('div', { class: 'user-chip' }, h('span', { class: 'dot', 'aria-hidden': 'true' }, inicial),
           h('span', { title: nombreRol(p.rol) }, `${p.nombre || p.email}${p.rol !== 'admin' ? ' · ' + nombreRol(p.rol).toLowerCase() : ''}`),
           h('button', { class: 'btn ghost', onclick: () => renderNuevaPassword(root, { titulo: 'Cambiar contraseña', onDone: async () => { toast('Contraseña cambiada'); await arrancar(); }, onCancel: () => { pintarShell(); pintarVista(); } }) }, 'Contraseña'),
           botonTema(),
           h('button', { class: 'btn ghost', onclick: salir }, 'Salir')))),
-    tabsEl, subTabsEl);
+    tabsEl, subTabsEl, ctx.veAlgo('fact') ? resumenEl : null);
   // altura de la cabecera fija, para que las cabeceras de las tablas se queden justo debajo
   if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => document.documentElement.style.setProperty('--cab', `${cabecera.offsetHeight}px`)).observe(cabecera);
 }
