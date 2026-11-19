@@ -780,3 +780,14 @@ table.tabla-falta thead th .flecha { font-size: 10px; }
 .ffecha-panel .ffecha-campos { flex-direction: column; align-items: stretch; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .aviso-filtros { background: #3a2f10; border-color: #7a6020; color: #f3deaa; } }
 .filters > .ffecha { grid-column: 1 / -1; flex-wrap: wrap; }
+/* escáner: datos editables en el paso 1 y miniatura en el paso 2 */
+table.escaner-tabla td input:not([type=checkbox]), table.escaner-tabla td select { width: 100%; }
+table.escaner-tabla td:nth-child(2) { min-width: 0; }
+.escaner-clasif { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 4px; }
+.escaner-clasif select { width: 100%; min-width: 0; }
+.factura-mini { display: flex; gap: 12px; align-items: flex-start; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); }
+.factura-mini .mini-img { flex: 0 0 auto; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: #fff; cursor: zoom-in; line-height: 0; }
+.factura-mini .mini-img img { width: 110px; max-height: 150px; object-fit: cover; object-position: top; display: block; border-radius: 3px; }
+.factura-mini .mini-ico { width: 110px; height: 90px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--text-secondary); }
+.factura-mini .mini-info { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; min-width: 0; }
+.factura-mini .mini-nombre { overflow-wrap: anywhere; }

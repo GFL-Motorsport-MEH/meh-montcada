@@ -4,7 +4,7 @@ import { h, clear, toast, normalizar, fmtEUR2, fmtFecha, fmtFechaCorta, num, mes
 import { crearGasto, getGastosPendientes, actualizarGasto, getListas, escanerEmpresas, agrupar } from '../db.js';
 import { montarEscaner } from './escaner.js';
 import { abrirGastoForm } from './gasto-form.js';
-import { abrirFactura } from '../factura-archivo.js';
+import { abrirFactura, bloqueFactura } from '../factura-archivo.js';
 
 const leerImporte = (t) => {
   const s = String(t ?? '').replace(/\s|€/g, '');
@@ -81,6 +81,7 @@ export async function renderEscanerVista(view, ctx) {
     const form = h('form', { class: 'card form-escaner', novalidate: true, onsubmit: guardar },
       h('h3', {}, info.file ? `Datos del gasto · ${info.file.name}` : 'Datos del gasto'),
       info.link ? null : h('div', { class: 'banner warn small' }, info.file ? 'La factura no se ha podido adjuntar.' : 'Gasto sin archivo adjunto.'),
+      bloqueFactura(info),
       h('div', { class: 'form-grid-esc' },
         campo('Fecha factura', fFecha), campo('Proveedor', h('div', {}, cbEmp, vinculo), 'ancho2'), campo('Nº factura', fNum), campo('Importe (€)', fImp),
         campo('Concepto', fConc, 'ancho2'), campo('Categoría', fCat), campo('Subcategoría', fSub), campo('Método de pago', fMet), campo('¿Pagado?', fPago),
@@ -108,7 +109,7 @@ export async function renderEscanerVista(view, ctx) {
         mes: mesDeFecha(fecha), curso_id: curso?.id, tipo: d.tipo || 'Factura', link_factura: d.link_factura || info.link || null, sin_factura: !(d.link_factura || info.link),
       };
     }
-    function fichaCompleta() { const x = datos(); clear(zonaForm); esc.reiniciar(); abrirGastoForm({ gasto: null, ctx, inicial: x, onGuardado: () => { ctx.invalidar(x.curso_id); pintarPendientes(); } }); }
+    function fichaCompleta() { const x = datos(); clear(zonaForm); esc.reiniciar(); abrirGastoForm({ gasto: null, ctx, inicial: x, escaneo: info, onGuardado: () => { ctx.invalidar(x.curso_id); pintarPendientes(); } }); }
     async function guardar(e) {
       e.preventDefault();
       const x = datos();

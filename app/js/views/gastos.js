@@ -518,8 +518,8 @@ export async function renderGastos(view, ctx) {
     ctx.setGastos(curso.id, gastos);
     pintar();
   }
-  function nuevoGasto(inicial) {
-    abrirGastoForm({ gasto: null, ctx, inicial, onGuardado: (nuevo) => reemplazar(null, nuevo), onBorrado: () => {} });
+  function nuevoGasto(inicial, escaneo) {
+    abrirGastoForm({ gasto: null, ctx, inicial, escaneo, onGuardado: (nuevo) => reemplazar(null, nuevo), onBorrado: () => {} });
   }
   function exportar() {
     const cols = ['fecha_factura', 'mes', 'contable', 'tipo', 'empresa', 'factura_nr', 'concepto', 'fecha_pago', 'cantidad', 'categoria', 'subcategoria', 'periodicidad', 'metodo_pago', 'pago', 'check_banca', 'fiscontal', 'fiscontal_fecha', 'sin_factura', 'link_factura', 'nif', 'iban', 'swift', 'comentarios'];
@@ -570,7 +570,7 @@ export async function renderGastos(view, ctx) {
       h('div', { class: 'section-actions' },
         h('button', { class: 'btn', onclick: exportar }, 'Exportar CSV'),
         h('button', { class: 'btn', onclick: () => generarGastosDelMes(ctx, { curso, gastos, onCreados: (creados) => { gastos.unshift(...creados); ctx.setGastos(curso.id, gastos); pintar(); } }) }, 'Generar gastos del mes'),
-        h('button', { class: 'btn', onclick: () => abrirEscaner(ctx, { onDatos: (inicial) => nuevoGasto(inicial) }) }, 'Escanear factura'),
+        h('button', { class: 'btn', onclick: () => abrirEscaner(ctx, { onDatos: (inicial, info) => nuevoGasto(inicial, info) }) }, 'Escanear factura'),
         h('button', { class: 'btn primary', onclick: () => nuevoGasto() }, '+ Nuevo gasto'))),
     h('div', { class: 'filters filters-gastos' }, h('div', { class: 'search' }, fQ), fEstado),
     aviso,

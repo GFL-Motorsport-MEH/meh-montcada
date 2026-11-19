@@ -2,7 +2,7 @@
 import { h, toast, confirmar, MESES, capitalizar, mesDeFecha, hoyISO, tituloCategoria, fmtEUR2, fmtFecha } from '../ui.js';
 import { crearGasto, crearGastos, actualizarGasto, borrarGasto } from '../db.js';
 import { dividirEnMeses, dividirEnCentros } from '../gastos-ops.js';
-import { botonSubirFactura, abrirFactura, esArchivoSubido } from '../factura-archivo.js';
+import { botonSubirFactura, abrirFactura, esArchivoSubido, bloqueFactura } from '../factura-archivo.js';
 
 const esVerdad = (v) => /^(true|1|x|verdadero)$/i.test(String(v ?? '').trim());
 
@@ -10,7 +10,7 @@ function datalist(id, valores) {
   return h('datalist', { id }, valores.map((v) => h('option', { value: v })));
 }
 
-export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado, onDividido, inicial }) {
+export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado, onDividido, inicial, escaneo }) {
   const { state } = ctx;
   const nuevo = !gasto;
   const g = gasto || {
@@ -114,6 +114,7 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado, onDividido, 
       h('button', { class: 'btn ghost', type: 'button', 'aria-label': 'Cerrar', onclick: () => cerrar() }, '✕')),
     h('div', { class: 'drawer-body' },
       errGeneral,
+      escaneo ? bloqueFactura(escaneo) : null,
       h('div', { class: 'form-section' },
         h('h3', {}, 'Gasto'),
         lFecha, campo('Fecha pago', fFechaPago),

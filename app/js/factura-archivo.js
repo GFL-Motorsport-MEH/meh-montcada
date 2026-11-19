@@ -29,3 +29,22 @@ export function botonSubirFactura({ carpeta, onSubido, etiqueta = 'Subir PDF', c
   });
   return h('span', { class: 'subir-factura' }, input, btn);
 }
+
+// Miniatura de la factura escaneada con enlace para abrirla (en la pestaña nueva se ve completa).
+// Usa el archivo ya subido (link) o, si no se pudo subir, el archivo local.
+export function bloqueFactura({ miniatura, file, link }) {
+  if (!miniatura && !file && !link) return null;
+  const abrir = () => {
+    if (link) return abrirFactura(link);
+    if (file) { const url = URL.createObjectURL(file); window.open(url, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(url), 600000); }
+  };
+  const img = miniatura
+    ? h('img', { src: miniatura, alt: 'Miniatura de la factura' })
+    : h('span', { class: 'mini-ico' }, 'Sin vista previa');
+  return h('div', { class: 'factura-mini' },
+    h('button', { type: 'button', class: 'mini-img', title: 'Abrir la factura en otra pestaña', 'aria-label': 'Abrir la factura', onclick: abrir }, img),
+    h('div', { class: 'mini-info' },
+      h('strong', {}, 'Factura escaneada'),
+      file ? h('span', { class: 'muted small mini-nombre' }, file.name) : null,
+      h('button', { type: 'button', class: 'btn small', onclick: abrir }, 'Abrir factura')));
+}
