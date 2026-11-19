@@ -1,20 +1,25 @@
 // Tutorías: cada una cuelga de un alumno y, al marcarla como hecha, deja una anotación en su seguimiento.
 import { h, clear, cargando, toast, confirmar, fmtFecha, hoyISO, normalizar } from '../ui.js';
 import * as api from './api.js';
+import { vistaSolicitudes } from './tutorias_solicitudes.js';
 import { campo, txt, area, fecha, sel, drawer, cabecera, tabla, pill, nombreAlumno, hhmm, guardarBoton, buscadorAlumno, refrescar } from './kit.js';
 
 export async function renderTutorias(view, ctx) {
   clear(view, cargando());
   const curso = ctx.cursoActual();
   const [tutorias, alumnos, profes] = await Promise.all([api.tutorias(), api.alumnos(), api.profesoras()]);
+  const verSol = ctx.ve('ac_tutorias'); // solicitudes de familias: solo con acceso a todas las tutorías
+  const solicitudes = verSol ? await api.solicitudesTutorias() : [];
+  const nuevas = solicitudes.filter((x) => x.estado === 'nueva').length;
   const propio = !ctx.ve('ac_tutorias'); // con «lo suyo» solo ve y crea tutorías a su nombre, con sus alumnos
   const yo = propio ? ctx.miProfesora(profes) : null;
   const editor = ctx.edita('ac_tutorias') && (!propio || !!yo);
   const recargar = () => { api.invalidar(); refrescar(); };
-  const f = { q: '', estado: 'pendiente' };
+  const f = { q: '', estado: 'pendiente', vista: 'tut' };
   const hoy = hoyISO();
   const cont = h('div');
   function pintar() {
+    if (f.vista === 'sol') { vistaSolicitudes(cont, { solicitudes, alumnos, profes, curso, ctx, recargar, editor: ctx.edita('ac_tutorias') }); return; }
     const q = normalizar(f.q);
     const filas = tutorias.filter((t) => (!f.estado || t.estado === f.estado) && (!q || normalizar(`${nombreAlumno(t.alumno)} ${t.motivo || ''}`).includes(q))).sort((a, b) => (f.estado === 'pendiente' ? a.fecha.localeCompare(b.fecha) : b.fecha.localeCompare(a.fecha)));
     clear(cont, tabla([
@@ -23,9 +28,11 @@ export async function renderTutorias(view, ctx) {
       { t: 'Motivo', v: (t) => t.motivo || '' }, { t: 'Estado', v: (t) => pill(t.estado, t.estado === 'hecha' ? 'ok' : t.estado === 'cancelada' ? 'off' : 'warn') },
     ], filas, { onClick: (t) => abrir(t, { alumnos, profes, curso, ctx, recargar }), vacio: 'No hay tutorías con este filtro.' }));
   }
+  const filtros = h('div', { class: 'filters filters-2' }, h('input', { type: 'search', placeholder: 'Buscar alumno o motivo…', oninput: (e) => { f.q = e.target.value; pintar(); } }), sel([['', 'Todas'], ['pendiente', 'Pendientes'], ['hecha', 'Hechas'], ['cancelada', 'Canceladas']], f.estado, { onchange: (e) => { f.estado = e.target.value; pintar(); } }));
   clear(view, cabecera('Tutorías', propio ? 'Tus reuniones con familias' : 'Reuniones con familias, enlazadas al seguimiento de cada alumno', editor ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrir(null, { alumnos, profes, curso, ctx, recargar }) }, '+ Nueva tutoría') : null),
     propio && !yo ? h('div', { class: 'banner warn' }, 'Tu usuario todavía no está enlazado a una ficha de profesora, así que no se te asigna ninguna tutoría. Pide a un administrador que lo enlace en Usuarios.') : null,
-    h('div', { class: 'filters filters-2' }, h('input', { type: 'search', placeholder: 'Buscar alumno o motivo…', oninput: (e) => { f.q = e.target.value; pintar(); } }), sel([['', 'Todas'], ['pendiente', 'Pendientes'], ['hecha', 'Hechas'], ['cancelada', 'Canceladas']], f.estado, { onchange: (e) => { f.estado = e.target.value; pintar(); } })), cont);
+    verSol ? h('div', { class: 'segmented', role: 'tablist' }, [['tut', 'Tutorías'], ['sol', nuevas ? `Solicitudes (${nuevas})` : 'Solicitudes']].map(([k, l]) => h('button', { class: 'seg-btn', role: 'tab', type: 'button', 'aria-selected': String(f.vista === k), onclick: (e) => { f.vista = k; e.target.parentNode.querySelectorAll('.seg-btn').forEach((b) => b.setAttribute('aria-selected', String(b === e.target))); filtros.hidden = k === 'sol'; pintar(); } }, l))) : null,
+    filtros, cont);
   pintar();
 }
 
