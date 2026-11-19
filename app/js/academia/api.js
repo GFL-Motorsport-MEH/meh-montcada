@@ -141,6 +141,11 @@ export const bajas = () => memo('bajas', () => all('ac_bajas', '*, alumno:ac_alu
 export const contactos = () => memo('contactos', () => all('ac_contactos'));
 export const tutorias = () => memo('tutorias', () => all('ac_tutorias', '*, alumno:ac_alumnos(id,apellidos,nombre), profesora:ac_profesoras(id,nombre)'));
 export const formularios = () => memo('formularios', () => all('ac_formularios').then((l) => l.sort((a, b) => a.titulo.localeCompare(b.titulo))));
+// respuestas de formularios nuevas y sin abrir (aviso de la parte superior)
+export async function contarFormNuevas() {
+  const { count, error } = await supabase.from('ac_formulario_respuestas').select('id', { count: 'exact', head: true }).eq('estado', 'nueva').is('visto_at', null);
+  return error ? 0 : count || 0;
+}
 export const formRespuestas = (formId) => memo('formresp' + formId, () => all('ac_formulario_respuestas', '*, alumno:ac_alumnos(id,apellidos,nombre)', (q) => q.eq('formulario_id', formId)));
 export const anotaciones = (alumnoId) => memo('anot' + (alumnoId || ''), () => all('ac_anotaciones', '*, alumno:ac_alumnos(id,apellidos,nombre), profesora:ac_profesoras(id,nombre)', alumnoId ? (q) => q.eq('alumno_id', alumnoId) : undefined));
 export const prestamos = () => memo('prestamos', () => all('ac_prestamos', '*, alumno:ac_alumnos(id,apellidos,nombre)'));

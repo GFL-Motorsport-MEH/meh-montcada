@@ -469,3 +469,6 @@ main table.data.ac-compacta > thead { top: 0; }
 .lista-ed-fila input.ed-edad { width: 58px; padding: 3px 5px; }
 .ac-checks { display: flex; gap: 18px; align-items: center; }
 .ac-checks label { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; cursor: pointer; }
+
+.aviso-form { border-color: #b26a00; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.aviso-form[hidden] { display: none; }

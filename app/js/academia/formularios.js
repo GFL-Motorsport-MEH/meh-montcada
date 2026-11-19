@@ -83,7 +83,7 @@ export async function renderFormularios(view, ctx) {
   const recargar = () => { api.invalidar(); refrescar(); };
   if (!forms.length && !editor) { clear(view, cabecera('Formularios', 'Aún no hay formularios.')); return; }
   const respPorForm = new Map(await Promise.all(forms.map(async (f) => [f.id, await api.formRespuestas(f.id)])));
-  const nuevas = (f) => (respPorForm.get(f.id) || []).filter((r) => r.estado === 'nueva').length;
+  const nuevas = (f) => (respPorForm.get(f.id) || []).filter((r) => r.estado === 'nueva' && !r.visto_at).length;
   let actual = forms.find((f) => f.id === sessionStorage.getItem('ac_form_sel')) || forms.find((f) => nuevas(f)) || forms[0];
   const st = { estado: 'nueva' };
   const cont = h('div');
@@ -95,11 +95,12 @@ export async function renderFormularios(view, ctx) {
     clear(cont, tabla([
       { t: 'Recibida', v: (r) => fmtFecha(r.created_at.slice(0, 10)) },
       ...mostrados.map((c) => ({ t: c.etiqueta.replace(/[:?¿]/g, '').slice(0, 28), v: (r) => textoValor(c, r.datos?.[c.id]) })),
-      { t: 'Estado', v: (r) => pill(r.estado, r.estado === 'procesada' ? 'ok' : r.estado === 'descartada' ? 'off' : 'warn') },
-    ], resp, { onClick: (r) => abrir(r, { form: actual, alumnos, profes, curso, recargar, editor }), vacio: 'No hay respuestas con este filtro.' }));
+      { t: 'Estado', v: (r) => (r.estado === 'nueva' && !r.visto_at ? pill('sin abrir', 'warn') : pill(r.estado, r.estado === 'procesada' ? 'ok' : r.estado === 'descartada' ? 'off' : 'warn')) },
+    ], resp, { onClick: (r) => { abrir(r, { form: actual, alumnos, profes, curso, recargar, editor }); marcarVista(r, { ctx, repintar: () => { pintar(); actualizarEtiquetas(); } }); }, vacio: 'No hay respuestas con este filtro.' }));
   }
-  const selForm = sel(forms.map((f) => [f.id, `${f.titulo}${nuevas(f) ? ` (${nuevas(f)} nuevas)` : ''}${f.activo ? '' : ' · desactivado'}`]), actual?.id, { onchange: (e) => { actual = forms.find((f) => f.id === e.target.value); sessionStorage.setItem('ac_form_sel', actual.id); pintar(); } });
+  const selForm = sel(forms.map((f) => [f.id, `${f.titulo}${nuevas(f) ? ` (${nuevas(f)} sin abrir)` : ''}${f.activo ? '' : ' · desactivado'}`]), actual?.id, { onchange: (e) => { actual = forms.find((f) => f.id === e.target.value); sessionStorage.setItem('ac_form_sel', actual.id); pintar(); } });
   const selEstado = sel([['', 'Todas'], ['nueva', 'Nuevas'], ['procesada', 'Procesadas'], ['descartada', 'Descartadas']], st.estado, { onchange: (e) => { st.estado = e.target.value; pintar(); } });
+  const actualizarEtiquetas = () => forms.forEach((f, i) => { const o = selForm.options[i]; if (o) o.textContent = `${f.titulo}${nuevas(f) ? ` (${nuevas(f)} sin abrir)` : ''}${f.activo ? '' : ' · desactivado'}`; });
   const copiar = async () => { if (!actual) return; const u = urlFormulario(actual); try { await navigator.clipboard.writeText(u); toast('Enlace copiado: ' + u); } catch { window.prompt('Copia este enlace:', u); } };
   clear(view, cabecera('Formularios', 'Lo que rellenan las familias en la web de formularios, para revisar y procesar',
     editor ? h('button', { class: 'btn small', type: 'button', onclick: () => editarForm(null, { recargar }) }, '+ Nuevo formulario') : null,
@@ -108,6 +109,16 @@ export async function renderFormularios(view, ctx) {
     h('button', { class: 'btn primary small', type: 'button', onclick: copiar }, 'Copiar enlace para familias')),
     h('div', { class: 'filters filters-2' }, selForm, selEstado), cont);
   pintar();
+}
+
+// la primera vez que alguien con permiso de edición abre una respuesta nueva se marca como vista (quita el aviso de arriba)
+async function marcarVista(r, { ctx, repintar }) {
+  if (r.visto_at || !ctx.edita('ac_formularios')) return;
+  try {
+    r.visto_at = new Date().toISOString();
+    await api.upd('ac_formulario_respuestas', r.id, { visto_at: r.visto_at });
+    repintar(); ctx.actualizarAvisoFormularios?.();
+  } catch { r.visto_at = null; }
 }
 
 // ---------- ficha de una respuesta ----------

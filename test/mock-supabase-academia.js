@@ -44,7 +44,7 @@ window.__mock = { db, calls: [] };
 
 class Q {
   constructor(t) { this.t = t; this.f = []; this.orders = []; this.op = 'select'; }
-  select(cols) { this.cols = cols || '*'; this.ret = true; return this; }
+  select(cols, opts) { this.cols = cols || '*'; this.ret = true; if (opts?.count) this.cnt = true; return this; }
   eq(c, v) { this.f.push((r) => r[c] === v); return this; }
   is(c, v) { this.f.push((r) => (r[c] ?? null) === v); return this; }
   in(c, vs) { this.f.push((r) => vs.includes(r[c])); return this; }
@@ -102,6 +102,7 @@ class Q {
     if (this.op === 'delete') { db[this.t] = db[this.t].filter((r) => !match(r)); return { data: null, error: null }; }
     let out = db[this.t].filter(match);
     for (const [c, asc] of [...this.orders].reverse()) out = [...out].sort((a, b) => { const x = a[c] ?? '', y = b[c] ?? ''; return (x < y ? -1 : x > y ? 1 : 0) * (asc ? 1 : -1); });
+    if (this.cnt) return { data: null, count: out.length, error: null };
     const [a, b] = this.rng || [0, 999]; out = out.slice(a, b + 1).map((r) => this.embed(r));
     if (this.single_) return { data: out[0] || null, error: null };
     return { data: out, error: null };

@@ -14,6 +14,7 @@ import { renderConfig } from './views/config.js';
 import { RUTAS_ACADEMIA, TABS_ACADEMIA } from './academia/index.js';
 import { RUTAS_TRABAJADORES, TABS_TRABAJADORES } from './trabajadores/index.js';
 import { precargar as precargarAcademia, refrescarTodo as refrescarAcademia } from './academia/api.js';
+import * as acadApi from './academia/api.js';
 import { renderEscanerVista } from './views/escaner-vista.js';
 import * as historial from './deshacer.js';
 import { crearPermisos } from './permisos.js';
@@ -163,7 +164,7 @@ function irAModulo(id) {
   if (destino) window.location.hash = `#/${destino}`;
 }
 
-let viewEl, tabsEl, subTabsEl, cursoSel, modulosEl;
+let viewEl, tabsEl, subTabsEl, cursoSel, modulosEl, avisoFormEl;
 function pintarShell() {
   const p = state.perfil;
   cursoSel = h('select', { class: 'select-inline', 'aria-label': 'Curso', onchange: () => { state.cursoId = cursoSel.value; guardarCurso(); pintarVista(); } },
@@ -174,7 +175,8 @@ function pintarShell() {
   viewEl = h('main', { id: 'view', style: 'display:flex; flex-direction:column; gap:12px' });
   const inicial = (p.nombre || p.email || '?').trim().charAt(0).toUpperCase();
   const cabecera = h('div', { class: 'cabecera-fija' });
-  clear(root, h('div', { class: 'page' }, cabecera, viewEl));
+  avisoFormEl = h('div', { class: 'banner aviso-form', role: 'status', hidden: true });
+  clear(root, h('div', { class: 'page' }, cabecera, avisoFormEl, viewEl));
   clear(cabecera,
     h('header', { class: 'topbar' },
       h('div', { class: 'brand' }, h('div', { class: 'brand-mark', 'aria-hidden': 'true' }, 'M'),
@@ -256,6 +258,17 @@ async function actualizarPendientes() {
   document.querySelectorAll('.tab-badge-gastos').forEach((el) => { el.textContent = n ? String(n) : ''; el.hidden = !n; el.title = `${n} gastos pendientes de revisar`; });
 }
 ctx.actualizarPendientes = actualizarPendientes;
+
+// ---------- respuestas de formularios sin abrir (aviso en la parte superior de todas las pantallas) ----------
+async function actualizarAvisoFormularios() {
+  if (!avisoFormEl) return;
+  const n = ctx.ve('ac_formularios') ? await acadApi.contarFormNuevas().catch(() => 0) : 0;
+  avisoFormEl.hidden = !n;
+  if (!n) return;
+  clear(avisoFormEl, h('strong', {}, n === 1 ? 'Hay 1 respuesta nueva de un formulario sin abrir.' : `Hay ${n} respuestas nuevas de formularios sin abrir.`), ' ',
+    h('a', { href: '#/ac_formularios' }, 'Ver respuestas'));
+}
+ctx.actualizarAvisoFormularios = actualizarAvisoFormularios;
 // cambia de curso (p.ej. desde el aviso de pendientes) y abre Gastos
 ctx.irACurso = (cursoId, filtro) => {
   state.cursoId = cursoId; guardarCurso(); state.filtroInicial = filtro || null;
@@ -475,6 +488,8 @@ async function arrancar() {
   pintarShell();
   pintarVista();
   actualizarPendientes();
+  actualizarAvisoFormularios();
+  if (!window.__mehAvisoForm) { window.__mehAvisoForm = setInterval(() => { if (!document.hidden) actualizarAvisoFormularios(); }, 120000); window.addEventListener('hashchange', () => actualizarAvisoFormularios()); }
   // con la app abierta, los datos de Academia se descargan en segundo plano y se mantienen al día
   if (ctx.ve('ac_alumnos') && !ctx.soloEscaner()) {
     setTimeout(() => precargarAcademia(state.cursoId), 800);
