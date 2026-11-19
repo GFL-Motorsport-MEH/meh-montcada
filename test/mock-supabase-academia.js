@@ -3,7 +3,7 @@ const hoy = new Date().toISOString().slice(0, 10);
 const ADMIN = { id: 'u-admin', email: 'admin@test.es', nombre: 'Admin Prueba', rol: window.__ROL || 'admin', activo: true, debe_cambiar_password: false, created_at: hoy };
 const CURSOS = [{ id: 'c1', nombre: '2025.26', fecha_inicio: '2025-09-01', fecha_fin: '2026-08-31' }, { id: 'c2', nombre: '2026.27', fecha_inicio: '2026-09-01', fecha_fin: '2027-08-31' }];
 const L = (lista, ...vals) => vals.map((valor, i) => ({ id: `l-${lista}-${i}`, lista, valor, orden: i }));
-const ACAD = ['ac_alumnos', 'ac_pagos', 'ac_remesas', 'ac_seguimiento', 'ac_tutorias', 'ac_bajas', 'ac_grupos', 'ac_calendario', 'ac_recogidas', 'ac_tareas', 'ac_biblioteca', 'ac_documentos', 'ac_programaciones', 'ac_portal'];
+const ACAD = ['ac_alumnos', 'ac_pagos', 'ac_remesas', 'ac_seguimiento', 'ac_tutorias', 'ac_bajas', 'ac_grupos', 'ac_calendario', 'ac_recogidas', 'ac_tareas', 'ac_biblioteca', 'ac_documentos', 'ac_programaciones', 'ac_formularios', 'ac_portal'];
 const P = (rol, permiso, alcance, editar) => ({ rol, permiso, alcance, editar });
 const TR = ['tr_contrato', 'tr_horas'];
 const ROLES_DB = [{ rol: 'admin', nombre: 'Administrador', descripcion: 'Todo', orden: 0 }, { rol: 'direccion', nombre: 'Dirección', descripcion: '', orden: 1 }, { rol: 'coordinacion', nombre: 'Coordinación', descripcion: '', orden: 2 }, { rol: 'profesora', nombre: 'Profesora', descripcion: '', orden: 3 }, { rol: 'escaner', nombre: 'Solo escáner', descripcion: '', orden: 4 }];
@@ -17,7 +17,7 @@ const db = {
   roles: ROLES_DB, rol_permisos: PERMISOS_DB,
   profiles: [ADMIN], cursos: CURSOS, categorias: [], subcategorias: [], centros: [{ id: 'ce1', nombre: 'MONTCADA', principal: true, activo: true, orden: 0 }], gastos: [], listas: [], empresas: [],
   ac_listas: [...L('modalidad', 'Babies', 'Kids', 'Teens', 'Adults'), ...L('metodo_pago', 'Domiciliacion', 'Efectivo'), ...L('motivo_baja', 'Incompatibilidad horaria', 'Otros'), ...L('categoria_documento', 'Protocolo', 'Familias'), ...L('situacion_contacto', 'POSIBLE ALUMNO', 'EN ESPERA', 'APUNTADO'), ...L('como_conocio', 'Colegio', 'Instagram', 'Correo'), ...L('descuento', 'Hermanos')],
-  ac_responsables: [], ac_responsables_priv: [], ac_vinculos: [], ac_profesoras: [], ac_aulas: [], ac_alumnos: [], ac_inscripciones: [], ac_grupos: [], ac_sesiones: [], ac_alumno_grupo: [], ac_remesas: [], ac_remesas_lista: [], ac_domiciliaciones: [], ac_domiciliacion_notas: [], ac_cuota_cambios: [], ac_remesa_envios: [], ac_remesa_envio_resumen: [], ac_remesa_envio_lineas: [], ac_cuotas: [], ac_wp_precios: [], ac_bajas: [], ac_contactos: [], ac_tutorias: [], ac_anotaciones: [], ac_tareas: [], ac_mejoras_software: [], ac_reuniones: [], ac_reunion_temas: [], ac_documentos: [], ac_prestamos: [], ac_biblioteca_items: [], ac_recogidas: [], ac_recogidas_pagos: [], ac_autorizados: [], ac_autorizados_priv: [], ac_calendario_dias: [], ac_calendario_marcas: [], ac_descuentos: [], ac_cuotas_tarifa: [], ac_nivel_historial: [], ac_portal_docs: [], tr_contratos: [], tr_horario: [], tr_horas: [], ui_preferencias: [], ui_orden_tablas: [],
+  ac_formularios: [], ac_formulario_respuestas: [], ac_responsables: [], ac_responsables_priv: [], ac_vinculos: [], ac_profesoras: [], ac_aulas: [], ac_alumnos: [], ac_inscripciones: [], ac_grupos: [], ac_sesiones: [], ac_alumno_grupo: [], ac_remesas: [], ac_remesas_lista: [], ac_domiciliaciones: [], ac_domiciliacion_notas: [], ac_cuota_cambios: [], ac_remesa_envios: [], ac_remesa_envio_resumen: [], ac_remesa_envio_lineas: [], ac_cuotas: [], ac_wp_precios: [], ac_bajas: [], ac_contactos: [], ac_tutorias: [], ac_anotaciones: [], ac_tareas: [], ac_mejoras_software: [], ac_reuniones: [], ac_reunion_temas: [], ac_documentos: [], ac_prestamos: [], ac_biblioteca_items: [], ac_recogidas: [], ac_recogidas_pagos: [], ac_autorizados: [], ac_autorizados_priv: [], ac_calendario_dias: [], ac_calendario_marcas: [], ac_descuentos: [], ac_cuotas_tarifa: [], ac_nivel_historial: [], ac_portal_docs: [], tr_contratos: [], tr_horario: [], tr_horas: [], ui_preferencias: [], ui_orden_tablas: [],
 };
 const DEFAULTS = {
   ac_alumnos: { estado: 'inscrito', autoriza_rrss: false }, ac_cuotas: { estado: 'pendiente', concepto: 'mensualidad', mes: '', importe: 0 }, ac_grupos: { activo: true, capacidad: 8 },
@@ -34,7 +34,7 @@ const REL = {
   ac_remesa_envios: { resumen: ['ac_remesa_envio_resumen', 'envio_id', 'muchos'] },
   ac_recogidas: { alumno: ['ac_alumnos', 'alumno_id', 'uno'] }, ac_recogidas_pagos: { alumno: ['ac_alumnos', 'alumno_id', 'uno'] },
   ac_prestamos: { alumno: ['ac_alumnos', 'alumno_id', 'uno'] },
-  ac_tutorias: { alumno: ['ac_alumnos', 'alumno_id', 'uno'], profesora: ['ac_profesoras', 'profesora_id', 'uno'] },
+  ac_formulario_respuestas: { alumno: ['ac_alumnos', 'alumno_id', 'uno'] }, ac_tutorias: { alumno: ['ac_alumnos', 'alumno_id', 'uno'], profesora: ['ac_profesoras', 'profesora_id', 'uno'] },
   ac_anotaciones: { alumno: ['ac_alumnos', 'alumno_id', 'uno'], profesora: ['ac_profesoras', 'profesora_id', 'uno'] },
 };
 let session = { user: { id: ADMIN.id, email: ADMIN.email }, access_token: 'x' };

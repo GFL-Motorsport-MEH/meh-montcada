@@ -55,7 +55,7 @@ try:
         check(page.evaluate("document.body.dataset.modulo") == "academia", "#/academia abre el módulo Academia")
 
         print("2. todas las pestañas cargan sin error")
-        for r in ["ac_resumen", "ac_alumnos", "ac_pagos", "ac_pagos_importar", "ac_remesas", "ac_seguimiento", "ac_tutorias", "ac_bajas", "ac_grupos", "ac_horarios", "ac_calendario", "ac_recogidas", "ac_tareas", "ac_biblioteca", "ac_documentos", "ac_importar", "ac_programaciones", "ac_cambio_curso", "tr_portal", "tr_contrato", "tr_horas", "tr_documentos", "tr_equipo"]:
+        for r in ["ac_resumen", "ac_alumnos", "ac_pagos", "ac_pagos_importar", "ac_remesas", "ac_seguimiento", "ac_tutorias", "ac_formularios", "ac_bajas", "ac_grupos", "ac_horarios", "ac_calendario", "ac_recogidas", "ac_tareas", "ac_biblioteca", "ac_documentos", "ac_importar", "ac_programaciones", "ac_cambio_curso", "tr_portal", "tr_contrato", "tr_horas", "tr_documentos", "tr_equipo"]:
             ir(page, r)
             check(page.locator(".banner.error").count() == 0, f"{r} sin errores")
         ir(page, "ac_biblioteca")
@@ -451,6 +451,23 @@ try:
         page.locator(".drawer label.field", has_text="Motivo").locator("textarea").fill("Revisar nivel")
         page.get_by_role("button", name="Guardar").click(); page.wait_for_timeout(600)
         check(len(db(page, "ac_tutorias")) == 1 and len(db(page, "ac_anotaciones")) == 1 and db(page, "ac_anotaciones")[0]["tipo"] == "tutoría", "tutoría hecha crea anotación enlazada")
+        print("10b. formularios: crear uno, procesar una respuesta como tutoría")
+        page.evaluate("""() => { const m = window.__mock.db; m.ac_formularios.push({ id: 'f-tut', slug: 'tutoria', titulo: 'Solicitud de tutoría', tipo: 'tutoria', activo: true, campos: [
+          { id: 'alumno', tipo: 'texto', etiqueta: 'Nombre del alumno' }, { id: 'tema', tipo: 'textarea', etiqueta: 'Tema' }, { id: 'disponibilidad', tipo: 'rejilla', etiqueta: 'Día y hora', filas: ['12:00'], columnas: ['Lunes'] }] });
+          m.ac_formulario_respuestas.push({ id: 'r1', formulario_id: 'f-tut', created_at: '2026-11-19T10:00:00Z', estado: 'nueva', datos: { alumno: 'Alba Bueno Foz', tema: 'Evolución', disponibilidad: [{ c: 'Lunes', f: '12:00' }] } }); }""")
+        ir(page, "ac_formularios")
+        page.get_by_role("button", name="+ Nuevo formulario").click()
+        page.locator(".drawer label.field", has_text="Título").locator("input").fill("Autorización de salida")
+        page.locator(".drawer label.field", has_text="Dirección").locator("input").fill("autorizacion-salida")
+        page.get_by_role("button", name="Guardar").click(); page.wait_for_timeout(600)
+        fs = [x for x in db(page, "ac_formularios") if x["slug"] == "autorizacion-salida"]
+        check(len(fs) == 1 and fs[0]["slug"] == "autorizacion-salida" and fs[0]["tipo"] == "generico" and len(fs[0]["campos"]) == 2, "formularios: se crea un formulario con su definición")
+        page.locator(".filters select").first.select_option("f-tut"); page.wait_for_timeout(300)
+        check(page.locator("table tbody tr").count() == 1 and "Lun 12:00" in page.locator("table tbody tr").first.inner_text(), "formularios: la respuesta aparece con su disponibilidad resumida")
+        page.locator("table tbody tr").first.click(); page.wait_for_timeout(300)
+        check(page.locator(".drawer").get_by_text("Crear la tutoría").count() == 1 and "Bueno Foz" in page.locator(".drawer input[list]").first.input_value(), "formularios: propone el alumno por coincidencia de nombre")
+        page.get_by_role("button", name="Crear tutoría").click(); page.wait_for_timeout(600)
+        check(db(page, "ac_formulario_respuestas")[0]["estado"] == "procesada" and db(page, "ac_formulario_respuestas")[0]["ref_tabla"] == "ac_tutorias" and len(db(page, "ac_tutorias")) == 2, "formularios: procesar crea la tutoría pendiente y marca la respuesta")
         ir(page, "ac_bajas")
         page.get_by_role("button", name="+ Registrar baja").click()
         page.locator(".drawer input[list]").first.fill("Bueno Foz, Alba")

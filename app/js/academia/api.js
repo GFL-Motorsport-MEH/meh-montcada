@@ -58,7 +58,7 @@ const CLAVES = {
   ac_recogidas: /^rec/, ac_recogidas_pagos: /^rpag/, ac_tareas: /^tareas$/, ac_prestamos: /^prestamos$/, ac_contactos: /^contactos$/,
   ac_cuotas_tarifa: /^cuotasTarifa$/, ac_descuentos: /^(descuentos|listas)$/, ac_listas: /^listas/, ac_autorizados: /^autorizados$/, ac_autorizados_priv: /^$/,
   ac_anotaciones: /^anot/, ac_reuniones: /^reuniones$/, ac_reunion_temas: /^temas$/, ac_mejoras_software: /^mejoras$/, ac_portal_docs: /^portalDocs$/, ac_documentos: /^documentos$/,
-  ac_biblioteca_items: /^bibitems$/, ac_bajas: /^bajas$/, ac_tutorias: /^tutorias$/, ac_tutorias_solicitudes: /^soltut$/, ac_nivel_historial: /^nivelHistorial$/, ac_calendario_marcas: /^cal/,
+  ac_biblioteca_items: /^bibitems$/, ac_bajas: /^bajas$/, ac_tutorias: /^tutorias$/, ac_formularios: /^formularios$/, ac_formulario_respuestas: /^formresp/, ac_nivel_historial: /^nivelHistorial$/, ac_calendario_marcas: /^cal/,
   ac_profesoras: /^profesoras$/, ac_aulas: /^aulas$/, ac_vinculos: /^vinculos$/, ac_responsables: /^(responsables|alumnos)$/,
   ac_alumnos: /^(alumnos|bajas|prestamos|tutorias|anot|rec|rpag|ag)/,
 };
@@ -140,7 +140,8 @@ export const remesaEnvioLineas = (envio) => memo('renvl' + envio, () => all('ac_
 export const bajas = () => memo('bajas', () => all('ac_bajas', '*, alumno:ac_alumnos(id,num,apellidos,nombre,nivel,modalidad,estado)'));
 export const contactos = () => memo('contactos', () => all('ac_contactos'));
 export const tutorias = () => memo('tutorias', () => all('ac_tutorias', '*, alumno:ac_alumnos(id,apellidos,nombre), profesora:ac_profesoras(id,nombre)'));
-export const solicitudesTutorias = () => memo('soltut', () => all('ac_tutorias_solicitudes', '*, alumno:ac_alumnos(id,apellidos,nombre)'));
+export const formularios = () => memo('formularios', () => all('ac_formularios').then((l) => l.sort((a, b) => a.titulo.localeCompare(b.titulo))));
+export const formRespuestas = (formId) => memo('formresp' + formId, () => all('ac_formulario_respuestas', '*, alumno:ac_alumnos(id,apellidos,nombre)', (q) => q.eq('formulario_id', formId)));
 export const anotaciones = (alumnoId) => memo('anot' + (alumnoId || ''), () => all('ac_anotaciones', '*, alumno:ac_alumnos(id,apellidos,nombre), profesora:ac_profesoras(id,nombre)', alumnoId ? (q) => q.eq('alumno_id', alumnoId) : undefined));
 export const prestamos = () => memo('prestamos', () => all('ac_prestamos', '*, alumno:ac_alumnos(id,apellidos,nombre)'));
 export const bibItems = () => memo('bibitems', () => all('ac_biblioteca_items'));

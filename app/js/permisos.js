@@ -23,6 +23,7 @@ export const GRUPOS_PERMISOS = [
     { k: 'ac_biblioteca', t: 'Biblioteca y Mascotas', tipo: 'todo' },
     { k: 'ac_documentos', t: 'Protocolos', tipo: 'todo' },
     { k: 'ac_programaciones', t: 'Programaciones (talleres, intensivos y cursos)', tipo: 'todo' },
+    { k: 'ac_formularios', t: 'Formularios (respuestas de las familias y su procesado)', tipo: 'todo' },
   ] },
   { grupo: 'Trabajadores (portal del trabajador)', items: [
     { k: 'ac_portal', t: 'Documentos (nóminas, contratos y certificados: «lo suyo» = los suyos; «todo» = los de todos)', tipo: 'propio', dinero: true },
@@ -48,7 +49,7 @@ export const celda = (fila) => (fila ? `${fila.alcance}:${fila.editar ? 1 : 0}` 
 export const aFila = (valor) => { const [alcance, e] = valor.split(':'); return { alcance, editar: e === '1' }; };
 
 // Valores recomendados de cada rol (los mismos que siembra la migración 0105). El administrador no se guarda: siempre tiene todo.
-const ACADEMIA = ['ac_alumnos', 'ac_pagos', 'ac_remesas', 'ac_seguimiento', 'ac_tutorias', 'ac_bajas', 'ac_grupos', 'ac_calendario', 'ac_recogidas', 'ac_tareas', 'ac_biblioteca', 'ac_documentos', 'ac_programaciones'];
+const ACADEMIA = ['ac_alumnos', 'ac_pagos', 'ac_remesas', 'ac_seguimiento', 'ac_tutorias', 'ac_bajas', 'ac_grupos', 'ac_calendario', 'ac_recogidas', 'ac_tareas', 'ac_biblioteca', 'ac_documentos', 'ac_programaciones', 'ac_formularios'];
 const todoEdita = (ks) => Object.fromEntries(ks.map((k) => [k, 'todo:1']));
 export const RECOMENDADOS = {
   direccion: { ac_resumen: 'todo:0', ...todoEdita(ACADEMIA), ac_portal: 'todo:1', tr_contrato: 'todo:1', tr_horas: 'todo:1', escaner: 'todo:1' },

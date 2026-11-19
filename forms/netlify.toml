@@ -1,0 +1,5 @@
+# Sitio público de formularios de la academia: solo esta carpeta, sin nada de la app de gestión.
+# Se publica con Netlify (base = forms, publish = .). Sin compilación.
+[build]
+  publish = "."
+  command = ""
