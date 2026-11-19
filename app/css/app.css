@@ -745,3 +745,5 @@ table.grid-ing tfoot > tr > td.total-col { color: var(--accent); }
 
 input.cell.desde-pagos { cursor: default; font-weight: 600; background: color-mix(in oklab, var(--good) 13%, transparent); color: color-mix(in oklab, var(--good) 55%, var(--text-primary)); }
 .banner.info-pagos { background: color-mix(in oklab, var(--good) 10%, var(--surface)); border-color: color-mix(in oklab, var(--good) 40%, var(--border)); }
+table.tabla-falta th.c-chk, table.tabla-falta td.c-chk { width: 34px; text-align: center; }
+table.tabla-falta thead th .flecha { font-size: 10px; }
