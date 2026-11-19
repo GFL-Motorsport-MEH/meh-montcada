@@ -46,7 +46,7 @@ try:
         print("1b. profesora: módulo Trabajadores con lo suyo y sin Equipo")
         pg = abrir(b, "profesora", "tr_portal")
         t = tabs(pg); print("  ", t)
-        check(t == ["Mi portal", "Contrato y horario", "Bolsa de horas", "Documentos"], "profesora ve Mi portal, Contrato y horario, Bolsa de horas y Documentos, sin Equipo")
+        check(t == ["Mi portal", "Contrato y horario", "Bolsa de horas", "Documentos", "Configuración"], "profesora ve Mi portal, Contrato y horario, Bolsa de horas y Documentos, sin Equipo")
         check(pg.locator("main").inner_text().count("Hola") >= 1 and pg.locator(".banner.error").count() == 0, "Mi portal de la profesora carga sin errores")
         pg.evaluate("window.location.hash = '#/tr_equipo'"); pg.wait_for_timeout(500)
         check(pg.evaluate("document.body.dataset.modulo") == "trabajadores" and "Equipo" not in [x.strip() for x in pg.locator(".tabs .tab[aria-current=page]").all_inner_texts()], "profesora no puede abrir Equipo (vuelve a su primera pantalla)")
