@@ -132,7 +132,7 @@ async function renderFaltaFact(cont, ctx) {
     clear(resumen, [...porMet.entries()].sort((a, b) => b[1] - a[1]).map(([m, v]) => h('span', { class: 'chip' }, `${m}: ${fmtEUR2(v)}`)));
     const visibles = new Set(lista.map((x) => x.g.id));
     for (const id of [...sel]) if (!visibles.has(id)) sel.delete(id); // la selección solo vale para lo que se ve
-    for (const t of ths) {
+    for (const t of ths.filter((x) => x._flecha)) {
       const activo = t._campo === orden.campo;
       t.setAttribute('aria-sort', activo ? (orden.asc ? 'ascending' : 'descending') : 'none');
       t._flecha.textContent = activo ? (orden.asc ? ' ▲' : ' ▼') : '';
