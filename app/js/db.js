@@ -38,6 +38,19 @@ async function selectAll(table, columns, build) {
   return out;
 }
 
+// ---------- preferencias de interfaz (orden de pestañas por usuario) ----------
+export async function getPrefsTabs() {
+  const { data, error } = await supabase.from('ui_preferencias').select('tabs').maybeSingle();
+  if (error) return null;
+  return (data && data.tabs) || {};
+}
+export async function setPrefsTabs(tabs) {
+  const { data: u } = await supabase.auth.getUser();
+  const id = u && u.user && u.user.id; if (!id) return;
+  const { error } = await supabase.from('ui_preferencias').upsert({ user_id: id, tabs, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+  if (error) throw new Error(traducirError(error));
+}
+
 // ---------- sesión ----------
 export async function getSession() {
   return check(await supabase.auth.getSession()).session;

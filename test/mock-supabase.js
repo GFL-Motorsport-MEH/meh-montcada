@@ -180,6 +180,7 @@ export function createClient() {
       return { data: null, error: { message: 'función desconocida' } };
     },
     auth: {
+      async getUser() { return { data: { user: session ? session.user : null }, error: null }; },
       async getSession() { return { data: { session }, error: null }; },
       onAuthStateChange(cb) { listeners.push(cb); setTimeout(() => cb('INITIAL_SESSION', session)); return { data: { subscription: { unsubscribe() {} } } }; },
       async signInWithPassword({ email, password }) {

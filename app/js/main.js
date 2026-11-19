@@ -11,6 +11,7 @@ import { renderFacturacion } from './views/facturacion.js';
 import { renderControl } from './views/control.js';
 import { renderConfig } from './views/config.js';
 import { RUTAS_ACADEMIA, TABS_ACADEMIA } from './academia/index.js';
+import { precargar as precargarAcademia, refrescarTodo as refrescarAcademia } from './academia/api.js';
 import { renderEscanerVista } from './views/escaner-vista.js';
 import * as historial from './deshacer.js';
 import { crearPermisos } from './permisos.js';
@@ -295,6 +296,20 @@ function colorearTabs() {
 }
 // orden de pestañas a gusto de cada persona: se arrastran con el ratón y se recuerda en este navegador (una lista por módulo)
 const nombreTab = (t) => (t.firstChild?.textContent || '').trim();
+let prefsTabs = {}; // orden de pestañas por módulo, guardado en el servidor para el usuario
+async function cargarPrefsTabs() {
+  const remoto = await db.getPrefsTabs().catch(() => null);
+  if (remoto) {
+    prefsTabs = remoto;
+    for (const [m, v] of Object.entries(remoto)) { try { localStorage.setItem(`meh.tabs.${m}`, JSON.stringify(v)); } catch { /* */ } }
+    // lo que ya no está en el servidor se quita del almacén local (otro dispositivo pulsó «orden original»)
+    try { for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k && k.startsWith('meh.tabs.') && !(k.slice(9) in remoto)) localStorage.removeItem(k); } } catch { /* */ }
+  }
+}
+function guardarPrefsTabs(modulo, orden) {
+  if (orden) prefsTabs[modulo] = orden; else delete prefsTabs[modulo];
+  db.setPrefsTabs(prefsTabs).catch(() => { /* sin red: queda en este dispositivo */ });
+}
 function ordenarTabs(modulo) {
   const clave = `meh.tabs.${modulo}`;
   let guardado = null;
@@ -305,7 +320,7 @@ function ordenarTabs(modulo) {
     [...tabs].sort((a, b) => pos(a) - pos(b)).forEach((t) => tabsEl.insertBefore(t, tabsEl.querySelector('.tab.disabled') || tabsEl.querySelector('.tab-reset')));
   }
   let arrastrada = null;
-  const guardar = () => { try { localStorage.setItem(clave, JSON.stringify([...tabsEl.querySelectorAll('.tab:not(.disabled)')].map(nombreTab))); } catch { /* */ } };
+  const guardar = () => { const o = [...tabsEl.querySelectorAll('.tab:not(.disabled)')].map(nombreTab); try { localStorage.setItem(clave, JSON.stringify(o)); } catch { /* */ } guardarPrefsTabs(modulo, o); };
   tabsEl.querySelectorAll('.tab:not(.disabled)').forEach((t) => {
     t.draggable = true; t.title = t.title || 'Arrastra para cambiar el orden de las pestañas';
     t.addEventListener('dragstart', (e) => { arrastrada = t; t.classList.add('arrastrando'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', nombreTab(t)); });
@@ -322,7 +337,7 @@ function ordenarTabs(modulo) {
     tabsEl.querySelector('.tab-reset')?.remove();
     let hay = false; try { hay = !!localStorage.getItem(clave); } catch { /* */ }
     if (!hay) return;
-    tabsEl.append(h('button', { type: 'button', class: 'tab-reset', title: 'Volver al orden original de las pestañas', onclick: () => { try { localStorage.removeItem(clave); } catch { /* */ } pintarTabs(location.hash.replace(/^#\//, '').split(/[/?]/)[0]); } }, '↺ orden original'));
+    tabsEl.append(h('button', { type: 'button', class: 'tab-reset', title: 'Volver al orden original de las pestañas', onclick: () => { try { localStorage.removeItem(clave); } catch { /* */ } guardarPrefsTabs(modulo, null); pintarTabs(location.hash.replace(/^#\//, '').split(/[/?]/)[0]); } }, '↺ orden original'));
   }
   pintarReset();
 }
@@ -438,12 +453,18 @@ async function arrancar() {
   if (!state.cursosVisibles.length) state.cursosVisibles = cursos;
   state.taxonomia = taxonomia;
   state.cursoId = ctx.soloEscaner() ? (cursos.find((c) => c.fecha_inicio <= hoy && hoy <= c.fecha_fin) || state.cursosVisibles.at(-1))?.id : await elegirCurso();
+  await cargarPrefsTabs();
   state.arrancado = true;
   historial.vaciar();
   if (/access_token=|type=/.test(window.location.hash)) history.replaceState(null, '', '#/panel');
   pintarShell();
   pintarVista();
   actualizarPendientes();
+  // con la app abierta, los datos de Academia se descargan en segundo plano y se mantienen al día
+  if (ctx.ve('ac_alumnos') && !ctx.soloEscaner()) {
+    setTimeout(() => precargarAcademia(state.cursoId), 800);
+    if (!window.__mehRefresco) window.__mehRefresco = setInterval(() => { if (!document.hidden) refrescarAcademia(); }, 120000);
+  }
 }
 
 async function salir() {

@@ -357,10 +357,13 @@ try:
         page.locator(".tabs .tab", has_text="Grupos").drag_to(page.locator(".tabs .tab", has_text="Alumnos"), target_position={"x": 3, "y": 8}); page.wait_for_timeout(300)
         despues = nombres()
         check(despues[0] == "Grupos" and sorted(despues) == sorted(antes), "arrastrar «Grupos» delante de «Alumnos» cambia el orden")
+        page.wait_for_timeout(300); pr = db(page, "ui_preferencias");
+        check(len(pr) == 1 and pr[0]["tabs"].get("academia", [None])[0] == "Grupos", "el orden se guarda en el servidor para el usuario (vale en todos los dispositivos)")
         ir(page, "ac_grupos"); ir(page, "ac_horarios")
         check(nombres()[0] == "Grupos", "el orden de pestañas se recuerda al cambiar de pantalla")
         page.get_by_role("button", name="orden original").click(); page.wait_for_timeout(300)
         check(nombres() == antes and page.locator(".tab-reset").count() == 0, "«orden original» restablece las pestañas")
+        check(db(page, "ui_preferencias")[0]["tabs"] == {}, "«orden original» también borra el orden guardado en el servidor")
 
         print("10. tutoría hecha deja anotación; baja")
         ir(page, "ac_tutorias")

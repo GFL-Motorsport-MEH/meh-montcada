@@ -5,28 +5,59 @@ import { supabase, traducirError } from '../db.js';
 const PAGE = 1000;
 const chk = ({ data, error }) => { if (error) throw new Error(traducirError(error)); return data; };
 
+// Lee todas las filas: la primera página y, si viene llena, las siguientes de 4 en 4 en paralelo (antes una a una).
 async function all(tabla, cols = '*', build) {
-  const out = [];
-  for (let from = 0; ; from += PAGE) {
+  const pag = async (from) => {
     let q = supabase.from(tabla).select(cols);
     if (build) q = build(q);
-    const rows = chk(await q.order('id').range(from, from + PAGE - 1));
-    out.push(...rows);
-    if (rows.length < PAGE) break;
+    return chk(await q.order('id').range(from, from + PAGE - 1));
+  };
+  const out = await pag(0);
+  if (out.length < PAGE) return out;
+  const LOTE = 4;
+  for (let n = 1; ; n += LOTE) {
+    const lotes = await Promise.all(Array.from({ length: LOTE }, (_, i) => pag((n + i) * PAGE)));
+    for (const rows of lotes) out.push(...rows);
+    if (lotes[LOTE - 1].length < PAGE) break;
+    if (lotes.some((r) => r.length < PAGE)) break;
   }
   return out;
 }
 
+// Caché «sirve lo que hay y refresca por detrás»: los datos se entregan al instante y, si tienen más de TTL, se renuevan en segundo plano.
+// Cualquier escritura propia la vacía entera. Pasados MAX_EDAD sin renovarse se espera a los datos nuevos.
 const cache = new Map();
-const TTL = 60000;
+const TTL = 30000;
+const MAX_EDAD = 600000;
+function cargar(key, fn) {
+  const p = fn();
+  const e = { t: Date.now(), p, fn, listo: false };
+  cache.set(key, e);
+  p.then(() => { e.listo = true; }, () => { if (cache.get(key) === e) cache.delete(key); });
+  return e;
+}
 function memo(key, fn) {
   const c = cache.get(key);
-  if (c && Date.now() - c.t < TTL) return c.p;
-  const p = fn().catch((e) => { cache.delete(key); throw e; });
-  cache.set(key, { t: Date.now(), p });
-  return p;
+  if (c) {
+    const edad = Date.now() - c.t;
+    if (edad < TTL || !c.listo) return c.p;
+    if (edad < MAX_EDAD) { // refresco en segundo plano; si falla se conserva lo anterior
+      c.t = Date.now();
+      fn().then((v) => { if (cache.get(key) === c) { c.p = Promise.resolve(v); } }, () => { c.t = 0; });
+      return c.p;
+    }
+  }
+  return cargar(key, fn).p;
 }
 export const invalidar = () => cache.clear();
+// Renueva por detrás todo lo que la app ya ha descargado (se llama cada pocos minutos mientras está abierta).
+export function refrescarTodo() {
+  for (const [key, c] of cache) {
+    if (!c.listo || Date.now() - c.t < TTL) continue;
+    c.t = Date.now();
+    c.fn().then((v) => { if (cache.get(key) === c) c.p = Promise.resolve(v); }, () => { c.t = 0; });
+  }
+}
 
 // ---------- lecturas ----------
 export const listas = () => memo('listas', async () => {
@@ -169,4 +200,13 @@ export async function traspasarPagosAIngresos(curso, ids, perfilId) {
   }
   invalidar();
   return { pagos: marcados.length, total: marcados.reduce((s, p) => s + Number(p.importe), 0), meses: hecho };
+}
+
+// Precarga en segundo plano tras entrar: lo que usan Alumnos, Pagos, Remesas, Horarios… del curso para que al cambiar de pestaña ya esté descargado.
+export function precargar(curso) {
+  if (!curso) return;
+  const t = [listas, alumnos, vinculos, profesoras, aulas, cuotasTarifa, () => grupos(curso), () => inscripciones(curso), () => cuotas(curso), () => wpPrecios(curso), () => remesas(curso)];
+  let i = 0;
+  const siguiente = () => { const f = t[i++]; if (!f) return; Promise.resolve().then(f).catch(() => {}).finally(() => setTimeout(siguiente, 30)); };
+  siguiente(); siguiente(); // dos en paralelo para no saturar la conexión
 }
