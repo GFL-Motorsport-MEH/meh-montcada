@@ -133,7 +133,7 @@ try:
         leo_id = [a for a in db(page, "ac_alumnos") if a["nombre"] == "Leo"][0]["id"]
         ir(page, "ac_alumnos")
         cab = page.locator("table.ac-tabla thead tr").first.inner_text().lower()
-        for c in ["Colegio", "Alergias", "RRSS", "Pago", "Familia", "Grupos", "💬"]:
+        for c in ["Colegio", "Alergias", "RRSS", "Pago", "Familia", "Grupos", "Inscripción", "💬"]:
             check(c.lower() in cab, f"columna {c}")
         fila = page.locator("table.ac-tabla tbody tr", has_text="Bueno Foz, Leo")
         check("Lactosa" in fila.inner_text() and "Sí" in fila.inner_text() and "Escola Sol" in fila.inner_text(), "alergias, RRSS y colegio visibles")
