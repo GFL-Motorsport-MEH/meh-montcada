@@ -40,7 +40,16 @@ try:
             check(any(quiere in x for x in t), f"profesora ve {quiere}")
         for no in ["Pagos", "Remesas", "Alumnos", "Bajas", "Recogidas", "Tareas"]:
             check(not any(x.startswith(no) for x in t), f"profesora NO ve {no}")
-        check(pg.locator(".modulos button, .modulos a").count() <= 1, "sin selector de módulo (solo Academia)")
+        check([m.split("\n")[0].strip() for m in pg.locator(".modulos .modulo").all_inner_texts()] == ["Academia", "Trabajadores"], "profesora ve los módulos Academia y Trabajadores (no Facturación)")
+        pg.close()
+
+        print("1b. profesora: módulo Trabajadores con lo suyo y sin Equipo")
+        pg = abrir(b, "profesora", "tr_portal")
+        t = tabs(pg); print("  ", t)
+        check(t == ["Mi portal", "Contrato y horario", "Bolsa de horas", "Documentos"], "profesora ve Mi portal, Contrato y horario, Bolsa de horas y Documentos, sin Equipo")
+        check(pg.locator("main").inner_text().count("Hola") >= 1 and pg.locator(".banner.error").count() == 0, "Mi portal de la profesora carga sin errores")
+        pg.evaluate("window.location.hash = '#/tr_equipo'"); pg.wait_for_timeout(500)
+        check(pg.evaluate("document.body.dataset.modulo") == "trabajadores" and "Equipo" not in [x.strip() for x in pg.locator(".tabs .tab[aria-current=page]").all_inner_texts()], "profesora no puede abrir Equipo (vuelve a su primera pantalla)")
         pg.close()
 
         print("2. coordinación: academia sin pagos ni remesas")
@@ -55,6 +64,9 @@ try:
         t = tabs(pg)
         check(any(x.startswith("Pagos") for x in t) and any(x.startswith("Remesas") for x in t) and any("Escáner" in x for x in t), "dirección ve Pagos, Remesas y Escáner")
         check(not any(x.startswith("Balance") or x.startswith("Gastos") for x in t), "dirección NO ve Balance ni Gastos")
+        pg.close()
+        pg = abrir(b, "direccion", "tr_portal")
+        check("Equipo" in tabs(pg), "dirección ve la pestaña Equipo")
         pg.close()
 
         print("4. administrador: matriz editable")

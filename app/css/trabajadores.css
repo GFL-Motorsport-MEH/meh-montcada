@@ -1,0 +1,18 @@
+/* Módulo Trabajadores (se carga al entrar; reutiliza las tablas y formularios de Academia) */
+.tr-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; align-items: start; }
+.tr-card h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); margin-bottom: 8px; }
+.tr-saldo { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.tr-pos { color: var(--good); }
+.tr-neg { color: var(--critical); }
+.tr-datos { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13.5px; }
+.tr-datos dt { color: var(--text-muted); }
+.tr-datos dd { margin: 0; font-weight: 600; }
+.tr-semana { display: grid; gap: 6px; }
+.tr-dia { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; min-height: 64px; font-size: 12.5px; }
+.tr-dia-t { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); margin-bottom: 4px; }
+.tr-franja { padding: 2px 0; }
+.tr-libre { text-align: center; padding-top: 6px; }
+.tr-lista { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; }
+.tr-lista li { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.tr-barra { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+@media (max-width: 700px) { .tr-semana { grid-template-columns: 1fr !important; } }

@@ -1,20 +1,20 @@
-// PORTAL del trabajador: cada usuario ve solo SUS documentos (nóminas, contratos, certificados…). Quien gestiona el portal
+// TRABAJADORES · Documentos: cada usuario ve solo SUS documentos (nóminas, contratos, certificados…). Quien gestiona el portal
 // (permiso «Portal del trabajador» con alcance «todo» y edición) elige a un trabajador y le sube o quita documentos.
 // Los archivos van a un bucket privado de Supabase y se abren con un enlace firmado temporal; la base de datos aplica la misma regla.
 import { h, clear, cargando, toast, confirmar, fmtFecha } from '../ui.js';
 import * as api from './api.js';
-import { campo, sel, txt, tabla, cabecera, refrescar } from './kit.js';
+import { campo, sel, txt, tabla, cabecera, refrescar } from '../academia/kit.js';
 
 const TIPOS = [['nomina', 'Nómina'], ['contrato', 'Contrato'], ['certificado', 'Certificado'], ['otro', 'Otro']];
 const NOM_TIPO = Object.fromEntries(TIPOS);
 let verTrabajador = '';
 
-async function abrir(ruta) {
+export async function abrir(ruta) {
   const w = window.open('', '_blank');
   try { const url = await api.urlPortal(ruta); if (w) { w.opener = null; w.location.href = url; } else window.location.href = url; } catch (ex) { w?.close(); toast('No se ha podido abrir: ' + ex.message, 'error'); }
 }
 
-export async function renderPortal(view, ctx) {
+export async function renderDocumentos(view, ctx) {
   clear(view, cargando());
   const yo = ctx.state.perfil;
   const gestiona = ctx.ve('ac_portal') && ctx.edita('ac_portal');
@@ -31,14 +31,14 @@ export async function renderPortal(view, ctx) {
     ...(conQuitar ? [{ t: '', sin: true, v: (d) => h('button', { class: 'btn small ghost', type: 'button', onclick: async (e) => {
       e.stopPropagation();
       if (!await confirmar({ titulo: 'Quitar documento', texto: `Se quitará «${d.titulo}» del portal de ${nombreDe.get(d.profile_id) || 'este trabajador'}.`, ok: 'Quitar', peligro: true })) return;
-      try { await api.del('ac_portal_docs', d.id); await api.quitarArchivoPortal(d.ruta); toast('Documento quitado'); recargar(); } catch (ex) { toast(ex.message, 'error'); }
+      try { await api.delDocumento(d); toast('Documento quitado'); recargar(); } catch (ex) { toast(ex.message, 'error'); }
     } }, 'Quitar') }] : []),
   ];
 
   const mios = docs.filter((d) => d.profile_id === yo.id);
   const secMios = h('div', { class: 'card' }, h('h3', { class: 'sub-titulo' }, 'Mis documentos'),
     tabla(cols(false, false), mios, { vacio: 'Todavía no tienes documentos en tu portal.' }));
-  const partes = [cabecera('Portal del trabajador', `Hola, ${yo.nombre || yo.email}. Aquí tienes tus nóminas y documentos; solo los ves tú.`), secMios];
+  const partes = [cabecera('Documentos', `Hola, ${yo.nombre || yo.email}. Aquí tienes tus nóminas, contratos y certificados; solo los ves tú.`), secMios];
 
   if (veTodos) {
     const personas = equipo.filter((u) => u.activo !== false).sort((a, b) => (a.nombre || a.email || '').localeCompare(b.nombre || b.email || '', 'es'));
@@ -55,7 +55,7 @@ export async function renderPortal(view, ctx) {
         subir.disabled = true; let ruta = null;
         try {
           ruta = await api.subirPortal(F.quien.value, f);
-          await api.ins('ac_portal_docs', { profile_id: F.quien.value, tipo: F.tipo.value, titulo: F.titulo.value.trim(), periodo: F.periodo.value.trim() || null, ruta, nombre_archivo: f.name });
+          await api.insDocumento({ profile_id: F.quien.value, tipo: F.tipo.value, titulo: F.titulo.value.trim(), periodo: F.periodo.value.trim() || null, ruta, nombre_archivo: f.name });
           toast('Documento subido'); recargar();
         } catch (ex) { if (ruta) api.quitarArchivoPortal(ruta); toast('No se ha subido: ' + ex.message, 'error'); subir.disabled = false; }
       } }, 'Subir documento');
