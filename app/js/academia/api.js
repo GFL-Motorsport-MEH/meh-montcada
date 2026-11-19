@@ -94,7 +94,7 @@ export function refrescarTodo() {
 // listas con id, color y orden (para los desplegables de colores y su editor): { lista: [{ id, valor, color, orden }] }
 export const listasColor = () => memo('listasColor', async () => {
   const o = {};
-  for (const x of (await all('ac_listas')).sort((a, b) => a.orden - b.orden || a.valor.localeCompare(b.valor))) (o[x.lista] ||= []).push({ id: x.id, valor: x.valor, color: x.color || null, orden: x.orden });
+  for (const x of (await all('ac_listas')).sort((a, b) => a.orden - b.orden || a.valor.localeCompare(b.valor))) (o[x.lista] ||= []).push({ id: x.id, valor: x.valor, color: x.color || null, orden: x.orden, edad_min: x.edad_min ?? null, edad_max: x.edad_max ?? null, pide_alumno: !!x.pide_alumno });
   return o;
 });
 // cambia un texto de contacto en todos los contactos que lo usan (al renombrar un valor de lista)
