@@ -5,8 +5,10 @@ import { h, clear, cargando, toast, confirmar, fmtFecha, hoyISO, normalizar } fr
 import { FORMULARIOS_URL } from '../config.js';
 import * as api from './api.js';
 import { campo, area, fecha, sel, drawer, cabecera, tabla, pill, nombreAlumno, guardarBoton, buscadorAlumno, refrescar } from './kit.js';
+import { abrirEditor, slugDe } from './formeditor.js';
+import { PLANTILLAS } from './formplantillas.js';
+import { corrige, tieneCorrecta } from './formrender.js';
 
-const TIPOS = ['texto', 'email', 'telefono', 'textarea', 'numero', 'fecha', 'radio', 'select', 'casillas', 'rejilla', 'acepto'];
 const ABREV = { Lunes: 'Lun', Martes: 'Mar', 'Miércoles': 'Mié', Jueves: 'Jue', Viernes: 'Vie', 'Sábado': 'Sáb', Domingo: 'Dom' };
 const IDX = { domingo: 0, lunes: 1, martes: 2, miercoles: 3, jueves: 4, viernes: 5, sabado: 6 };
 export const urlFormulario = (f) => `${FORMULARIOS_URL}/${f.slug}`;
@@ -81,6 +83,7 @@ export async function renderFormularios(view, ctx) {
   const [forms, alumnos, profes] = await Promise.all([api.formularios(), api.alumnos(), api.profesoras()]);
   const editor = ctx.edita('ac_formularios');
   const recargar = () => { api.invalidar(); refrescar(); };
+  const volver = (guardado) => { if (guardado) api.invalidar(); refrescar(); };
   if (!forms.length && !editor) { clear(view, cabecera('Formularios', 'Aún no hay formularios.')); return; }
   const respPorForm = new Map(await Promise.all(forms.map(async (f) => [f.id, await api.formRespuestas(f.id)])));
   const nuevas = (f) => (respPorForm.get(f.id) || []).filter((r) => r.estado === 'nueva' && !r.visto_at).length;
@@ -91,20 +94,23 @@ export async function renderFormularios(view, ctx) {
   function pintar() {
     if (!actual) { clear(cont, h('p', { class: 'muted' }, 'Crea el primer formulario con «+ Nuevo formulario».')); return; }
     const resp = (respPorForm.get(actual.id) || []).filter((r) => !st.estado || r.estado === st.estado).sort((a, b) => b.created_at.localeCompare(a.created_at));
-    const mostrados = actual.campos.filter((c) => c.tipo !== 'acepto').slice(0, 5);
+    const esQuiz = actual.campos.some(tieneCorrecta);
+    const mostrados = actual.campos.filter((c) => !['acepto', 'info', 'imagen', 'seccion'].includes(c.tipo)).slice(0, esQuiz ? 3 : 5);
     clear(cont, tabla([
       { t: 'Recibida', v: (r) => fmtFecha(r.created_at.slice(0, 10)) },
-      ...mostrados.map((c) => ({ t: c.etiqueta.replace(/[:?¿]/g, '').slice(0, 28), v: (r) => textoValor(c, r.datos?.[c.id]) })),
+      ...mostrados.map((c) => ({ t: (c.etiqueta || '').replace(/[:?¿]/g, '').slice(0, 28), v: (r) => textoValor(c, r.datos?.[c.id]) })),
+      ...(esQuiz ? [{ t: 'Nota', v: (r) => (r.puntuacion_max ? `${r.puntuacion} / ${r.puntuacion_max}` : '—') }] : []),
       { t: 'Estado', v: (r) => (r.estado === 'nueva' && !r.visto_at ? pill('sin abrir', 'warn') : pill(r.estado, r.estado === 'procesada' ? 'ok' : r.estado === 'descartada' ? 'off' : 'warn')) },
     ], resp, { onClick: (r) => { abrir(r, { form: actual, alumnos, profes, curso, recargar, editor }); marcarVista(r, { ctx, repintar: () => { pintar(); actualizarEtiquetas(); } }); }, vacio: 'No hay respuestas con este filtro.' }));
   }
-  const selForm = sel(forms.map((f) => [f.id, `${f.titulo}${nuevas(f) ? ` (${nuevas(f)} sin abrir)` : ''}${f.activo ? '' : ' · desactivado'}`]), actual?.id, { onchange: (e) => { actual = forms.find((f) => f.id === e.target.value); sessionStorage.setItem('ac_form_sel', actual.id); pintar(); } });
+  const selForm = sel(forms.map((f) => [f.id, `${f.titulo}${nuevas(f) ? ` (${nuevas(f)} sin abrir)` : ''}${f.plantilla ? ' · plantilla' : (f.activo ? '' : ' · desactivado')}`]), actual?.id, { onchange: (e) => { actual = forms.find((f) => f.id === e.target.value); sessionStorage.setItem('ac_form_sel', actual.id); pintar(); } });
   const selEstado = sel([['', 'Todas'], ['nueva', 'Nuevas'], ['procesada', 'Procesadas'], ['descartada', 'Descartadas']], st.estado, { onchange: (e) => { st.estado = e.target.value; pintar(); } });
-  const actualizarEtiquetas = () => forms.forEach((f, i) => { const o = selForm.options[i]; if (o) o.textContent = `${f.titulo}${nuevas(f) ? ` (${nuevas(f)} sin abrir)` : ''}${f.activo ? '' : ' · desactivado'}`; });
-  const copiar = async () => { if (!actual) return; const u = urlFormulario(actual); try { await navigator.clipboard.writeText(u); toast('Enlace copiado: ' + u); } catch { window.prompt('Copia este enlace:', u); } };
+  const actualizarEtiquetas = () => forms.forEach((f, i) => { const o = selForm.options[i]; if (o) o.textContent = `${f.titulo}${nuevas(f) ? ` (${nuevas(f)} sin abrir)` : ''}${f.plantilla ? ' · plantilla' : (f.activo ? '' : ' · desactivado')}`; });
+  const copiar = async () => { if (!actual) return; if (actual.plantilla) { toast('Es una plantilla: no tiene enlace público. Crea un formulario a partir de ella.', 'error'); return; } const u = urlFormulario(actual); try { await navigator.clipboard.writeText(u); toast('Enlace copiado: ' + u); } catch { window.prompt('Copia este enlace:', u); } };
   clear(view, cabecera('Formularios', 'Lo que rellenan las familias en la web de formularios, para revisar y procesar',
-    editor ? h('button', { class: 'btn small', type: 'button', onclick: () => editarForm(null, { recargar }) }, '+ Nuevo formulario') : null,
-    editor ? h('button', { class: 'btn small', type: 'button', onclick: () => actual && editarForm(actual, { recargar }) }, 'Editar formulario') : null,
+    editor ? h('button', { class: 'btn small', type: 'button', onclick: () => nuevoDesdePlantilla(view, forms.filter((f) => f.plantilla), { ctx, volver }) }, '+ Nuevo formulario') : null,
+    editor ? h('button', { class: 'btn small', type: 'button', onclick: () => actual && abrirEditor(document.getElementById('view') || view, { existente: actual, base: actual, ctx, volver }) }, 'Editar formulario') : null,
+    editor ? h('button', { class: 'btn small', type: 'button', onclick: () => actual && abrirEditor(document.getElementById('view') || view, { existente: null, base: { ...actual, slug: '', titulo: `Copia de ${actual.titulo}`, plantilla: false, activo: false }, ctx, volver }) }, 'Duplicar') : null,
     editor ? h('button', { class: 'btn small', type: 'button', onclick: () => actual && importar(actual, { respuestas: respPorForm.get(actual.id) || [], recargar }) }, 'Importar de Google') : null,
     h('button', { class: 'btn primary small', type: 'button', onclick: copiar }, 'Copiar enlace para familias')),
     h('div', { class: 'filters filters-2' }, selForm, selEstado), cont);
@@ -124,7 +130,13 @@ async function marcarVista(r, { ctx, repintar }) {
 // ---------- ficha de una respuesta ----------
 function abrir(r, { form, alumnos, profes, curso, recargar, editor }) {
   const d = drawer({ titulo: `${form.titulo} · ${fmtFecha(r.created_at.slice(0, 10))}`, ancho: 620 });
-  d.cuerpo.append(h('div', { class: 'form-section' }, form.campos.filter((c) => c.tipo !== 'acepto' || r.datos?.[c.id]).map((c) => campo(c.etiqueta, h('div', { style: 'white-space:pre-wrap' }, textoValor(c, r.datos?.[c.id]) || '—'), { full: ['textarea', 'rejilla'].includes(c.tipo) || String(textoValor(c, r.datos?.[c.id])).length > 40 }))));
+  const datos = form.campos.filter((c) => !['info', 'imagen', 'seccion'].includes(c.tipo) && (c.tipo !== 'acepto' || r.datos?.[c.id]));
+  if (r.puntuacion_max) d.cuerpo.append(h('div', { class: 'fe-nota' }, `Nota: ${r.puntuacion} / ${r.puntuacion_max}`, h('span', { class: 'small muted' }, ` (${Math.round((r.puntuacion / r.puntuacion_max) * 100)} %)`)));
+  d.cuerpo.append(h('div', { class: 'form-section' }, datos.map((c) => {
+    const v = r.datos?.[c.id]; const t = textoValor(c, v);
+    const marca = tieneCorrecta(c) ? (corrige(c, v) > 0 ? h('span', { class: 'fe-ok' }, ' ✓') : h('span', { class: 'fe-ko' }, ` ✗ (correcta: ${[].concat(c.correcta).join(', ')})`)) : null;
+    return campo(c.etiqueta, h('div', { style: 'white-space:pre-wrap' }, t || '—', marca), { full: ['textarea', 'rejilla'].includes(c.tipo) || String(t).length > 40 });
+  })));
   const act = (estado) => async () => { try { await api.upd('ac_formulario_respuestas', r.id, { estado }); d.cerrar(); recargar(); } catch (ex) { toast(ex.message, 'error'); } };
   if (r.estado === 'nueva' && editor) {
     const p = (PROCESADORES[form.tipo]?.panel || panelGenerico)(r, { alumnos, profes, curso });
@@ -139,29 +151,19 @@ function abrir(r, { form, alumnos, profes, curso, recargar, editor }) {
   } else d.pie.append(h('span'));
 }
 
-// ---------- crear / editar la definición de un formulario ----------
-function editarForm(f, { recargar }) {
-  const d = drawer({ titulo: f ? `Editar · ${f.titulo}` : 'Nuevo formulario', ancho: 680 });
-  const ejemplo = [{ id: 'nombre', tipo: 'texto', etiqueta: 'Nombre completo', requerido: true }, { id: 'curso', tipo: 'select', etiqueta: 'Curso', opciones: ['Kids', 'Teens', 'Adultos'] }];
-  const F = { titulo: h('input', { type: 'text', value: f?.titulo || '' }), slug: h('input', { type: 'text', value: f?.slug || '', disabled: !!f, placeholder: 'ej. autorizacion-salida' }),
-    desc: area(f?.descripcion), fin: area(f?.mensaje_final), tipo: sel([['generico', 'Genérico (notas y alumno)'], ['tutoria', 'Tutoría (crea la tutoría)']], f?.tipo || 'generico', { disabled: !!f }),
-    activo: h('input', { type: 'checkbox', checked: f ? f.activo : true }), campos: h('textarea', { rows: 16, style: 'font-family:monospace;font-size:12px', spellcheck: 'false' }, JSON.stringify(f?.campos || ejemplo, null, 2)) };
-  d.cuerpo.append(h('div', { class: 'form-section' }, campo('Título', F.titulo, { full: true, req: true }), campo('Dirección (solo minúsculas, números y guiones)', F.slug, { req: true }), campo('Tipo de procesado', F.tipo), campo('Activo (las familias pueden rellenarlo)', F.activo),
-    campo('Texto bajo el título', F.desc, { full: true }), campo('Mensaje al enviar', F.fin, { full: true }), campo('Campos (JSON)', F.campos, { full: true })),
-    h('div', { class: 'small muted' }, `Cada campo: id (único), tipo (${TIPOS.join(', ')}), etiqueta, requerido, ayuda, opciones (radio/select/casillas), filas y columnas (rejilla), google (trozos del encabezado del Excel de Google, para importar respuestas antiguas). `, 'Cambiar o quitar campos no borra las respuestas ya recibidas.'));
-  const guardar = guardarBoton('Guardar', async () => {
-    let campos;
-    try { campos = JSON.parse(F.campos.value); } catch { toast('Los campos no son un JSON válido.', 'error'); return; }
-    const ids = new Set();
-    if (!Array.isArray(campos) || !campos.length || campos.some((c) => !c.id || !/^[a-z0-9_]+$/.test(c.id) || ids.has(c.id) || !ids.add(c.id) || !TIPOS.includes(c.tipo) || !c.etiqueta)) { toast('Cada campo necesita id único (a-z, 0-9, _), tipo válido y etiqueta.', 'error'); return; }
-    if (campos.some((c) => ['radio', 'select', 'casillas'].includes(c.tipo) && !(c.opciones || []).length) || campos.some((c) => c.tipo === 'rejilla' && (!(c.filas || []).length || !(c.columnas || []).length))) { toast('Faltan opciones (radio/select/casillas) o filas y columnas (rejilla).', 'error'); return; }
-    const slug = F.slug.value.trim();
-    if (!F.titulo.value.trim() || !/^[a-z0-9-]{2,40}$/.test(slug)) { toast('Pon un título y una dirección válida (2–40: minúsculas, números, guiones).', 'error'); return; }
-    const fila = { titulo: F.titulo.value.trim(), descripcion: F.desc.value.trim() || null, mensaje_final: F.fin.value.trim() || null, activo: F.activo.checked, campos };
-    try { if (f) await api.upd('ac_formularios', f.id, fila); else { const nuevo = await api.ins('ac_formularios', { ...fila, slug, tipo: F.tipo.value }); sessionStorage.setItem('ac_form_sel', nuevo.id); } toast('Formulario guardado'); d.cerrar(); recargar(); } catch (ex) { toast('No se ha guardado: ' + ex.message, 'error'); }
-  });
-  const borrar = f ? h('button', { class: 'btn danger', type: 'button', onclick: async () => { if (await confirmar({ titulo: 'Borrar formulario', texto: `Se borrarán también TODAS sus respuestas. Si solo quieres que deje de funcionar, desmarca «Activo».`, ok: 'Borrar todo', peligro: true })) { try { await api.del('ac_formularios', f.id); d.cerrar(); recargar(); } catch (ex) { toast(ex.message, 'error'); } } } }, 'Borrar') : h('span');
-  d.pie.append(borrar, guardar);
+// ---------- crear / editar la definición: editor visual (formeditor.js) ----------
+const EN_BLANCO = { titulo: '', slug: '', tipo: 'generico', activo: true, plantilla: false, campos: [] };
+const resumenPlantilla = (p) => `${p.campos.filter((c) => !['info', 'imagen', 'seccion'].includes(c.tipo)).length} preguntas${p.campos.some((c) => c.tipo === 'seccion') ? ' · varias páginas' : ''}${p.campos.some(tieneCorrecta) ? ' · con corrección' : ''}`;
+function nuevoDesdePlantilla(view, plantillas, { ctx, volver }) {
+  const d = drawer({ titulo: 'Nuevo formulario', ancho: 560 });
+  const tarjeta = (titulo, sub, base) => h('button', { class: 'fe-plantilla', type: 'button', onclick: () => { d.cerrar(); abrirEditor(document.getElementById('view') || view, { existente: null, base, ctx, volver }); } }, h('strong', {}, titulo), h('span', { class: 'small muted' }, sub));
+  d.cuerpo.append(h('p', { class: 'muted small' }, 'Empieza desde cero o copia una plantilla (Prematrículas, Campamentos, Encuesta, Prueba de nivel…). Podrás cambiarlo todo.'),
+    tarjeta('Formulario en blanco', 'Sin preguntas', EN_BLANCO),
+    h('h3', { style: 'font-size:14px;margin:8px 0 0' }, 'Plantillas de la academia'),
+    ...PLANTILLAS.map(({ clave, ...p }) => tarjeta(p.titulo, resumenPlantilla(p), p)),
+    plantillas.length ? h('h3', { style: 'font-size:14px;margin:8px 0 0' }, 'Tus plantillas') : null,
+    ...plantillas.map((p) => tarjeta(p.titulo, resumenPlantilla(p), { ...p, slug: '', plantilla: false, id: undefined, activo: true })));
+  d.pie.append(h('span'), h('button', { class: 'btn', type: 'button', onclick: d.cerrar }, 'Cancelar'));
 }
 
 // ---------- importar el Excel de respuestas de Google (no duplica: la clave es fecha + correo) ----------

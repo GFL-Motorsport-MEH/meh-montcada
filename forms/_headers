@@ -4,7 +4,7 @@
   Referrer-Policy: no-referrer
   X-Robots-Tag: noindex, nofollow
   Permissions-Policy: camera=(), microphone=(), geolocation=()
-  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; connect-src https://dpnacxuavulpyyaobuev.supabase.co; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; connect-src https://dpnacxuavulpyyaobuev.supabase.co; img-src 'self' data: https:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /*.js
   Cache-Control: no-cache

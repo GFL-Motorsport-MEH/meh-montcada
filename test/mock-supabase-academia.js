@@ -111,7 +111,7 @@ class Q {
 export function createClient() {
   return {
     from: (t) => new Q(t),
-    storage: { from: () => ({ async upload(ruta) { (window.__mock.uploads = window.__mock.uploads || []).push(ruta); return { data: {}, error: null }; }, async remove() { return { data: [], error: null }; }, getPublicUrl: (r) => ({ data: { publicUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=' } }), async createSignedUrl() { return { data: { signedUrl: 'about:blank' }, error: null }; } }) },
+    storage: { from: (bk) => ({ async upload(ruta) { (window.__mock.uploads = window.__mock.uploads || []).push(ruta); return { data: {}, error: null }; }, async remove() { return { data: [], error: null }; }, getPublicUrl: (r) => ({ data: { publicUrl: bk === 'formularios' ? 'https://img.test/' + r : 'data:image/gif;base64,R0lGODlhAQABAAAAACw=' } }), async createSignedUrl() { return { data: { signedUrl: 'about:blank' }, error: null }; } }) },
     functions: {
       async invoke(fn, { body } = {}) {
         window.__mock.calls.push({ fn, body });

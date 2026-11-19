@@ -1,0 +1,53 @@
+/* Estilos del formulario (compartidos: web pública y vista previa del editor). Todo va bajo .fp. ¡No editar app/css/fp.css: lo genera scripts/sync_forms.py! */
+.fp { --acento: #1d4ed8; font: 16px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #1d1d1f; text-align: left; }
+.fp * { box-sizing: border-box; }
+.fp h1 { font-size: 24px; margin: 0 0 8px; line-height: 1.2; }
+.fp .sub { margin: 0 0 18px; color: #444; }
+.fp .md p { margin: 0 0 10px; }
+.fp .md h3 { font-size: 18px; margin: 14px 0 6px; }
+.fp .md h4 { font-size: 16px; margin: 12px 0 4px; }
+.fp .md ul { margin: 0 0 10px; padding-left: 22px; }
+.fp .md hr { border: 0; border-top: 1px solid #e0e3e8; margin: 14px 0; }
+.fp .md a, .fp .nota a { color: var(--acento); }
+.fp .md-img, .fp .imagen-bloque { display: block; max-width: 100%; height: auto; border-radius: 10px; margin: 8px auto; }
+.fp .cabecera.banner { display: block; width: calc(100% + 44px); max-width: none; margin: -22px -22px 18px; border-radius: 14px 14px 0 0; max-height: 240px; object-fit: cover; }
+.fp .cabecera.logo { display: block; margin: 0 auto 14px; max-height: 96px; max-width: 70%; object-fit: contain; }
+.fp .info { background: #f6f8fb; border-left: 4px solid var(--acento); padding: 12px 14px; border-radius: 8px; margin: 14px 0; }
+.fp .info > :first-child { margin-top: 0; }
+.fp .info > :last-child { margin-bottom: 0; }
+.fp .sec-titulo { font-size: 19px; margin: 6px 0 8px; color: var(--acento); }
+.fp .bloque { margin: 0; }
+.fp .bloque.mal { outline: 2px solid #d33; outline-offset: 4px; border-radius: 6px; }
+.fp label.c, .fp legend { display: block; font-weight: 600; margin: 16px 0 6px; padding: 0; }
+.fp input[type=text], .fp input[type=email], .fp input[type=tel], .fp input[type=number], .fp input[type=date], .fp select, .fp textarea { width: 100%; padding: 10px 12px; border: 1px solid #c8ccd2; border-radius: 8px; font: inherit; background: #fff; }
+.fp input:focus, .fp select:focus, .fp textarea:focus { outline: 2px solid var(--acento); outline-offset: 1px; }
+.fp textarea { min-height: 96px; resize: vertical; }
+.fp .op { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0; font-weight: 400; }
+.fp .op input { width: 18px; height: 18px; margin-top: 2px; flex: none; }
+.fp fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.fp .nota { font-size: 14px; color: #555; margin: 0 0 8px; font-weight: 400; }
+.fp .nota p { margin: 0 0 4px; }
+.fp .rejilla { overflow-x: auto; }
+.fp table { border-collapse: collapse; width: 100%; min-width: 440px; }
+.fp th, .fp td { text-align: center; padding: 6px 4px; border-bottom: 1px solid #e6e8eb; font-size: 14px; }
+.fp th:first-child, .fp td:first-child { text-align: left; font-weight: 600; white-space: nowrap; }
+.fp td input { width: 20px; height: 20px; }
+.fp .escala { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.fp .esc { position: relative; }
+.fp .esc input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.fp .esc span { display: flex; align-items: center; justify-content: center; min-width: 44px; height: 44px; border: 1px solid #c8ccd2; border-radius: 10px; font-weight: 600; background: #fff; }
+.fp .esc input:checked + span { background: var(--acento); color: #fff; border-color: var(--acento); }
+.fp .esc input:focus-visible + span { outline: 2px solid var(--acento); outline-offset: 2px; }
+.fp .escala-etq { display: flex; justify-content: space-between; font-size: 13px; color: #555; margin-top: 4px; }
+.fp .progreso { font-size: 13px; color: #555; margin: 4px 0 8px; }
+.fp .progreso .barra { height: 6px; background: #e6e8eb; border-radius: 4px; margin-top: 4px; overflow: hidden; }
+.fp .progreso .barra i { display: block; height: 100%; background: var(--acento); transition: width .2s; }
+.fp .nav { display: flex; gap: 10px; margin-top: 22px; }
+.fp button { background: var(--acento); color: #fff; border: 0; border-radius: 10px; padding: 12px 22px; font: inherit; font-weight: 600; cursor: pointer; }
+.fp button.sec { background: #e8eaee; color: #1d1d1f; }
+.fp button:disabled { opacity: .6; cursor: wait; }
+.fp .error { background: #fde8e8; color: #8a1c1c; padding: 10px 12px; border-radius: 8px; margin-top: 16px; }
+.fp .ok { background: #e6f6ea; color: #14532d; padding: 16px; border-radius: 10px; }
+.fp .nota-final { font-size: 20px; font-weight: 700; margin: 10px 0 0; }
+.fp .trampa { position: absolute; left: -9999px; height: 0; overflow: hidden; }
+.fp [hidden] { display: none !important; }

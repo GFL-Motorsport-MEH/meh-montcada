@@ -472,3 +472,47 @@ main table.data.ac-compacta > thead { top: 0; }
 
 .aviso-form { border-color: #b26a00; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .aviso-form[hidden] { display: none; }
+
+/* ---- editor visual de formularios ---- */
+.fe-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.fe-top h2 { font-size: 18px; margin: 0; }
+.fe { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.fe-izq { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.fe-der { position: sticky; top: 8px; max-height: calc(100vh - 16px); overflow: auto; }
+.fe-previa { margin: 0; }
+.fe-aviso { background: #fff7e0; color: #7a5a00; font-size: 12px; padding: 4px 10px; border-radius: 6px; margin-bottom: 10px; display: inline-block; }
+@media (max-width: 1000px) { .fe { grid-template-columns: 1fr; } .fe-der { position: static; max-height: none; } }
+.fe-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.fe-card h3 { font-size: 15px; margin: 0; }
+.fe-fila { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.fe-chk { display: flex; gap: 6px; align-items: center; font-size: 13px; font-weight: 500; }
+.fe-chk input { width: 16px; height: 16px; }
+.fe-mini { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; margin-bottom: 6px; }
+.fe-mini img { max-width: 100%; max-height: 120px; border-radius: 8px; border: 1px solid var(--border); }
+.fe-barra { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 4px; }
+.fe-lista { display: flex; flex-direction: column; gap: 6px; }
+.fe-bloque { border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+.fe-bloque.abierto { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37, 99, 235, .12); }
+.fe-bloque.es-seccion { border-left: 4px solid #7c3aed; }
+.fe-bloque.sobre { outline: 2px dashed #2563eb; }
+.fe-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; }
+.fe-asa { cursor: grab; color: var(--text-secondary); }
+.fe-ic { display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; flex: none; }
+.fe-tipo { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .03em; flex: none; }
+.fe-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: 13px; }
+.fe-badge { font-size: 10px; background: #ede9fe; color: #5b21b6; border-radius: 999px; padding: 1px 7px; flex: none; }
+.fe-badge.req { background: #fee2e2; color: #991b1b; } .fe-badge.ok { background: #dcfce7; color: #166534; }
+.fe-acc { display: flex; gap: 0; flex: none; }
+.fe-cuerpo { padding: 4px 12px 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; border-top: 1px solid var(--border); }
+.fe-cuerpo > .full, .fe-cuerpo > .fe-cond, .fe-cuerpo > .fe-corr, .fe-cuerpo > .fe-adv, .fe-cuerpo > .fe-chk, .fe-cuerpo > .small { grid-column: 1 / -1; }
+.fe-cuerpo .form-section { grid-template-columns: 1fr; }
+.fe-corr { display: grid; grid-template-columns: 3fr 1fr; gap: 10px; } .fe-corr .fe-sep { grid-column: 1 / -1; }
+.fe-sep { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-secondary); margin: 6px 0 4px; }
+.fe-cond { background: var(--surface); border: 1px dashed var(--border); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.fe-opts { display: flex; flex-direction: column; gap: 3px; max-height: 160px; overflow: auto; }
+.fe-adv summary { cursor: pointer; font-size: 12px; color: var(--text-secondary); }
+.fe-paleta { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border); padding-top: 8px; }
+.fe-botones { display: flex; gap: 6px; flex-wrap: wrap; }
+.fe-plantilla { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); cursor: pointer; font: inherit; color: inherit; }
+.fe-plantilla:hover { border-color: #2563eb; }
+.fe-nota { font-size: 22px; font-weight: 700; } .fe-ok { color: #15803d; font-weight: 700; } .fe-ko { color: #b91c1c; font-size: 12px; }
