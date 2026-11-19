@@ -1,6 +1,7 @@
 // Tareas de Academia (sustituye a Google Keep). Todo se ve y se edita en la propia fila, sin ventanas aparte.
 // Vistas: lista del día, por persona, semana, persona y fecha, y tablero por estado. Las tareas hechas se conservan (Ver hechas).
 // Las áreas «Contabilidad» y «Domiciliaciones y pagos» solo las ven quienes tienen permiso de dinero (se aplica en la base de datos).
+import { leerV, guardarV, crearAviso, busqueda } from '../vista.js';
 import { h, clear, cargando, toast, confirmar, hoyISO, normalizar } from '../ui.js';
 import * as api from './api.js';
 import { cabecera, refrescar, colorDe, iniciales } from './kit.js';
@@ -13,6 +14,20 @@ const AREAS_DINERO = ['conta', 'pagos'];
 const ESTADOS = { pend: 'Pendiente', curso: 'En curso', hecha: 'Hecha' };
 const GRUPOS = [['venc', 'Vencidas'], ['hoy', 'Hoy'], ['sem', 'Próximos 7 días'], ['des', 'Más adelante'], ['sin', 'Sin fecha'], ['hecha', 'Hechas']];
 const S = { seccion: 'tareas', quien: 'todas', area: 'all', vista: 'lista', q: '', hechas: false, spec: null, sem: 0 };
+// filtros y vista elegidos: se recuerdan al refrescar la página (se leen una sola vez al abrir)
+let cargadoS = false;
+const guardaS = () => guardarV('tareas.S', { ...S });
+function cargaS() {
+  const g = leerV('tareas.S', {}) || {};
+  if (['tareas', 'reuniones'].includes(g.seccion)) S.seccion = g.seccion;
+  if (typeof g.quien === 'string') S.quien = g.quien;
+  if (typeof g.area === 'string') S.area = g.area;
+  if (VISTAS.some(([k]) => k === g.vista)) S.vista = g.vista;
+  if (typeof g.q === 'string') S.q = g.q;
+  if (typeof g.hechas === 'boolean') S.hechas = g.hechas;
+  if (['venc', 'hoy', 'sem', 'nadie'].includes(g.spec)) S.spec = g.spec;
+  if (Number.isInteger(g.sem)) S.sem = g.sem;
+}
 const VISTAS = [['lista', 'Lista del día'], ['persona', 'Por persona'], ['semana', 'Semana'], ['matriz', 'Persona y fecha'], ['estado', 'Tablero']];
 const COL_AREA = { aca: '#2a5bd7', centro: '#5a6b2a', conta: '#7a3fc0', pagos: '#a65f08' };
 const DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
@@ -59,6 +74,7 @@ const sel = (opciones, valor, extra = {}) => h('select', extra, opciones.map(([v
 
 // Tareas y Reuniones comparten pantalla: un conmutador arriba cambia de una a otra
 export async function renderTareas(view, ctx) {
+  if (!cargadoS) { cargaS(); cargadoS = true; }
   const ir = (seccion, q) => { S.seccion = seccion; if (q != null) { S.q = q; S.hechas = true; S.quien = 'todas'; S.area = 'all'; S.spec = null; } refrescar(); };
   const conmutador = h('div', { class: 'segmented ac-conm', role: 'group', 'aria-label': 'Sección' }, [['tareas', 'Tareas'], ['reuniones', 'Reuniones'], ['mejoras', 'Mejoras software']].map(([k, l]) =>
     h('button', { class: 'seg-btn', type: 'button', dataset: { k }, 'aria-selected': String(S.seccion === k), onclick: () => ir(k) }, l)));
@@ -289,6 +305,7 @@ async function renderLista(view, ctx, conmutador) {
   const restablecer = () => (leerOrden() ? h('button', { class: 'btn small ghost', type: 'button', onclick: () => { guardarOrden(null); pintar(); } }, 'Restablecer orden de personas') : null);
 
   function pintar() {
+    guardaS(); avisoT.actualizar();
     const lista = filas();
     if (S.vista === 'lista') {
       const bloques = GRUPOS.map(([k, titulo]) => {
@@ -361,6 +378,12 @@ async function renderLista(view, ctx, conmutador) {
     h('button', { class: 'seg-btn ac-chip', type: 'button', dataset: { area: a }, onclick: () => { S.area = a; pintar(); } }, a === 'all' ? 'Todas las áreas' : AREAS[a])));
   const vista = h('div', { class: 'segmented ac-vista', role: 'group', 'aria-label': 'Vista' }, VISTAS.map(([k, l]) =>
     h('button', { class: 'seg-btn', type: 'button', dataset: { v: k }, onclick: () => { S.vista = k; pintar(); } }, l)));
+  const NOM_SPEC = { venc: 'vencidas', hoy: 'para hoy', sem: 'próximos 7 días', nadie: 'sin responsable' };
+  const avisoT = crearAviso({
+    obtener: () => [['Responsable', S.quien === 'todas' ? '' : S.quien === 'mias' ? 'mis tareas' : S.quien === 'nadie' ? 'sin asignar' : personas.get(S.quien) || ''], ['Área', S.area !== 'all' ? AREAS[S.area] : ''],
+      ['Búsqueda', busqueda(S.q)], ['Resumen', S.spec ? NOM_SPEC[S.spec] : '']],
+    limpiar: () => { S.quien = 'todas'; S.area = 'all'; S.q = ''; S.spec = null; const b = view.querySelector('.ac-filtros input[type="search"]'); if (b) b.value = ''; pintar(); },
+  });
   const ayuda = leyenda(areasPropias, miNombre);
   ayuda.hidden = !ayudaAbierta();
   const btnAyuda = h('button', { class: 'btn small', type: 'button', 'aria-expanded': String(!ayuda.hidden), onclick: () => { ayuda.hidden = !ayuda.hidden; btnAyuda.setAttribute('aria-expanded', String(!ayuda.hidden)); guardarAyuda(!ayuda.hidden); } }, '? Cómo funciona');
@@ -370,7 +393,8 @@ async function renderLista(view, ctx, conmutador) {
     h('div', { class: 'ac-nueva' }, nueva, nuevaResp, nuevaArea, nuevaFecha, h('button', { class: 'btn primary', type: 'button', disabled: !editor, onclick: crear }, 'Añadir')),
     h('div', { class: 'ac-filtros' }, barraResp, chips, h('input', { type: 'search', placeholder: 'Buscar…', 'aria-label': 'Buscar tareas', value: S.q, oninput: (e) => { S.q = e.target.value; pintar(); } }),
       h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: S.hechas, onchange: (e) => { S.hechas = e.target.checked; pintar(); } }), ` Ver hechas (${tareas.filter((t) => t.estado === 'hecha').length})`), vista),
-    cont);
+    avisoT, cont);
+  if (!['todas', 'mias', 'nadie'].includes(S.quien) && !claves().includes(S.quien)) S.quien = 'todas';
   pintar();
 }
 

@@ -3,6 +3,7 @@
 //  · Parrilla semanal — días × horas con un chip por grupo; al pasar el ratón por encima se ve la ficha y los alumnos.
 //  · Por profesora / Uso de aulas — una rejilla de tiempo por profesora o por aula, con avisos de solape y horas semanales.
 // Clic en una sesión = editarla; arrastrar = moverla (a otro día/hora o, en las rejillas, a otra profesora/aula).
+import { leerV, guardarV, crearAviso, busqueda } from '../vista.js';
 import { h, clear, cargando, toast, confirmar } from '../ui.js';
 import * as api from './api.js';
 import { campo, sel, drawer, cabecera, hhmm, DIAS, DIAS_CORTO, colorGrupo, colorNivel, nombreAlumno, pill, guardarBoton, refrescar } from './kit.js';
@@ -21,6 +22,18 @@ let diaSel = 0;
 let profSel = '';
 let busca = '';
 let todasHoras = false;
+let yaCargadoH = false;
+// lo elegido (vista, colores, día, profesora, búsqueda) se recuerda al refrescar la página
+const guardaH = () => guardarV('horarios', { vista, color, diaSel, profSel, busca, todasHoras });
+function cargaH() {
+  const g = leerV('horarios', {}) || {};
+  if (['franjas', 'parrilla', 'profesora', 'aula'].includes(g.vista)) vista = g.vista;
+  if (['nivel', 'modalidad', 'profesora'].includes(g.color)) color = g.color;
+  if (Number.isInteger(g.diaSel) && g.diaSel >= 0 && g.diaSel <= 6) diaSel = g.diaSel;
+  if (typeof g.profSel === 'string') profSel = g.profSel;
+  if (typeof g.busca === 'string') busca = g.busca;
+  if (typeof g.todasHoras === 'boolean') todasHoras = g.todasHoras;
+}
 
 // ---------- ventana flotante con la ficha del grupo (al pasar el ratón) ----------
 let pop = null; let temporizador = null;
@@ -44,10 +57,12 @@ function conInfo(el, construir) {
 
 export async function renderHorarios(view, ctx) {
   ocultarPop();
+  if (!yaCargadoH) { cargaH(); yaCargadoH = true; } // solo la primera vez tras abrir la página: después manda lo que se vaya eligiendo
   clear(view, cargando());
   const curso = ctx.cursoActual();
   const editor = ctx.edita('ac_calendario');
   const [todosGrupos, profes, aulas, alumnos, ls] = await Promise.all([api.grupos(curso.id), api.profesoras(), api.aulas(), api.alumnos(), api.listas()]);
+  if (profSel && !profes.some((p) => p.id === profSel)) profSel = '';
   const propio = !ctx.ve('ac_calendario');
   const yo = propio ? ctx.miProfesora(profes) : null;
   const grupos = todosGrupos;
@@ -62,6 +77,10 @@ export async function renderHorarios(view, ctx) {
   const cont = h('div', { class: 'ac-cal-cont' });
   const aviso = h('div');
   const barra = h('div', { class: 'ac-barra' });
+  const avisoH = crearAviso({
+    obtener: () => (vista === 'franjas' ? [['Profesora', profSel ? profes.find((p) => p.id === profSel)?.nombre || '' : ''], ['Búsqueda', busqueda(busca)], ['Día', diaSel ? DIAS[diaSel] : '']] : vista === 'parrilla' ? [['Profesora', profSel ? profes.find((p) => p.id === profSel)?.nombre || '' : '']] : []),
+    limpiar: () => { profSel = ''; busca = ''; diaSel = 0; pintar(); },
+  });
   const modo = () => (vista === 'aula' ? 'aula' : 'profesora');
   const colorDe = (x) => (color === 'profesora' ? pPor.get(x.prof)?.color || '#8c8a81' : color === 'nivel' ? colorNivel(x.g.nivel) || colorGrupo(x.g) : colorGrupo(x.g));
 
@@ -236,7 +255,7 @@ export async function renderHorarios(view, ctx) {
     const leyenda = h('div', { class: 'ac-leyenda small muted' }, [['Babies', '#5aa469'], ['Kids', '#d9b72e'], ['Teens', '#e08a3c'], ['Adults', '#d76f9a'], ['1 to 1', '#4f7cff']].map(([n, c]) => h('span', {}, h('span', { class: 'ac-punto', style: `background:${c}` }), n)));
     if (vista === 'franjas') {
       const dias = h('div', { class: 'segmented' }, [[0, 'Todos'], ...[1, 2, 3, 4, 5, 6].map((d) => [d, DIAS_CORTO[d]])].map(([d, l]) => h('button', { class: 'seg-btn', type: 'button', title: d ? DIAS[d] : 'Todos los días', 'aria-pressed': String(diaSel === d), 'aria-selected': String(diaSel === d), onclick: () => { diaSel = d; pintar(); } }, l)));
-      const buscador = h('input', { type: 'search', placeholder: 'Buscar grupo o alumno…', value: busca, 'aria-label': 'Buscar grupo o alumno', oninput: (e) => { busca = e.target.value; clearTimeout(buscador._t); buscador._t = setTimeout(() => { clear(cont, franjas()); }, 150); } });
+      const buscador = h('input', { type: 'search', placeholder: 'Buscar grupo o alumno…', value: busca, 'aria-label': 'Buscar grupo o alumno', oninput: (e) => { busca = e.target.value; clearTimeout(buscador._t); buscador._t = setTimeout(() => { guardaH(); avisoH.actualizar(); clear(cont, franjas()); }, 150); } });
       clear(barra, dias, selProf, selColor, buscador, leyenda);
     } else if (vista === 'parrilla') {
       clear(barra, selProf, selColor, h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: todasHoras, onchange: (e) => { todasHoras = e.target.checked; pintar(); } }), ' Mostrar todas las horas (para soltar en un hueco)'), leyenda);
@@ -246,6 +265,7 @@ export async function renderHorarios(view, ctx) {
   function pintar() {
     ocultarPop();
     clear(aviso);
+    guardaH(); avisoH.actualizar();
     pintarBarra();
     if (vista === 'franjas') clear(cont, franjas());
     else if (vista === 'parrilla') clear(cont, parrilla());
@@ -282,6 +302,6 @@ export async function renderHorarios(view, ctx) {
   }
 
   const sub = editor ? 'Arrastra los grupos para moverlos, clic para editarlos; pasa el ratón por encima para ver sus alumnos' : 'Pasa el ratón por encima de un grupo para ver sus alumnos';
-  clear(view, cabecera(`Horarios · ${curso.nombre}`, sub, seg, editor ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrirSesion(null, { dia: diaSel || 1, ini: 17 * 60 }) }, '+ Nueva sesión') : null), barra, aviso, cont);
+  clear(view, cabecera(`Horarios · ${curso.nombre}`, sub, seg, editor ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrirSesion(null, { dia: diaSel || 1, ini: 17 * 60 }) }, '+ Nueva sesión') : null), barra, avisoH, aviso, cont);
   pintar();
 }

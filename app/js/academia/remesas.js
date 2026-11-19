@@ -3,6 +3,7 @@
 // de su cuota (resaltado si cambió entre el día 5 y el 25 del mes), el comentario y la referencia de mandato.
 // Tres vistas: Remesas (lo ya procesado), Pendientes (alumnos nuevos o que pasan a domiciliación) y Archivados (ya no pagan por domiciliación).
 // Arriba, el resumen de remesas y el botón «REMESAS ENVIADAS - mes X», que guarda lo enviado al banco para comparar cuando entren los pagos.
+import { vista as vistaEstado, vincular, escuchar, crearAviso, busqueda } from '../vista.js';
 import { h, clear, cargando, toast, confirmar, fmtEUR2, fmtFecha, hoyISO, normalizar, MESES, capitalizar, descargarCSV } from '../ui.js';
 import * as api from './api.js';
 import { cabecera, pill, sel, nombreAlumno } from './kit.js';
@@ -86,7 +87,8 @@ export async function renderRemesas(view, ctx) {
   for (const n of notas) { if (!notasPor.has(n.alumno_id)) notasPor.set(n.alumno_id, []); notasPor.get(n.alumno_id).push(n); }
   const notasDe = (id) => notasPor.get(id) || [];
 
-  const f = { q: '', remesa: '', banco: '', soloCambios: false, soloAvisos: false, envioId: '', vista: 'main' };
+  const f = vistaEstado('remesas.f', { q: '', remesa: '', banco: '', soloCambios: false, soloAvisos: false, vista: 'main' }); // se recuerda al refrescar
+  if (!['main', 'pend', 'arch'].includes(f.vista)) f.vista = 'main';
   const envioOrden = () => [...envios].sort((a, b) => (b.enviado_el || '').localeCompare(a.enviado_el || ''));
   f.envioId = envioOrden()[0]?.id || '';
   let lineasEnvio = new Map(); // domiciliacion_id → importe enviado (solo si el envío guardó líneas)
@@ -381,6 +383,7 @@ export async function renderRemesas(view, ctx) {
     clear(tabsEl, [['main', 'Remesas', main.length], ['pend', 'Pendientes de procesar', pend.length], ['arch', 'Archivados', arch.length]].map(([k, t, n]) =>
       h('button', { class: `btn small ${f.vista === k ? 'primary' : ''}`, type: 'button', 'aria-pressed': f.vista === k ? 'true' : 'false', onclick: () => { f.vista = k; pintarVista(); } }, `${t} (${n})`)));
     filtrosMain.style.display = f.vista === 'main' ? '' : 'none';
+    avisoF.actualizar();
   }
   const pintarTodo = () => { calc(); pintarResumen(); pintarGestion(); pintarVista(); };
 
@@ -407,12 +410,19 @@ export async function renderRemesas(view, ctx) {
   });
 
   // ---------- filtros y cabecera ----------
-  const busca = h('input', { type: 'search', placeholder: 'Buscar alumno, responsable, remesa o comentario…', style: 'min-width:260px', oninput: (e) => { f.q = e.target.value; pintarVista(); } });
-  const selRemesa = sel([['__sin', 'Sin remesa'], ...lista.map((r) => [r.id, r.nombre])], '', { vacio: 'Todas las remesas' });
+  if (f.remesa && f.remesa !== '__sin' && !lista.some((r) => r.id === f.remesa)) f.remesa = '';
+  if (f.banco && !BANCOS.some((b) => (Array.isArray(b) ? b[0] : b) === f.banco)) f.banco = '';
+  const busca = vincular(f, 'q', h('input', { type: 'search', placeholder: 'Buscar alumno, responsable, remesa o comentario…', style: 'min-width:260px', oninput: (e) => { f.q = e.target.value; pintarVista(); } }));
+  const selRemesa = sel([['__sin', 'Sin remesa'], ...lista.map((r) => [r.id, r.nombre])], f.remesa, { vacio: 'Todas las remesas' }); vincular(f, 'remesa', selRemesa);
   selRemesa.addEventListener('change', () => { f.remesa = selRemesa.value; pintarVista(); });
-  const selBanco = sel(BANCOS, '', { vacio: 'Ambos bancos' });
+  const selBanco = sel(BANCOS, f.banco, { vacio: 'Ambos bancos' }); vincular(f, 'banco', selBanco);
   selBanco.addEventListener('change', () => { f.banco = selBanco.value; pintarVista(); });
-  const chk = (txt, k) => h('label', { class: 'check' }, h('input', { type: 'checkbox', onchange: (e) => { f[k] = e.target.checked; pintarVista(); } }), ' ' + txt);
+  const chk = (txt, k) => h('label', { class: 'check' }, vincular(f, k, h('input', { type: 'checkbox', onchange: (e) => { f[k] = e.target.checked; pintarVista(); } })), ' ' + txt);
+  const avisoF = crearAviso({
+    obtener: () => [['Búsqueda', busqueda(f.q)], ...(f.vista === 'main' ? [['Remesa', f.remesa ? (f.remesa === '__sin' ? 'Sin remesa' : lista.find((r) => r.id === f.remesa)?.nombre || '') : ''], ['Banco', f.banco], ['Solo con avisos', f.soloAvisos]] : []), ['Solo cuota cambiada este mes', f.soloCambios]],
+    limpiar: () => { f.q = ''; f.remesa = ''; f.banco = ''; f.soloAvisos = false; f.soloCambios = false; pintarVista(); },
+  });
+  escuchar(f, () => avisoF.actualizar());
   const filtrosMain = h('span', { class: 'ac-fila', style: 'gap:8px;flex-wrap:wrap' }, selRemesa, selBanco, chk('Solo con avisos ⚠', 'soloAvisos'));
   const btnGestion = h('button', { class: 'btn', type: 'button', onclick: () => { pintarGestion(); ventana('Gestionar remesas', gestionEl, { ancho: 540 }); } }, 'Gestionar remesas');
   const csv = h('button', { class: 'btn', type: 'button', onclick: () => descargarCSV(`domiciliaciones-${curso.nombre}.csv`, [['ID', 'Alumno', 'Responsable', 'IBAN', 'Importe', 'Cambios/Comentarios', 'Mandato', 'Remesa', 'Banco'], ...main.filter((x) => pasa(x, 'main')).map((x) => [x.a.num, nombreAlumno(x.a), respTxt(x.a), ibanDe(x), x.importe.toFixed(2).replace('.', ','), notasDe(x.a.id).map((n, i) => `${i + 1}) ${n.texto}`).join(' | '), x.dom?.ref_mandato || x.a.num, x.rem?.nombre || '', x.rem ? nombreBanco(x.rem.banco) : ''])]) }, 'Descargar CSV');
@@ -422,6 +432,6 @@ export async function renderRemesas(view, ctx) {
     cabecera(`Remesas · ${curso.nombre}`, 'Domiciliaciones por remesa: Sabadell (hasta 20 cobros) y BBVA', btnGestion, mesSel, btnEnviadas, csv, h('a', { class: 'btn ghost small', href: '#/ac_remesas_mensuales' }, 'Remesas mensuales (antiguo)')),
     resumenEl, tabsEl,
     h('div', { class: 'filters filters-2', style: 'gap:8px;flex-wrap:wrap' }, busca, filtrosMain, chk('Solo cuota cambiada este mes (5–25)', 'soloCambios')),
-    statsEl, listaEl);
+    avisoF, statsEl, listaEl);
   pintarResumen(); pintarGestion(); pintarVista();
 }

@@ -1,6 +1,7 @@
 // TRABAJADORES · Documentos: cada usuario ve solo SUS documentos (nóminas, contratos, certificados…). Quien gestiona el portal
 // (permiso «Portal del trabajador» con alcance «todo» y edición) elige a un trabajador y le sube o quita documentos.
 // Los archivos van a un bucket privado de Supabase y se abren con un enlace firmado temporal; la base de datos aplica la misma regla.
+import { leerV, guardarV, crearAviso } from '../vista.js';
 import { h, clear, cargando, toast, confirmar, fmtFecha } from '../ui.js';
 import * as api from './api.js';
 import { campo, sel, txt, tabla, cabecera, refrescar } from '../academia/kit.js';
@@ -16,6 +17,7 @@ export async function abrir(ruta) {
 
 export async function renderDocumentos(view, ctx) {
   clear(view, cargando());
+  verTrabajador = leerV('trab.documentos.persona', ''); // el trabajador elegido se recuerda al refrescar
   const yo = ctx.state.perfil;
   const gestiona = ctx.ve('ac_portal') && ctx.edita('ac_portal');
   const veTodos = ctx.ve('ac_portal');
@@ -44,7 +46,10 @@ export async function renderDocumentos(view, ctx) {
     const personas = equipo.filter((u) => u.activo !== false).sort((a, b) => (a.nombre || a.email || '').localeCompare(b.nombre || b.email || '', 'es'));
     const filtro = sel([['', 'Todos los trabajadores'], ...personas.map((u) => [u.id, u.nombre || u.email])], verTrabajador, { onchange: (e) => { verTrabajador = e.target.value; pintarTodos(); }, 'aria-label': 'Trabajador' });
     const cont = h('div');
-    const pintarTodos = () => clear(cont, tabla(cols(gestiona, true), docs.filter((d) => !verTrabajador || d.profile_id === verTrabajador), { vacio: 'No hay documentos subidos.' }));
+    if (verTrabajador && !personas.some((u) => u.id === verTrabajador)) verTrabajador = '';
+    filtro.value = verTrabajador;
+    const avisoD = crearAviso({ obtener: () => [['Trabajador', verTrabajador ? (personas.find((u) => u.id === verTrabajador)?.nombre || personas.find((u) => u.id === verTrabajador)?.email || '') : '']], limpiar: () => { verTrabajador = ''; filtro.value = ''; pintarTodos(); } });
+    const pintarTodos = () => { guardarV('trab.documentos.persona', verTrabajador); avisoD.actualizar(); clear(cont, tabla(cols(gestiona, true), docs.filter((d) => !verTrabajador || d.profile_id === verTrabajador), { vacio: 'No hay documentos subidos.' })); };
     const alta = gestiona ? (() => {
       const F = { quien: sel(personas.map((u) => [u.id, u.nombre || u.email]), verTrabajador || '', { vacio: 'Elige trabajador…' }), tipo: sel(TIPOS, 'nomina'), titulo: txt('', { placeholder: 'Nómina de noviembre' }), periodo: txt('', { placeholder: '2026-11' }),
         archivo: h('input', { type: 'file', accept: 'application/pdf,image/*', 'aria-label': 'Archivo' }) };
@@ -61,7 +66,7 @@ export async function renderDocumentos(view, ctx) {
       } }, 'Subir documento');
       return h('div', { class: 'form-section' }, h('h3', {}, 'Subir un documento'), campo('Trabajador', F.quien), campo('Tipo', F.tipo), campo('Título', F.titulo), campo('Periodo', F.periodo), campo('Archivo (PDF o imagen)', F.archivo, { full: true }), h('div', { class: 'full' }, subir));
     })() : null;
-    partes.push(h('div', { class: 'card' }, h('h3', { class: 'sub-titulo' }, gestiona ? 'Documentos de los trabajadores' : 'Documentos de todos'), h('div', { class: 'filters' }, filtro), cont, alta));
+    partes.push(h('div', { class: 'card' }, h('h3', { class: 'sub-titulo' }, gestiona ? 'Documentos de los trabajadores' : 'Documentos de todos'), h('div', { class: 'filters' }, filtro), avisoD, cont, alta));
     pintarTodos();
   }
   clear(view, ...partes);

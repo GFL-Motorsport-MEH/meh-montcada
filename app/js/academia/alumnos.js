@@ -6,6 +6,7 @@ import { campo, txt, area, fecha, numero, sel, drawer, cabecera, tabla, pill, ed
 
 import { calcularFamilias, esActivo, esDescHermanos } from './familias.js';
 import { abrirEscaneo } from './escanear.js';
+import { vista as vistaEstado, vincular, avisoFiltros, busqueda } from '../vista.js';
 import { pillMotivo, permanencia, colorMotivo as colorMotivoFicha } from './bajas.js';
 
 const ESTADOS = [['inscrito', 'Inscrito'], ['prematricula', 'Pre-matrícula'], ['baja', 'Baja'], ['antiguo', 'Antiguo']];
@@ -21,8 +22,12 @@ export async function renderAlumnos(view, ctx) {
   const verPagos = ctx.ve('ac_pagos'); const editaPagos = ctx.edita('ac_pagos'); const editaAl = ctx.edita('ac_alumnos');
   const fam = calcularFamilias(alumnos, vinc);
   const descPor = verPagos ? new Map(insc.map((i) => [i.alumno_id, i.descuento])) : null;
-  const f = { q: '', estado: 'inscrito', modalidad: '', grupo: '', hermanos: '', editar: false };
+  const f = vistaEstado('alumnos.f', { q: '', estado: 'inscrito', modalidad: '', grupo: '', hermanos: '' }); // el modo «editar en tabla» no se recuerda
+  f.editar = false;
   const todosGrupos = [...new Set(grupos.map((g) => g.nombre))].sort();
+  if (f.grupo && !todosGrupos.includes(f.grupo)) f.grupo = '';
+  if (f.modalidad && !(ls.modalidad || []).includes(f.modalidad)) f.modalidad = '';
+  if (f.estado && !ESTADOS.some(([k]) => k === f.estado)) f.estado = 'inscrito';
   const colegios = h('datalist', { id: 'dl-colegio-lista' }, [...new Set(alumnos.map((x) => x.colegio).filter(Boolean))].sort().map((c) => h('option', { value: c })));
   const niveles = h('datalist', { id: 'dl-nivel-lista' }, (ls.nivel || []).map((c) => h('option', { value: c })));
 
@@ -117,7 +122,7 @@ export async function renderAlumnos(view, ctx) {
     ];
     clear(contenedor, tabla(cols, filas.slice(0, 3000), { onClick: e ? null : (a) => abrirFicha(a, ctx, recargar), clase: e ? 'ac-editando' : '', vacio: alumnos.length ? 'Ningún alumno coincide con el filtro.' : 'Todavía no hay alumnos. Usa «Importar del Excel» o «Nuevo alumno».' }));
   }
-  const buscar = h('input', { type: 'search', placeholder: 'Buscar por alumno, colegio, responsable, teléfono o nº…', 'aria-label': 'Buscar', oninput: (ev) => { f.q = ev.target.value; pintar(); } });
+  const buscar = vincular(f, 'q', h('input', { type: 'search', placeholder: 'Buscar por alumno, colegio, responsable, teléfono o nº…', 'aria-label': 'Buscar', oninput: (ev) => { f.q = ev.target.value; pintar(); } }));
   const hayHermanos = alumnos.some((a) => esActivo(a) && fam.resumen(a.id, descPor).activos >= 2);
   const btnEditar = editaAl ? h('button', { class: 'btn small', type: 'button', 'aria-pressed': 'false', title: 'Cambiar los datos directamente en la tabla', onclick: (ev) => { f.editar = !f.editar; ev.currentTarget.setAttribute('aria-pressed', String(f.editar)); ev.currentTarget.classList.toggle('primary', f.editar); ev.currentTarget.textContent = f.editar ? '✓ Terminar edición' : '✎ Editar en tabla'; pintar(); } }, '✎ Editar en tabla') : null;
   clear(view,
@@ -125,10 +130,12 @@ export async function renderAlumnos(view, ctx) {
     contador,
     h('div', { class: 'filters filters-5' },
       buscar,
-      sel([['', 'Todos los estados'], ...ESTADOS], f.estado, { onchange: (ev) => { f.estado = ev.target.value; pintar(); }, 'aria-label': 'Estado' }),
-      sel([['', 'Todas las modalidades'], ...(ls.modalidad || []).map((m) => [m, m])], '', { onchange: (ev) => { f.modalidad = ev.target.value; pintar(); }, 'aria-label': 'Modalidad' }),
-      sel([['', 'Todos los grupos'], ...todosGrupos.map((g) => [g, g])], '', { onchange: (ev) => { f.grupo = ev.target.value; pintar(); }, 'aria-label': 'Grupo' }),
-      sel([['', 'Todas las familias'], ['con', 'Con hermanos inscritos'], ...(verPagos ? [['sin', 'Hermanos sin descuento']] : [])], '', { onchange: (ev) => { f.hermanos = ev.target.value; pintar(); }, 'aria-label': 'Hermanos' })),
+      vincular(f, 'estado', sel([['', 'Todos los estados'], ...ESTADOS], f.estado, { onchange: (ev) => { f.estado = ev.target.value; pintar(); }, 'aria-label': 'Estado' })),
+      vincular(f, 'modalidad', sel([['', 'Todas las modalidades'], ...(ls.modalidad || []).map((m) => [m, m])], f.modalidad, { onchange: (ev) => { f.modalidad = ev.target.value; pintar(); }, 'aria-label': 'Modalidad' })),
+      vincular(f, 'grupo', sel([['', 'Todos los grupos'], ...todosGrupos.map((g) => [g, g])], f.grupo, { onchange: (ev) => { f.grupo = ev.target.value; pintar(); }, 'aria-label': 'Grupo' })),
+      vincular(f, 'hermanos', sel([['', 'Todas las familias'], ['con', 'Con hermanos inscritos'], ...(verPagos ? [['sin', 'Hermanos sin descuento']] : [])], f.hermanos, { onchange: (ev) => { f.hermanos = ev.target.value; pintar(); }, 'aria-label': 'Hermanos' }))),
+    avisoFiltros(f, { claves: ['q', 'estado', 'modalidad', 'grupo', 'hermanos'], etiquetas: { q: 'Búsqueda', estado: 'Estado', modalidad: 'Modalidad', grupo: 'Grupo', hermanos: 'Familias' },
+      formato: { q: busqueda, estado: (v) => ESTADOS.find(([k]) => k === v)?.[1] || v, hermanos: (v) => (v === 'con' ? 'con hermanos inscritos' : v === 'sin' ? 'hermanos sin descuento' : v) }, alLimpiar: () => pintar() }),
     colegios, niveles, contenedor);
   pintar();
 }

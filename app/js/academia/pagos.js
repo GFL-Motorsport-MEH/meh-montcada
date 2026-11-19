@@ -5,6 +5,7 @@ import { ordenGuardado, guardarOrden } from '../orden-compartido.js';
 import * as api from './api.js';
 import { cabecera, sel, nombreAlumno, refrescar, drawer, numero, guardarBoton } from './kit.js';
 import { abrirFicha } from './alumnos.js';
+import { vista as vistaEstado, vincular, avisoFiltros, busqueda } from '../vista.js';
 
 const mesActual = () => ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'][new Date().getMonth()];
 const COLS = [{ c: 'welcome_pack', m: '', t: 'WP' }, ...MESES.map((m, i) => ({ c: 'mensualidad', m, t: MESES_CORTO[i] }))];
@@ -21,7 +22,7 @@ export async function renderPagos(view, ctx) {
   const inscPor = new Map(insc.map((i) => [i.alumno_id, i]));
   const cuotaPor = new Map(cuotas.map((c) => [`${c.alumno_id}|${c.concepto}|${c.mes}`, c]));
   const editor = ctx.edita('ac_pagos');
-  const f = { q: '', soloPend: false, modo: '', nivel: '', recibo: '' };
+  const f = vistaEstado('pagos.f', { q: '', soloPend: false, modo: '', nivel: '', recibo: '' });
   const orden = { k: 'nombre', dir: 1 };
   { const g = ordenGuardado('pagos'); if (g && g.k) { orden.k = g.k; orden.dir = g.dir === -1 ? -1 : 1; } }
   const RANGO = { pendiente: 0, devuelto: 1, pagado: 2, exento: 3 };
@@ -297,16 +298,24 @@ export async function renderPagos(view, ctx) {
     h('thead', {}, resumen, h('tr', {}, th('num', 'ID'), th('nombre', 'Alumno', 'l'), th('nivel', 'Nivel'), th('modo', 'Modo pago'), th('cuota', 'Cuota'),
       COLS.map((k, ci) => th('c' + ci, k.t, 'ac-mes', h('div', { class: 'ac-sub' }, '€ · P · R'))))), cuerpo);
   pintarFlechas();
+  if (f.modo && !modos.includes(f.modo)) f.modo = '';
+  if (f.nivel && !niveles.includes(f.nivel)) f.nivel = '';
+  const ctlQ = vincular(f, 'q', h('input', { type: 'search', placeholder: 'Buscar alumno o ID…', oninput: (e) => { f.q = e.target.value; pintar(); } }));
+  const ctlModo = vincular(f, 'modo', sel([['', 'Todos los modos de pago'], ...modos.map((m) => [m, m])], f.modo, { onchange: (e) => { f.modo = e.target.value; pintar(); } }));
+  const ctlNivel = vincular(f, 'nivel', sel([['', 'Todos los niveles'], ...niveles.map((n) => [n, n])], f.nivel, { onchange: (e) => { f.nivel = e.target.value; pintar(); } }));
+  const ctlRecibo = vincular(f, 'recibo', sel([['', 'Todos los recibos'], ['sin', 'Cobrados sin recibo hecho']], f.recibo, { onchange: (e) => { f.recibo = e.target.value; pintar(); } }));
+  const ctlPend = vincular(f, 'soloPend', h('input', { type: 'checkbox', onchange: (e) => { f.soloPend = e.target.checked; pintar(); } }));
+  const aviso = avisoFiltros(f, { claves: ['q', 'modo', 'nivel', 'recibo', 'soloPend'],
+    etiquetas: { q: 'Búsqueda', modo: 'Modo de pago', nivel: 'Nivel', recibo: 'Recibos', soloPend: 'Solo con pagos pendientes hasta este mes' },
+    formato: { q: busqueda, recibo: (v) => (v ? 'cobrados sin recibo hecho' : '') }, alLimpiar: () => pintar() });
   pintar(); pintarPie(); pintarKpis();
   clear(view,
     cabecera(`Pagos · ${curso.nombre}`, 'Por mes: cuantía · P (pagado) · R (recibo hecho). Arrastra o usa Ctrl/Mayús+clic para elegir varias celdas.', mesSel, btnGen, btnWp, btnPrecios, zoomBox, h('a', { class: 'btn small', href: '#/ac_pagos_importar' }, 'Importar del CRM'), ctx.veAlgo('fact') ? h('a', { class: 'btn small', href: '#/ingresos', title: 'El cuadro de Ingresos se rellena con los pagos marcados aquí' }, 'Ver Resumen de Pagos →') : null),
     sinInsc ? h('div', { class: 'banner warn' }, `${sinInsc} alumnos inscritos todavía no tienen cuota fijada en este curso: escribe su cuota en la fila (si no aparecen aquí, ábrelos desde Alumnos).`) : null,
     kpisEl,
-    h('div', { class: 'filters filters-4' }, h('input', { type: 'search', placeholder: 'Buscar alumno o ID…', oninput: (e) => { f.q = e.target.value; pintar(); } }),
-      sel([['', 'Todos los modos de pago'], ...modos.map((m) => [m, m])], '', { onchange: (e) => { f.modo = e.target.value; pintar(); } }),
-      sel([['', 'Todos los niveles'], ...niveles.map((n) => [n, n])], '', { onchange: (e) => { f.nivel = e.target.value; pintar(); } }),
-      sel([['', 'Todos los recibos'], ['sin', 'Cobrados sin recibo hecho']], '', { onchange: (e) => { f.recibo = e.target.value; pintar(); } })),
-    h('label', { class: 'check ac-pg-chk' }, h('input', { type: 'checkbox', onchange: (e) => { f.soloPend = e.target.checked; pintar(); } }), ' Solo con pagos pendientes hasta este mes'),
+    h('div', { class: 'filters filters-4' }, ctlQ, ctlModo, ctlNivel, ctlRecibo),
+    h('label', { class: 'check ac-pg-chk' }, ctlPend, ' Solo con pagos pendientes hasta este mes'),
+    aviso,
     h('div', { class: 'table-wrap card-tabla ac-pg-wrap' }, tb), barra);
   quitar.observe(document.body, { childList: true, subtree: true });
   // zoom de la tabla (botones, Ctrl+rueda); se recuerda en este navegador

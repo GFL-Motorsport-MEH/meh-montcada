@@ -4,6 +4,7 @@ import * as db from '../db.js';
 import { agrupar } from '../deshacer.js';
 import { ordenGuardado, guardarOrden } from '../orden-compartido.js';
 import { botonSubirFactura } from '../factura-archivo.js';
+import { vista, filtroFecha, pasaFecha, describirFecha, crearAviso, vincular, FECHA_VACIA } from '../vista.js';
 
 const SECCIONES = [['faltafact', 'Facturas pendientes'], ['gestoria', 'Gestoría'], ['conciliacion', 'Conciliación bancaria'], ['factcheck', 'FactCheck'], ['notas', 'Notas']];
 const LS = 'meh.control';
@@ -29,7 +30,7 @@ async function renderFaltaFact(cont, ctx) {
   const porCurso = new Map();
   for (const c of cursos) porCurso.set(c.id, await ctx.gastos(c.id));
   const todos = cursos.flatMap((c) => porCurso.get(c.id).map((g) => ({ g, curso: c })));
-  const f = { curso: '', metodo: '', q: '' };
+  const f = vista('control.faltafact.f', { curso: '', metodo: '', q: '', fecha: { ...FECHA_VACIA } });
   let orden = ordenGuardado('control.faltafact') || { campo: 'fecha', asc: false };
   const sel = new Set(); // ids de gastos seleccionados
   const metodos = [...new Set(todos.map((x) => x.g.metodo_pago).filter(Boolean))].sort();
@@ -38,6 +39,14 @@ async function renderFaltaFact(cont, ctx) {
   const fMet = h('select', { 'aria-label': 'Método de pago', onchange: () => { f.metodo = fMet.value; pintar(); } },
     h('option', { value: '' }, 'Todos los métodos'), metodos.map((m) => h('option', { value: m }, m)));
   const fQ = h('input', { type: 'search', placeholder: 'Buscar empresa o concepto…', 'aria-label': 'Buscar', oninput: () => { f.q = fQ.value; pintar(); } });
+  const fFecha = filtroFecha(f.fecha, (d) => { f.fecha = d; pintar(); }, { etiqueta: 'Fecha de la factura' });
+  if (f.curso && !cursos.some((c) => c.id === f.curso)) f.curso = '';
+  if (f.metodo && !metodos.includes(f.metodo)) f.metodo = '';
+  vincular(f, 'q', fQ); vincular(f, 'curso', fCurso); vincular(f, 'metodo', fMet); vincular(f, 'fecha', fFecha);
+  const aviso = crearAviso({
+    obtener: () => [['Búsqueda', f.q.trim() ? `«${f.q.trim()}»` : ''], ['Curso', f.curso ? cursos.find((c) => c.id === f.curso)?.nombre : ''], ['Método', f.metodo], ['Fecha de la factura', describirFecha(f.fecha)]],
+    limpiar: () => { f.q = ''; f.curso = ''; f.metodo = ''; f.fecha = { ...FECHA_VACIA }; pintar(); },
+  });
   const resumen = h('div', { class: 'chips' });
   const contador = h('div', { class: 'count' });
   const tbody = h('tbody');
@@ -59,7 +68,7 @@ async function renderFaltaFact(cont, ctx) {
 
   const pendientes = () => {
     const q = normalizar(f.q.trim());
-    return todos.filter(({ g, curso }) => faltaFactura(g) && (!f.curso || curso.id === f.curso) && (!f.metodo || g.metodo_pago === f.metodo)
+    return todos.filter(({ g, curso }) => faltaFactura(g) && (!f.curso || curso.id === f.curso) && (!f.metodo || g.metodo_pago === f.metodo) && pasaFecha(g.fecha_factura, f.fecha)
       && (!q || normalizar(`${g.empresa} ${g.concepto} ${g.factura_nr}`).includes(q)))
       .sort((a, b) => {
         const k = CLAVES[orden.campo];
@@ -127,6 +136,7 @@ async function renderFaltaFact(cont, ctx) {
   function pintar() {
     const lista = pendientes();
     const total = lista.reduce((s, x) => s + num(x.g.cantidad), 0);
+    aviso.actualizar();
     contador.textContent = `${lista.length} gastos sin factura · ${fmtEUR2(total)}`;
     const porMet = new Map();
     for (const x of lista) porMet.set(x.g.metodo_pago || 'Sin método', (porMet.get(x.g.metodo_pago || 'Sin método') || 0) + num(x.g.cantidad));
@@ -159,7 +169,8 @@ async function renderFaltaFact(cont, ctx) {
     h('div', { class: 'section-head' }, h('div', {}, h('h2', {}, 'Facturas pendientes'), contador),
       h('div', { class: 'section-actions' }, btnMasivo, h('button', { class: 'btn', onclick: exportar }, 'Exportar CSV'))),
     h('p', { class: 'muted small' }, 'Gastos de todos los cursos sin enlace a la factura y sin marcar "sin factura" (hoja FaltaFACT). Pega el enlace o marca que no hay factura.'),
-    h('div', { class: 'filters filters-3' }, h('div', { class: 'search' }, fQ), fCurso, fMet),
+    h('div', { class: 'filters filters-4' }, h('div', { class: 'search' }, fQ), fCurso, fMet, fFecha),
+    aviso,
     resumen,
     h('div', { class: 'table-wrap' }, h('table', { class: 'data tabla-falta' },
       h('thead', {}, h('tr', {}, h('th', { scope: 'col', class: 'c-chk' }, chkTodos), ths)),

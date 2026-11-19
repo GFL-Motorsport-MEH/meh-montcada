@@ -1,4 +1,5 @@
 // Documentación y protocolos de la academia: textos con categoría y versión, con un formato sencillo (títulos, listas, negrita).
+import { vista, vincular, avisoFiltros, busqueda } from '../vista.js';
 import { h, clear, cargando, toast, confirmar, fmtFecha, normalizar } from '../ui.js';
 import * as api from './api.js';
 import { campo, txt, area, sel, drawer, cabecera, pill, guardarBoton, refrescar } from './kit.js';
@@ -28,7 +29,9 @@ export async function renderDocumentos(view, ctx) {
   const [docs, ls] = await Promise.all([api.documentos(), api.listas()]);
   const editor = ctx.edita('ac_documentos');
   const recargar = () => { api.invalidar(); refrescar(); };
-  const f = { q: '', cat: '', ver: 'vigente' };
+  const f = vista('documentos.f', { q: '', cat: '', ver: 'vigente' });
+  if (f.cat && !(ls.categoria_documento || []).includes(f.cat)) f.cat = '';
+  const VER = [['vigente', 'Vigentes'], ['borrador', 'Borradores'], ['archivado', 'Archivados'], ['', 'Todos']];
   const cont = h('div');
   function pintar() {
     const q = normalizar(f.q);
@@ -39,9 +42,10 @@ export async function renderDocumentos(view, ctx) {
         h('strong', {}, d.titulo), h('span', { class: 'small muted' }, ` v${d.version} · actualizado ${fmtFecha(d.updated_at)}`), d.estado !== 'vigente' ? pill(d.estado) : null)))) : h('div', { class: 'card empty' }, 'No hay documentos. Crea el primer protocolo con «+ Nuevo documento».'));
   }
   clear(view, cabecera('Documentación y protocolos', 'Cómo se hacen las cosas en la academia', editor ? h('button', { class: 'btn primary small', type: 'button', onclick: () => abrir(null, { ls, ctx, recargar }) }, '+ Nuevo documento') : null),
-    h('div', { class: 'filters filters-3' }, h('input', { type: 'search', placeholder: 'Buscar en títulos y contenido…', oninput: (e) => { f.q = e.target.value; pintar(); } }),
-      sel([['', 'Todas las categorías'], ...(ls.categoria_documento || []).map((c) => [c, c])], '', { onchange: (e) => { f.cat = e.target.value; pintar(); } }),
-      sel([['vigente', 'Vigentes'], ['borrador', 'Borradores'], ['archivado', 'Archivados'], ['', 'Todos']], f.ver, { onchange: (e) => { f.ver = e.target.value; pintar(); } })), cont);
+    h('div', { class: 'filters filters-3' }, vincular(f, 'q', h('input', { type: 'search', placeholder: 'Buscar en títulos y contenido…', oninput: (e) => { f.q = e.target.value; pintar(); } })),
+      vincular(f, 'cat', sel([['', 'Todas las categorías'], ...(ls.categoria_documento || []).map((c) => [c, c])], f.cat, { onchange: (e) => { f.cat = e.target.value; pintar(); } })),
+      vincular(f, 'ver', sel(VER, f.ver, { onchange: (e) => { f.ver = e.target.value; pintar(); } }))),
+    avisoFiltros(f, { etiquetas: { q: 'Búsqueda', cat: 'Categoría', ver: 'Estado' }, formato: { q: busqueda, ver: (v) => VER.find(([k]) => k === v)?.[1] || v }, alLimpiar: () => pintar() }), cont);
   pintar();
 }
 

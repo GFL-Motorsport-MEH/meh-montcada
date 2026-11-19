@@ -1,4 +1,5 @@
 // Control > Notas (hoja Notas: cuaderno de revisiones) y Balance > Datos de interés (hoja Datos interes).
+import { leerV, guardarV, crearAviso, busqueda } from '../vista.js';
 import { h, clear, cargando, toast, fmtEUR2, fmtFecha, num, hoyISO, normalizar, tituloCategoria } from '../ui.js';
 import * as db from '../db.js';
 import { registrarSeccion } from './control.js';
@@ -9,7 +10,8 @@ import { calcularBalance } from '../balance.js';
 async function renderNotas(cont, ctx) {
   clear(cont, cargando());
   const notas = await db.getNotas();
-  let q = '', soloPend = false;
+  const g0 = leerV('notas.f', {}); // lo filtrado se recuerda al refrescar
+  let q = typeof g0.q === 'string' ? g0.q : '', soloPend = g0.soloPend === true;
   const lista = h('div', { class: 'notas-lista' });
   const contador = h('div', { class: 'count' });
 
@@ -33,6 +35,7 @@ async function renderNotas(cont, ctx) {
     return art;
   }
   function pintar() {
+    guardarV('notas.f', { q, soloPend }); aviso.actualizar();
     const nq = normalizar(q.trim());
     const l = notas.filter((n) => (!soloPend || !n.hecho) && (!nq || normalizar(`${n.ultimo_cargo} ${n.comentario}`).includes(nq)));
     contador.textContent = `${l.length} notas · ${notas.filter((n) => !n.hecho).length} sin resolver`;
@@ -43,13 +46,15 @@ async function renderNotas(cont, ctx) {
     catch (ex) { toast('No se ha creado: ' + ex.message, 'error'); }
   }
   const buscar = h('input', { type: 'search', placeholder: 'Buscar en las notas…', 'aria-label': 'Buscar en las notas', oninput: () => { q = buscar.value; pintar(); } });
-  const pend = h('input', { type: 'checkbox', onchange: () => { soloPend = pend.checked; pintar(); } });
+  buscar.value = q;
+  const pend = h('input', { type: 'checkbox', onchange: () => { soloPend = pend.checked; pintar(); } }); pend.checked = soloPend;
+  const aviso = crearAviso({ obtener: () => [['Búsqueda', busqueda(q)], ['Solo sin resolver', soloPend]], limpiar: () => { q = ''; buscar.value = ''; soloPend = false; pend.checked = false; pintar(); } });
   clear(cont,
     h('div', { class: 'section-head' }, h('div', {}, h('h2', {}, 'Notas de revisión'), contador),
       h('div', { class: 'section-actions' }, h('button', { class: 'btn primary', onclick: nueva }, '+ Nueva nota'))),
     h('p', { class: 'muted small' }, 'Cuaderno de revisiones (hoja Notas): hasta qué cargo está revisado y qué falta. Se guarda al salir de cada campo.'),
     h('div', { class: 'filters filters-2' }, h('div', { class: 'search' }, buscar), h('label', { class: 'check small' }, pend, 'Solo sin resolver')),
-    lista);
+    aviso, lista);
   pintar();
 }
 registrarSeccion('notas', renderNotas);

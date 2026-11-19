@@ -2,6 +2,7 @@
 // botón para restaurar un cambio y descarga de una copia de seguridad completa.
 import { h, clear, cargando, toast, confirmar, normalizar, hoyISO } from '../ui.js';
 import * as db from '../db.js';
+import { vista, filtroFecha, rangoFecha, describirFecha, crearAviso, vincular, FECHA_VACIA } from '../vista.js';
 import { registrarSeccionConfig } from './config.js';
 import { crearZip, crearXlsx, descargarBlob } from '../zip.js';
 
@@ -23,22 +24,27 @@ async function renderHistorial(cont, ctx) {
   clear(cont, cargando());
   const perfiles = await db.getPerfiles().catch(() => []);
   const nombreUsuario = (id) => (id ? perfiles.find((p) => p.id === id)?.nombre || perfiles.find((p) => p.id === id)?.email || 'usuario' : 'sistema / importación');
-  const f = { tabla: '', desde: '', hasta: '', q: '' };
+  const f = vista('historial.f', { tabla: '', fecha: { ...FECHA_VACIA }, q: '' });
   let filas = [];
   const fTabla = h('select', { 'aria-label': 'Tabla', onchange: () => { f.tabla = fTabla.value; cargar(); } }, h('option', { value: '' }, 'Todo'), TABLAS.map(([t, n]) => h('option', { value: t }, n)));
-  const fDesde = h('input', { type: 'date', 'aria-label': 'Desde', onchange: () => { f.desde = fDesde.value; cargar(); } });
-  const fHasta = h('input', { type: 'date', 'aria-label': 'Hasta', onchange: () => { f.hasta = fHasta.value; cargar(); } });
+  const fFecha = filtroFecha(f.fecha, (d) => { f.fecha = d; cargar(); }, { etiqueta: 'Fecha del cambio' });
   const fQ = h('input', { type: 'search', placeholder: 'Buscar (empresa, importe, usuario…)', 'aria-label': 'Buscar en el historial', oninput: () => { f.q = fQ.value; pintar(); } });
   const tbody = h('tbody');
+  vincular(f, 'tabla', fTabla); vincular(f, 'q', fQ); vincular(f, 'fecha', fFecha);
+  const aviso = crearAviso({
+    obtener: () => [['Tabla', f.tabla ? TABLAS.find(([t]) => t === f.tabla)?.[1] || f.tabla : ''], ['Fecha', describirFecha(f.fecha)], ['Búsqueda', f.q.trim() ? `«${f.q.trim()}»` : '']],
+    limpiar: () => { f.tabla = ''; f.fecha = { ...FECHA_VACIA }; f.q = ''; cargar(); },
+  });
   const contador = h('div', { class: 'count' });
 
   async function cargar() {
     clear(tbody, h('tr', {}, h('td', { colspan: 6 }, cargando())));
-    try { filas = await db.getAuditoria({ tabla: f.tabla, desde: f.desde, hasta: f.hasta ? `${f.hasta}T23:59:59` : '' }); }
+    try { filas = await db.getAuditoria({ tabla: f.tabla, desde: rangoFecha(f.fecha).desde, hasta: rangoFecha(f.fecha).hasta ? `${rangoFecha(f.fecha).hasta}T23:59:59` : '' }); }
     catch (ex) { clear(tbody, h('tr', {}, h('td', { colspan: 6, class: 'empty' }, 'No se ha podido cargar el historial: ' + ex.message))); return; }
     pintar();
   }
   function pintar() {
+    aviso.actualizar();
     const q = normalizar(f.q.trim());
     const vis = filas.filter((r) => !q || normalizar(`${describir(r)} ${nombreUsuario(r.usuario)} ${JSON.stringify(r.antes || '')} ${JSON.stringify(r.despues || '')}`).includes(q));
     contador.textContent = `${vis.length} cambios${filas.length >= 500 ? ' (los 500 más recientes: filtra por fechas o tabla para ver más antiguos)' : ''}`;
@@ -93,7 +99,8 @@ async function renderHistorial(cont, ctx) {
     h('section', { class: 'card lista-card' },
       h('div', { class: 'section-head' }, h('div', {}, h('h3', {}, 'Historial de cambios'),
         h('div', { class: 'count' }, 'Cada alta, cambio o borrado queda guardado para siempre con quién lo hizo y el valor anterior. Desde aquí puedes restaurar un valor o recuperar un registro borrado.')), contador),
-      h('div', { class: 'filtros' }, fTabla, h('label', { class: 'check small' }, 'Desde', fDesde), h('label', { class: 'check small' }, 'Hasta', fHasta), fQ),
+      h('div', { class: 'filtros' }, fTabla, fFecha, fQ),
+      aviso,
       h('div', { class: 'table-wrap' }, h('table', { class: 'data tabla-historial' },
         h('thead', {}, h('tr', {}, ['Cuándo', 'Quién', 'Qué', 'Registro', 'Cambio', ''].map((t) => h('th', { scope: 'col' }, t)))), tbody))));
   await cargar();

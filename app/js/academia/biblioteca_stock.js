@@ -1,4 +1,5 @@
 // Biblioteca y Mascotas: stock (catálogo con fotos de portada), colores por tipo y enlazado automático de alumnos.
+import { vista, vincular, avisoFiltros, busqueda } from '../vista.js';
 import { h, clear, toast, confirmar, normalizar } from '../ui.js';
 import { supabase } from '../db.js';
 import * as api from './api.js';
@@ -97,7 +98,8 @@ export function itemDePrestamo(p, items) {
 
 // ---- pestaña Stock ----
 export function renderStock(cont, { items, prestamos, editor, recargar }) {
-  const f = { q: '', tipo: '' };
+  const f = vista('biblioteca.stock.f', { q: '', tipo: '' });
+  const TIPOS_S = [['', 'Libros y mascotas'], ['libro', 'Libros'], ['mascota', 'Mascotas viajeras']];
   const fuera = (it) => prestamos.filter((p) => !p.fecha_devolucion && itemDePrestamo(p, items)?.id === it.id).length;
   const lista = h('div', { class: 'bib-grid' }); const resumen = h('div', { class: 'small muted' });
   function pintar() {
@@ -114,9 +116,10 @@ export function renderStock(cont, { items, prestamos, editor, recargar }) {
     }) : h('div', { class: 'card empty' }, 'No hay artículos con este filtro.'));
   }
   clear(cont,
-    h('div', { class: 'filters filters-3' }, h('input', { type: 'search', placeholder: 'Buscar libro o mascota…', oninput: (e) => { f.q = e.target.value; pintar(); } }),
-      sel([['', 'Libros y mascotas'], ['libro', 'Libros'], ['mascota', 'Mascotas viajeras']], f.tipo, { onchange: (e) => { f.tipo = e.target.value; pintar(); } }),
+    h('div', { class: 'filters filters-3' }, vincular(f, 'q', h('input', { type: 'search', placeholder: 'Buscar libro o mascota…', oninput: (e) => { f.q = e.target.value; pintar(); } })),
+      vincular(f, 'tipo', sel(TIPOS_S, f.tipo, { onchange: (e) => { f.tipo = e.target.value; pintar(); } })),
       editor ? h('button', { class: 'btn primary', type: 'button', onclick: () => abrirItem(null, { items, editor, recargar }) }, '+ Añadir al stock') : h('span')),
+    avisoFiltros(f, { etiquetas: { q: 'Búsqueda', tipo: 'Tipo' }, formato: { q: busqueda, tipo: (v) => TIPOS_S.find(([k]) => k === v)?.[1] || v }, alLimpiar: () => pintar() }),
     resumen, lista);
   pintar();
 }

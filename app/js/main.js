@@ -1,6 +1,7 @@
 import { authHash } from './hash.js'; // debe ir el primero
 import { h, clear, cargando, toast, hoyISO } from './ui.js';
 import { cargarOrdenes } from './orden-compartido.js';
+import { fijarUsuario } from './vista.js';
 import * as db from './db.js';
 import { renderLogin, renderNuevaPassword, renderPendiente } from './views/auth.js';
 import { renderPanel } from './views/panel.js';
@@ -447,6 +448,7 @@ async function arrancar() {
     return renderPendiente(root, { email: session.user.email, onReintentar: arrancar });
   }
   state.perfil = perfil;
+  fijarUsuario(perfil.id);
   const [roles, filasPermisos] = await Promise.all([db.getRoles(), db.getPermisosRoles()]);
   state.roles = roles;
   state.permisos = crearPermisos(perfil.rol, filasPermisos);
