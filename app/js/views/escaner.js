@@ -2,7 +2,12 @@
 // completando la clasificación con la del último gasto de ese proveedor. Todo se hace en el navegador.
 import { h, clear, toast, fmtEUR2, fmtFecha, mesDeFecha, normalizar, num, tituloCategoria } from '../ui.js';
 import { subirFactura, escanerProveedores, escanerEmpresas, escanerSugerencia, escanerDuplicado } from '../db.js';
-import { analizarFactura, rutaSugerida } from '../escaner-parse.js';
+import { analizarFactura, rutaSugerida, idPedido, tipoAbono } from '../escaner-parse.js';
+
+// Renombrado al formato estándar «AAMMDD - Empresa - Nº - Concepto»: preparado pero DESACTIVADO por ahora (20-nov-2026).
+// Con false se sigue subiendo con el nombre original del archivo y el botón «Renombrar» no hace nada.
+// Se activa poniéndolo en true cuando la conexión con OneDrive pueda renombrar de verdad.
+const RENOMBRAR_ACTIVO = false;
 
 const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs';
 const PDFJS_WORKER = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs';
@@ -191,6 +196,7 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onCerrar = () => {}, texto
     const iNif = h('input', { type: 'text', value: r.nif || '', autocomplete: 'off', 'aria-label': 'NIF' });
     const iFecha = h('input', { type: 'date', value: r.fecha || '', 'aria-label': 'Fecha factura' });
     const iNum = h('input', { type: 'text', value: r.numero || '', autocomplete: 'off', 'aria-label': 'Nº factura' });
+    const iConcepto = h('input', { type: 'text', value: '', autocomplete: 'off', placeholder: 'Ej. Material oficina', 'aria-label': 'Concepto' });
     const iTotal = h('input', { type: 'text', inputmode: 'decimal', value: importeIni, placeholder: '0,00', autocomplete: 'off', 'aria-label': 'Importe total' });
     const iCat = h('select', { 'aria-label': 'Categoría' }, h('option', { value: '' }, '— Sin clasificar —'),
       state.taxonomia.map((c) => h('option', { value: c.id, selected: c.id === ultimo?.categoria_id }, tituloCategoria(c.nombre))));
@@ -203,10 +209,34 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onCerrar = () => {}, texto
     iCat.addEventListener('change', pintarSub); pintarSub();
 
     const ext = (file.name.match(/\.([a-z0-9]+)$/i) || [, 'pdf'])[1];
-    let rutaTocada = false;
-    const rutaActual = () => rutaSugerida({ fecha: iFecha.value || null, empresa: iEmp.value, numero: iNum.value, extension: ext, carpetaEntidad: entidad });
-    const inpRuta = h('input', { type: 'text', value: '', 'aria-label': 'Carpeta y nombre en OneDrive', class: 'input-ruta', oninput: () => { rutaTocada = true; } });
-    const ponerRuta = () => { if (!rutaTocada) { const q = rutaActual(); inpRuta.value = `${q.carpeta}/${q.nombre}`; } };
+    let rutaTocada = false, conceptoTocado = false;
+    const pedido = idPedido(texto);
+    // concepto propuesto: el del último gasto de ese proveedor (si no cambia la categoría) con el mes de esta factura
+    const conceptoPropuesto = () => {
+      const c = state.taxonomia.find((x) => x.id === iCat.value);
+      if (!(ultimo && c?.id === ultimo.categoria_id && ultimo.concepto)) return '';
+      const mes = mesDeFecha(iFecha.value || hoy);
+      return ultimo.concepto.replace(/\b(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\b/i, (m) => (mes ? mes.charAt(0).toUpperCase() + mes.slice(1) : m));
+    };
+    iConcepto.addEventListener('input', () => { conceptoTocado = true; });
+    const ponerConcepto = () => { if (!conceptoTocado) iConcepto.value = conceptoPropuesto(); };
+    iCat.addEventListener('change', () => { ponerConcepto(); ponerRuta(); });
+    ponerConcepto();
+    const rutaActual = () => rutaSugerida({ fecha: iFecha.value || null, empresa: iEmp.value, numero: iNum.value, pedido, concepto: iConcepto.value, abono: tipoAbono({ importe: Number.isNaN(leerImporte(iTotal.value)) ? null : leerImporte(iTotal.value), texto }), extension: ext, carpetaEntidad: entidad });
+    // Aviso (no bloquea): el nombre escrito a mano no sigue el patrón YYMMDD - Empresa - Nº - Concepto
+    const avisoRuta = h('div', { class: 'banner warn', role: 'status', hidden: true });
+    const comprobarRuta = () => {
+      const q = rutaActual();
+      const nom = inpRuta.value.split('/').pop().trim(), car = inpRuta.value.split('/').slice(0, -1).join('/').trim();
+      const dif = [];
+      if (nom !== q.nombre) dif.push(`el nombre debería ser «${q.nombre}»`);
+      if (car !== q.carpeta) dif.push(`la carpeta debería ser «${q.carpeta}»`);
+      avisoRuta.hidden = !dif.length;
+      avisoRuta.replaceChildren(h('strong', {}, 'No coincide con el formato estándar: '), dif.join(' y '), '. Puedes dejarlo así si no es una factura normal (recibo de préstamo, factura ilegible…). ',
+        h('button', { class: 'btn small', type: 'button', onclick: () => { rutaTocada = false; ponerRuta(); } }, 'Usar el sugerido'));
+    };
+    const inpRuta = h('input', { type: 'text', value: '', 'aria-label': 'Carpeta y nombre en OneDrive', class: 'input-ruta', oninput: () => { rutaTocada = true; comprobarRuta(); } });
+    const ponerRuta = () => { if (!rutaTocada) { const q = rutaActual(); inpRuta.value = `${q.carpeta}/${q.nombre}`; } comprobarRuta(); };
     ponerRuta();
     const nombreFinal = () => inpRuta.value.split('/').pop().trim() || rutaActual().nombre;
     const carpetaFinal = () => inpRuta.value.split('/').slice(0, -1).join('/').trim() || rutaActual().carpeta;
@@ -222,7 +252,7 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onCerrar = () => {}, texto
       input.addEventListener('input', pintar); pintar();
       return h('tr', {}, h('th', { scope: 'row' }, label), h('td', {}, input, extra ? h('span', { class: 'muted small' }, ` ${extra}`) : null), h('td', {}, badge));
     };
-    for (const i of [iEmp, iNif, iFecha, iNum]) i.addEventListener('input', ponerRuta);
+    for (const i of [iEmp, iNif, iFecha, iNum, iConcepto, iTotal]) i.addEventListener('input', () => { if (i === iFecha) ponerConcepto(); ponerRuta(); });
     const vista = canvas ? (() => { canvas.classList.add('escaner-preview'); return canvas; })() : null;
     const verTexto = h('details', { class: 'escaner-texto' }, h('summary', {}, `Texto leído (${origen === 'ocr' ? `OCR, confianza ${Math.round(confOcr || 0)}%` : 'PDF'})`), h('pre', {}, texto.slice(0, 6000)));
 
@@ -235,13 +265,13 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onCerrar = () => {}, texto
       const cursoFecha = state.cursos.find((c) => c.fecha_inicio <= fecha && fecha <= c.fecha_fin);
       const cat = state.taxonomia.find((c) => c.id === iCat.value);
       const sub = cat?.subcategorias.find((x) => x.id === iSub.value);
-      const mismaClasif = !!ultimo && cat?.id === ultimo.categoria_id;   // método, periodicidad y concepto solo valen si no cambia la categoría
-      const concepto = mismaClasif && ultimo?.concepto ? ultimo.concepto.replace(/\b(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\b/i, (m) => (mes ? mes.charAt(0).toUpperCase() + mes.slice(1) : m)) : '';
+      const mismaClasif = !!ultimo && cat?.id === ultimo.categoria_id;   // método y periodicidad solo valen si no cambia la categoría
+      const concepto = iConcepto.value.trim();
       btnCrear.disabled = true; btnCrear.textContent = 'Subiendo la factura…';
       let link = null;
       try {
-        const renombrado = new File([file], nombreFinal(), { type: file.type || 'application/pdf' });
-        link = await subirFactura(renombrado, carpetaFinal());
+        const aSubir = RENOMBRAR_ACTIVO ? new File([file], nombreFinal(), { type: file.type || 'application/pdf' }) : file;
+        link = await subirFactura(aSubir, RENOMBRAR_ACTIVO ? carpetaFinal() : 'general');
       } catch (ex) { toast('No se ha podido subir la factura (se crea el gasto sin adjunto): ' + ex.message, 'error'); }
       const empresa = iEmp.value.trim();
       onDatos({
@@ -271,17 +301,20 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onCerrar = () => {}, texto
             filaEd('Proveedor', iEmp, r.confianza.empresa, r.empresa || '', r.empresaNueva && !ultimo ? '(nuevo)' : null),
             filaEd('NIF', iNif, r.confianza.nif, r.nif || ''),
             filaEd('Fecha factura', iFecha, r.confianza.fecha, r.fecha || ''),
-            filaEd('Nº factura', iNum, r.confianza.numero, r.numero || ''),
+            filaEd('Nº factura', iNum, r.confianza.numero, r.numero || '', !r.numero && pedido ? `(sin nº: se usa el pedido ${pedido})` : null),
+            h('tr', {}, h('th', { scope: 'row' }, 'Concepto'), h('td', { colspan: 2 }, iConcepto)),
             filaEd('Importe total (€)', iTotal, r.confianza.total, importeIni, r.base != null && r.base !== r.total ? `(base ${fmtEUR2(r.base)})` : null),
             h('tr', {}, h('th', { scope: 'row' }, 'Clasificación'), h('td', { colspan: 2 }, h('div', { class: 'escaner-clasif' }, iCat, iSub),
               ultimo
                 ? h('span', { class: 'muted small' }, `${[ultimo.metodo_pago, ultimo.periodicidad].filter(Boolean).join(' · ')}${ultimo.metodo_pago || ultimo.periodicidad ? ' · ' : ''}propuesta como el gasto del ${fmtFecha(ultimo.fecha_factura)}`)
                 : h('span', { class: 'muted small' }, 'Proveedor sin gastos anteriores: elige la categoría.'))))),
-          h('label', { class: 'field' }, h('span', {}, 'Guardar en OneDrive como'), h('div', { class: 'ruta-onedrive' }, h('span', { class: 'muted small' }, 'Facturas & Nominas/'), inpRuta),
-            h('span', { class: 'small muted', style: 'font-weight:400' }, 'Misma estructura que tu carpeta de la gestoría (trimestre y titular). La factura se adjunta al gasto con este nombre.')),
+          avisoRuta,
+          h('label', { class: 'field' }, h('span', {}, RENOMBRAR_ACTIVO ? 'Guardar en OneDrive como' : 'Nombre propuesto en OneDrive (todavía no se aplica)'), h('div', { class: 'ruta-onedrive' }, h('span', { class: 'muted small' }, 'Facturas & Nominas/'), inpRuta),
+            h('span', { class: 'small muted', style: 'font-weight:400' }, 'Formato: AAMMDD - Empresa - Nº factura - Concepto (con «Abono» o «Nota de Credito» si lo es). Se puede cambiar a mano; si no coincide, aparece un aviso.' + (RENOMBRAR_ACTIVO ? '' : ' Por ahora el archivo se guarda con su nombre original.'))),
           h('div', { class: 'escaner-acciones' },
             h('button', { class: 'btn', type: 'button', onclick: inicio }, 'Otra factura'),
             h('button', { class: 'btn', type: 'button', onclick: descargar, title: 'Descarga el archivo con el nombre sugerido para guardarlo en la carpeta de OneDrive' }, 'Descargar renombrada'),
+            h('button', { class: 'btn', type: 'button', disabled: !RENOMBRAR_ACTIVO, title: RENOMBRAR_ACTIVO ? 'Renombra la factura con el nombre indicado' : 'Pendiente: todavía no se renombra en OneDrive' }, 'Renombrar'),
             btnCrear),
           verTexto)));
   }

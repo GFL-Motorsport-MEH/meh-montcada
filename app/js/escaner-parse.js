@@ -241,11 +241,38 @@ export function analizarFactura(texto, { conocidas = [], propios = [], nombreArc
   return res;
 }
 
-// Carpeta y nombre sugeridos, como en OneDrive: "Facturas & Nominas\2026 4T\Gastos MIMAG\Empresa_Numero.pdf"
-export function rutaSugerida({ fecha, empresa, numero, extension = 'pdf', carpetaEntidad = 'Gastos MIMAG' }) {
+// Nombre estándar: "YYMMDD - Empresa - NrFactura - Concepto.pdf" dentro de "Facturas & Nominas/2026 4T/Gastos MIMAG/".
+// Fecha = fecha de la factura. Sin número de factura se usa el ID del pedido y, si tampoco hay, "s-n".
+// Abonos / notas de crédito (importe negativo o así lo dice el documento): el concepto empieza por "Abono" o "Nota de Credito".
+const SEP_PROHIBIDOS = /[\\/:*?"<>|\u0000-\u001f]+/g;   // caracteres que OneDrive no admite
+export const limpiarParteNombre = (s, max) => {
+  const t = String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\\/]+/g, '-').replace(SEP_PROHIBIDOS, ' ').replace(/\s+-\s+/g, ' ').replace(/[^\w\-.,&()' ]+/g, '').replace(/\s+/g, ' ').trim();
+  return t.length > max ? t.slice(0, max).replace(/\s+\S*$/, '').trim() || t.slice(0, max) : t;
+};
+// ID de pedido (Amazon, tiendas online…) leído del texto de la factura
+export function idPedido(texto) {
+  const m = String(texto || '').match(/(?:n[uú]m(?:ero)?\.?\s*(?:de\s*)?pedido|order\s*(?:id|number|no\.?|#)?|pedido)\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{5,})/i);
+  return m ? m[1].toUpperCase() : '';
+}
+// "Abono" o "Nota de Credito" según el documento; '' si no es un abono
+export function tipoAbono({ importe, texto } = {}) {
+  const t = String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (/nota\s+de\s+credito/.test(t)) return 'Nota de Credito';
+  if (/\babono\b|factura\s+rectificativa/.test(t) || (typeof importe === 'number' && importe < 0)) return 'Abono';
+  return '';
+}
+export function rutaSugerida({ fecha, empresa, numero, pedido = '', concepto = '', abono = '', extension = 'pdf', carpetaEntidad = 'Gastos MIMAG' }) {
   const f = fecha || new Date().toISOString().slice(0, 10);
   const trimestre = `${f.slice(0, 4)} ${Math.floor((Number(f.slice(5, 7)) - 1) / 3) + 1}T`;
-  const limpio = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '');
-  const nombre = [limpio(empresa) || 'Factura', limpio(numero) || f].join('_') + '.' + extension.toLowerCase();
+  const yymmdd = f.slice(2, 4) + f.slice(5, 7) + f.slice(8, 10);
+  const conc = limpiarParteNombre(concepto, 40);
+  const abonoTxt = abono && !new RegExp('^' + abono, 'i').test(conc) ? abono : '';
+  const partes = [
+    yymmdd,
+    limpiarParteNombre(empresa, 30) || 'Factura',
+    limpiarParteNombre(numero, 25) || limpiarParteNombre(pedido, 25) || 's-n',
+    [abonoTxt, conc].filter(Boolean).join(' '),
+  ].filter(Boolean);
+  const nombre = partes.join(' - ') + '.' + extension.toLowerCase();
   return { trimestre, carpeta: `${trimestre}/${carpetaEntidad}`, nombre };
 }
