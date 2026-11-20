@@ -41,3 +41,18 @@ export async function guardarCaducidad(fecha) {
   if (error) throw new Error(error.message);
 }
 export const diasHasta = (iso) => (iso ? Math.ceil((new Date(iso + 'T00:00:00') - new Date()) / 86400000) : null);
+
+// Mapa de solo lectura de todo el OneDrive (nombres, tamaños y fechas) para diseñar la estructura de carpetas. Solo administradores.
+export async function mapear(reiniciar, progreso) {
+  let primera = reiniciar;
+  for (let i = 0; i < 60; i++) {
+    const { data, error } = await supabase.functions.invoke('onedrive-mapa', { body: { reiniciar: primera } });
+    primera = false;
+    let det = data;
+    if (error) { try { det = await error.context.json(); } catch { det = { error: error.message }; } }
+    if (!det || det.error) throw new Error(det?.error || 'No se ha podido recorrer OneDrive.');
+    if (progreso) progreso(det.total || 0, !!det.listo);
+    if (det.listo) return det.total;
+  }
+  throw new Error('El recorrido es muy largo; vuelve a pulsar para continuar donde se quedó.');
+}

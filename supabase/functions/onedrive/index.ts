@@ -136,6 +136,9 @@ Deno.serve(async (req) => {
       if (!await puede(body.area)) return json({ error: 'No tienes permiso para quitar archivos aquí.' }, 403);
       const id = String(body.item || '').replace(/^od:/, '');
       if (!/^[\w!\-]+$/.test(id)) return json({ error: 'Identificador no válido.' }, 400);
+      // solo se puede quitar lo que está dentro de la carpeta de la app: nunca el resto del OneDrive
+      const it = await (await graph(`/me/drive/items/${encodeURIComponent(id)}?select=id,parentReference`)).json();
+      if (!String(it.parentReference?.path || '').includes(`/drive/root:/${RAIZ}`)) return json({ error: 'Ese archivo no está en la carpeta de la web.' }, 403);
       await graph(`/me/drive/items/${encodeURIComponent(id)}`, { method: 'DELETE' });
       return json({ ok: true });
     }
