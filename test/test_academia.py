@@ -426,6 +426,8 @@ try:
         check(len(db(page, "ac_cuotas_tarifa")) == 1, "Configuración: se crea una cuota")
         page.get_by_role("button", name="+ Nuevo descuento").click(); page.wait_for_timeout(600)
         check(len(db(page, "ac_descuentos")) == 1, "Configuración: se crea un descuento")
+        page.locator(".seg-btn", has_text="OneDrive").click(); page.wait_for_timeout(600)
+        check(page.get_by_role("button", name="Conectar OneDrive").count() == 1 and page.get_by_text("Sin conectar").count() == 1, "Configuración > OneDrive: aparece el botón de conectar (administrador)")
 
         print("9d. pestañas: arrastrar para cambiar el orden, se recuerda y se puede restablecer")
         ir(page, "ac_alumnos")
