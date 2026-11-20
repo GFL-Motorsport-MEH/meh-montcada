@@ -45,6 +45,15 @@ export function fmtFechaCorta(iso) {
   const [y, m, d] = iso.slice(0, 10).split('-');
   return `${d}/${m}/${y.slice(2)}`;
 }
+// fecha y hora de un instante (timestamptz), en hora de Madrid: 20/11/2026 13:01
+const fHora = new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+export function fmtFechaHora(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  return Number.isNaN(d.getTime()) ? '—' : fHora.format(d).replace(',', '');
+}
+// día (yyyy-mm-dd) de un instante, en hora de Madrid
+export const diaDeInstante = (ts) => { if (!ts) return ''; const d = new Date(ts); return Number.isNaN(d.getTime()) ? '' : new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(d); };
 export const num = (v) => (v === null || v === undefined || v === '' ? 0 : Number(v));
 
 // Curso escolar: septiembre -> agosto

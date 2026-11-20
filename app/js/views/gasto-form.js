@@ -1,5 +1,5 @@
 // Formulario lateral para crear / editar un gasto.
-import { h, toast, confirmar, MESES, capitalizar, mesDeFecha, hoyISO, tituloCategoria, fmtEUR2, fmtFecha } from '../ui.js';
+import { h, toast, confirmar, MESES, capitalizar, mesDeFecha, hoyISO, tituloCategoria, fmtEUR2, fmtFecha, fmtFechaHora } from '../ui.js';
 import { crearGasto, crearGastos, actualizarGasto, borrarGasto } from '../db.js';
 import { dividirEnMeses, dividirEnCentros } from '../gastos-ops.js';
 import { botonSubirFactura, abrirFactura, esArchivoSubido, bloqueFactura } from '../factura-archivo.js';
@@ -129,6 +129,7 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado, onDividido, 
         campo('Periodicidad', fPeriodicidad), campo('Método de pago', fMetodo)),
       h('div', { class: 'form-section' },
         h('h3', {}, 'Control'),
+        g.created_at ? h('p', { class: 'registro-ficha' }, `Registrado el ${fmtFechaHora(g.created_at)}`, g.updated_at && Math.abs(new Date(g.updated_at) - new Date(g.created_at)) > 60000 ? ` · última modificación ${fmtFechaHora(g.updated_at)}` : '') : null,
         h('div', { class: 'checks full' },
           h('label', { class: 'check' }, cPago, 'Pagado'),
           h('label', { class: 'check' }, cBanca, 'Comprobado en el banco'),

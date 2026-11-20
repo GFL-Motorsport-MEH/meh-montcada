@@ -815,3 +815,9 @@ table.tabla-plantillas tbody tr.suelta-despues > td { box-shadow: inset 0 -3px 0
 .aj-nombre { min-width: 190px; font-size: 14px; }
 .aj-aviso { font-size: 12px; color: var(--warning, #b45309); font-weight: 600; }
 .aj-persona .ac-av { display: inline-grid; place-items: center; min-width: 28px; height: 24px; padding: 0 5px; border-radius: 12px; color: #fff; font-size: 11px; font-weight: 600; }
+
+/* Gastos: columna «Registrado» (fecha y hora de alta), oculta salvo que se active con «Ver registro» */
+table.tabla-gastos:not(.ver-reg) .c-reg { display: none; }
+table.tabla-gastos col.c-reg { width: 104px; }
+table.tabla-gastos td.reg-fecha { font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.registro-ficha { grid-column: 1 / -1; font-size: 12px; color: var(--text-secondary); margin: 0; }

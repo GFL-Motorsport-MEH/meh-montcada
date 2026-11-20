@@ -1,6 +1,6 @@
 // Pestaña Gastos: tabla tipo hoja de cálculo, una línea por gasto y editable en la propia fila
 // (desplegables para las listas, casillas para Pago / Banco / Gestoría). La ficha completa sigue en el botón ⋯.
-import { h, clear, fmtEUR2, fmtFecha, fmtFechaCorta, num, MESES, MESES_CORTO, capitalizar, tituloCategoria, normalizar, cargando, descargarCSV, mesDeFecha, hoyISO, toast, confirmar } from '../ui.js';
+import { h, clear, fmtEUR2, fmtFecha, fmtFechaCorta, num, MESES, MESES_CORTO, capitalizar, tituloCategoria, normalizar, cargando, descargarCSV, mesDeFecha, hoyISO, toast, confirmar, fmtFechaHora, diaDeInstante } from '../ui.js';
 import { ordenGuardado, guardarOrden } from '../orden-compartido.js';
 import { abrirGastoForm } from './gasto-form.js';
 import { vista, leerV, guardarV, filtroFecha, pasaFecha, fechaActiva, describirFecha, crearAviso, FECHA_VACIA } from '../vista.js';
@@ -75,6 +75,13 @@ export async function renderGastos(view, ctx) {
   // ---------- selección y acciones en bloque ----------
   const seleccion = new Set();
   const barra = h('div', { class: 'barra-seleccion', hidden: true });
+  // columna «Registrado» (fecha y hora de alta del gasto): oculta; un clic la muestra
+  let verReg = !!leerV('gastos.verReg', false);
+  const btnReg = h('button', { type: 'button', class: 'btn', 'aria-pressed': String(verReg), title: 'Muestra u oculta la fecha y hora en que se registró cada gasto', onclick: () => {
+    verReg = !verReg; guardarV('gastos.verReg', verReg);
+    view.querySelector('table.tabla-gastos')?.classList.toggle('ver-reg', verReg);
+    btnReg.setAttribute('aria-pressed', String(verReg)); btnReg.textContent = verReg ? 'Ocultar registro' : 'Ver registro';
+  } }, verReg ? 'Ocultar registro' : 'Ver registro');
   // altura de la barra fija (0 si está oculta), para que las cabeceras de la tabla se peguen debajo de ella
   if (typeof ResizeObserver !== 'undefined') {
     const root = document.documentElement;
@@ -168,6 +175,7 @@ export async function renderGastos(view, ctx) {
     { cls: 'c-tick', label: 'Pago', clsTh: 'center', title: 'Pagado', orden: (g) => (esVerdad(g.pago) ? 1 : 0), filtro: lista(siNo.slice(1), (g) => (esVerdad(g.pago) ? 'si' : 'no'), 'Filtro pagado') },
     { cls: 'c-tick', label: 'Banco', clsTh: 'center', title: 'Comprobado en el extracto del banco', orden: (g) => (g.check_banca ? 1 : 0), filtro: lista(siNo.slice(1), (g) => (g.check_banca ? 'si' : 'no'), 'Filtro banco') },
     { cls: 'c-tick', label: 'Gest.', clsTh: 'center', title: 'Factura enviada a la gestoría (FISCONTAL)', orden: (g) => (esVerdad(g.fiscontal) ? 1 : 0), filtro: lista(siNo.slice(1), (g) => (esVerdad(g.fiscontal) ? 'si' : 'no'), 'Filtro gestoría') },
+    { cls: 'c-reg', label: 'Registrado', title: 'Fecha y hora en que se registró el gasto', orden: (g) => g.created_at || '', filtro: { tipo: 'fecha', valor: (g) => diaDeInstante(g.created_at) } },
     { cls: 'c-ico', icono: ICO.doc, title: 'Factura adjunta', orden: (g) => ({ con: 2, sf: 1, sin: 0 })[estadoFactura(g)], filtro: lista([['con', 'Adjunta'], ['sin', 'Sin adjuntar'], ['sf', 'Sin factura']], estadoFactura, 'Filtro factura') },
     { cls: 'c-ico', icono: ICO.coment, title: 'Comentarios', orden: (g) => ((g.comentarios || '').trim() ? 1 : 0), filtro: lista([['si', 'Con comentario'], ['no', 'Sin comentario']], (g) => ((g.comentarios || '').trim() ? 'si' : 'no'), 'Filtro comentarios') },
     { cls: 'c-ico', limpiar: true },
@@ -458,6 +466,7 @@ export async function renderGastos(view, ctx) {
       celdaCheck(g, 'pago', 'Pagado', { valor: esVerdad, cambios: (on) => ({ pago: on ? 'True' : 'False' }) }),
       celdaCheck(g, 'check_banca', 'Comprobado en banco'),
       celdaCheck(g, 'fiscontal', 'Enviada a gestoría', { valor: esVerdad, cambios: (on) => ({ fiscontal: on ? 'True' : 'False', fiscontal_fecha: on ? hoyISO() : null }) }),
+      h('td', { class: 'reg-fecha', title: g.created_at ? `Registrado el ${fmtFechaHora(g.created_at)}` : null }, fmtFechaHora(g.created_at)),
       h('td', { class: 'center' }, factura),
       h('td', { class: 'center' }, btnCom),
       h('td', { class: 'center' }, h('button', { type: 'button', class: 'ib', title: 'Abrir la ficha completa (NIF, IBAN, dividir, borrar…)', 'aria-label': etq('Abrir ficha', g), onclick: () => editar(g) }, svg(ICO.mas))));
@@ -568,6 +577,7 @@ export async function renderGastos(view, ctx) {
     h('div', { class: 'section-head' },
       h('div', {}, h('h2', {}, `Gastos · ${curso.nombre}`), titulo, btnUltimo),
       h('div', { class: 'section-actions' },
+        btnReg,
         h('button', { class: 'btn', onclick: exportar }, 'Exportar CSV'),
         h('button', { class: 'btn', onclick: () => generarGastosDelMes(ctx, { curso, gastos, onCreados: (creados) => { gastos.unshift(...creados); ctx.setGastos(curso.id, gastos); pintar(); } }) }, 'Generar gastos del mes'),
         h('button', { class: 'btn', onclick: () => abrirEscaner(ctx, { onDatos: (inicial, info) => nuevoGasto(inicial, info) }) }, 'Escanear factura'),
@@ -575,7 +585,7 @@ export async function renderGastos(view, ctx) {
     h('div', { class: 'filters filters-gastos' }, h('div', { class: 'search' }, fQ), fEstado),
     aviso,
     barra, empresasDL,
-    h('div', { class: 'table-wrap' }, h('table', { class: 'data tabla-gastos' + (conCentro ? ' con-centro' : '') },
+    h('div', { class: 'table-wrap' }, h('table', { class: 'data tabla-gastos' + (conCentro ? ' con-centro' : '') + (verReg ? ' ver-reg' : '') },
       h('colgroup', {}, COLS.map(([c]) => h('col', { class: c }))),
       h('thead', {}, h('tr', {}, ths), h('tr', { class: 'fila-filtros' }, filaFiltros)), tbody)),
     pie);
