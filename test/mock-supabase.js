@@ -3,6 +3,7 @@
 // (profiles) y todos tienen la contraseña "secreto123".
 const fx = await (await fetch('/__fixtures.json')).json();
 const db = { ...fx };
+db.movimiento_gastos ||= [];   // enlaces movimiento <-> gasto (conciliación)
 const USERS = Object.fromEntries(fx.profiles.map((p) => [p.email, p.id]));
 const PAGE_MAX = 1000;
 let session = JSON.parse(sessionStorage.getItem('mock.session') || 'null');

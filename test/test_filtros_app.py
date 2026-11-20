@@ -29,7 +29,7 @@ def gasto(i, fecha, emp, pago):
 gastos = [gasto(1, "2026-09-05", "Luz SA", "True"), gasto(2, "2026-10-20", "Agua SL", "False"), gasto(3, "2026-11-02", "Luz SA", "True"), gasto(4, "2026-12-15", "Gas SL", "False")]
 fx = {"cursos": cursos, "categorias": cat, "subcategorias": sub, "gastos": gastos, "ingresos": [], "ingresos_metodo": [], "alumnos_mes": [], "facturacion": [], "empresas": [],
       "listas": [{"id": "l1", "lista": "tipo", "valor": "Factura", "orden": 1}, {"id": "l2", "lista": "metodo_pago", "valor": "Tarjeta", "orden": 1}, {"id": "l3", "lista": "periodicidad", "valor": "Mensual", "orden": 1}],
-      "centros": [{"id": "cen-1", "nombre": "MONTCADA", "principal": True, "activo": True, "orden": 0}], "plantillas_gasto": [], "cuentas_bancarias": [], "movimientos_banco": [], "notas": [], "tarifas": [], "parametros": [],
+      "centros": [{"id": "cen-1", "nombre": "MONTCADA", "principal": True, "activo": True, "orden": 0}], "plantillas_gasto": [], "cuentas_bancarias": [], "movimientos_banco": [], "movimiento_gastos": [], "notas": [], "tarifas": [], "parametros": [],
       "profiles": [{"id": "00000000-0000-0000-0000-00000000aaaa", "nombre": "Admin", "email": "admin@example.com", "rol": "admin", "activo": True, "created_at": "2026-11-05T10:00:00Z"}]}
 
 try:

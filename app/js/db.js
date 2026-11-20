@@ -352,6 +352,25 @@ export async function actualizarMovimientos(ids, cambios) {
   for (let i = 0; i < ids.length; i += 100) out.push(...check(await supabase.from('movimientos_banco').update(cambios).in('id', ids.slice(i, i + 100)).select(MOV_COLS)));
   return out;
 }
+// Enlaces movimiento <-> gasto (un pago puede cubrir varias facturas y una factura puede pagarse en varios pagos)
+const MG_COLS = 'id,movimiento_id,gasto_id,importe';
+export async function getMovGastos() {
+  return selectAll('movimiento_gastos', MG_COLS, (q) => q.order('id', { ascending: true }));
+}
+// Sustituye los enlaces de un movimiento (o de un gasto) por el conjunto indicado. filas: [{ movimiento_id, gasto_id, importe }]
+export async function reemplazarEnlaces({ movimiento_id = null, gasto_id = null }, filas) {
+  const col = movimiento_id ? 'movimiento_id' : 'gasto_id', val = movimiento_id || gasto_id;
+  check(await supabase.from('movimiento_gastos').delete().eq(col, val).select('id'));
+  return filas.length ? check(await supabase.from('movimiento_gastos').insert(filas).select(MG_COLS)) : [];
+}
+export async function insertarEnlaces(filas) {
+  const out = [];
+  for (let i = 0; i < filas.length; i += 200) out.push(...check(await supabase.from('movimiento_gastos').upsert(filas.slice(i, i + 200), { onConflict: 'movimiento_id,gasto_id' }).select(MG_COLS)));
+  return out;
+}
+export async function quitarEnlacesMov(ids) {
+  for (let i = 0; i < ids.length; i += 100) check(await supabase.from('movimiento_gastos').delete().in('movimiento_id', ids.slice(i, i + 100)).select('id'));
+}
 export async function marcarGastosBanca(ids, valor = true) {
   const prev = [];
   for (let i = 0; i < ids.length; i += 100) prev.push(...check(await supabase.from('gastos').select('id,check_banca').in('id', ids.slice(i, i + 100))));

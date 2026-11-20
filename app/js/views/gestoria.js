@@ -6,7 +6,7 @@ import * as db from '../db.js';
 import { registrarSeccion, faltaFactura } from './control.js';
 import { crearZip, crearXlsx, descargarBlob } from '../zip.js';
 import { parsearN43, cuentaN43, esN43 } from '../n43.js';
-import { ponerClaves } from '../banco.js';
+import { ponerClaves, resumenConciliacion, asignadoGasto, restanteGasto, esAbono } from '../banco.js';
 
 const NOMBRES_MES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 export const rangoPeriodo = (p) => { const [y, m] = p.split('-').map(Number); const fin = new Date(Date.UTC(y, m, 0)).getUTCDate(); return [`${p}-01`, `${p}-${String(fin).padStart(2, '0')}`]; };
@@ -29,7 +29,7 @@ export function cubre(intervalos, desde, hasta) {
 }
 
 // Datos de un periodo para la comprobación y el paquete
-export function datosPeriodo({ periodo, gastos, facturacion, movimientos, extractos, cuentas, incluirAnteriores = true }) {
+export function datosPeriodo({ periodo, gastos, facturacion, movimientos, extractos, cuentas, incluirAnteriores = true, enlaces = [] }) {
   const [desde, hasta] = rangoPeriodo(periodo);
   const enMes = (f) => f && f >= desde && f <= hasta;
   const gMes = gastos.filter((g) => enMes(fechaGasto(g)) && num(g.cantidad) !== 0);
@@ -49,6 +49,14 @@ export function datosPeriodo({ periodo, gastos, facturacion, movimientos, extrac
   const enStorage = lista.filter((g) => String(g.link_factura || '').startsWith('storage:'));
   const porRevisar = lista.filter((g) => g.revisado === false);
   const movPend = movs.filter((m) => m.estado === 'pendiente');
+  // Conciliación: enlaces de los movimientos del mes y de las facturas del envío (un pago puede cubrir varias facturas y viceversa)
+  const idsLista = new Set(lista.map((g) => g.id)), idsMovs = new Set(movs.map((m) => m.id));
+  const enlacesPeriodo = enlaces.filter((e) => idsLista.has(e.gasto_id) || idsMovs.has(e.movimiento_id));
+  const gIds = new Set(enlacesPeriodo.map((x) => x.gasto_id)), mIds = new Set(enlacesPeriodo.map((x) => x.movimiento_id));
+  const conc = resumenConciliacion({ gastos, movimientos, enlaces: enlaces.filter((e) => gIds.has(e.gasto_id) || mIds.has(e.movimiento_id)) });
+  const movsPorId = new Map(movimientos.map((m) => [m.id, m]));
+  const abonos = lista.filter(esAbono), abonosSinCobro = abonos.filter((g) => restanteGasto(g, enlaces) > 0.009);
+  const parciales = lista.filter((g) => !esAbono(g) && asignadoGasto(g, enlaces) > 0.009 && restanteGasto(g, enlaces) > 0.009);
   const checks = [
     ...(activas.length ? [] : [{ ok: false, critico: true, texto: 'No hay cuentas bancarias dadas de alta: créalas en Control > Conciliación bancaria (con su IBAN) para poder subir los extractos' }]),
     ...porCuenta.map((x) => ({ ok: x.pdf, critico: true, texto: `Extracto PDF de ${x.cuenta.nombre} que cubra todo el mes` })),
@@ -58,9 +66,24 @@ export function datosPeriodo({ periodo, gastos, facturacion, movimientos, extrac
     { ok: ingresos.length > 0, critico: true, texto: ingresos.length ? `Facturas de ingresos del mes (${ingresos.length})` : 'No hay facturas de ingresos del mes (¿falta importar la facturación?)' },
     { ok: porRevisar.length === 0, critico: false, texto: porRevisar.length ? `${porRevisar.length} gastos por revisar (los subió otra persona)` : 'Ningún gasto por revisar' },
     { ok: soloEnlace.length === 0, critico: false, texto: soloEnlace.length ? `${soloEnlace.length} facturas solo como enlace (Google Drive / OneDrive): van en el listado con su enlace, no dentro del ZIP` : 'Todas las facturas van dentro del ZIP' },
+    { ok: abonosSinCobro.length === 0, critico: false, texto: abonosSinCobro.length ? `${abonosSinCobro.length} abonos / notas de crédito sin devolución enlazada en el banco (se indican en la hoja «Abonos»)` : (abonos.length ? `Abonos del envío (${abonos.length}) con su devolución enlazada` : 'Sin abonos en el envío') },
+    { ok: parciales.length === 0, critico: false, texto: parciales.length ? `${parciales.length} facturas con el pago solo en parte conciliado (hoja «Conciliación»)` : 'Sin facturas con pago parcial' },
     { ok: movPend.length === 0, critico: false, texto: movPend.length ? `${movPend.length} movimientos del banco sin conciliar en el mes` : (movs.length ? 'Banco del mes conciliado' : 'No hay movimientos del banco importados en el mes') },
   ];
-  return { periodo, desde, hasta, gMes, gAnt, lista, ingresos, movs, porCuenta, sinFra, soloEnlace, enStorage, porRevisar, movPend, checks };
+  return { periodo, desde, hasta, gMes, gAnt, lista, ingresos, movs, porCuenta, sinFra, soloEnlace, enStorage, porRevisar, movPend, checks, enlaces, movsPorId, enlacesPeriodo, conc, abonos, abonosSinCobro, parciales };
+}
+
+// Texto de cómo está cubierta una factura o abono en el banco: «Pagada en 2 pagos: 12/10 300,00 + 15/10 200,00», «Parcial…», «Sin conciliar»
+const f2 = (n) => num(n).toFixed(2).replace('.', ',');
+const ddmm = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '');
+export function estadoBanco(g, d) {
+  const mios = d.enlaces.filter((e) => e.gasto_id === g.id);
+  if (!mios.length) return g.check_banca ? 'Comprobado en banco (sin detalle de movimientos)' : 'Sin conciliar';
+  const movs = mios.map((e) => ({ e, m: d.movsPorId.get(e.movimiento_id) })).filter((x) => x.m);
+  const det = movs.map((x) => `${ddmm(x.m.fecha)} ${f2(x.e.importe)}${d.enlaces.filter((z) => z.movimiento_id === x.e.movimiento_id).length > 1 ? ` (pago de ${d.enlaces.filter((z) => z.movimiento_id === x.e.movimiento_id).length} facturas, total ${f2(Math.abs(num(x.m.importe)))})` : ''}`).join(' + ');
+  const pend = restanteGasto(g, d.enlaces);
+  const etiqueta = esAbono(g) ? 'Devolución recibida' : movs.length > 1 ? `Pagada en ${movs.length} pagos` : 'Pagada';
+  return pend > 0.009 ? `PARCIAL (falta ${f2(pend)}): ${det}` : `${etiqueta}: ${det}`;
 }
 
 // Hojas del paquete
@@ -68,10 +91,10 @@ export function hojasPaquete(d, ctx) {
   const cat = (g) => ctx.state.taxonomia.find((c) => c.id === g.categoria_id);
   const sub = (g) => cat(g)?.subcategorias.find((s) => s.id === g.subcategoria_id);
   const centro = (id) => ctx.tituloCentro?.(ctx.state.centros.find((c) => c.id === id)?.nombre || '') || '';
-  const gastos = [['Fecha factura', 'Fecha pago', 'Empresa', 'NIF', 'Nº factura', 'Concepto', 'Importe', 'Categoría', 'Subcategoría', 'Método de pago', 'Pagado', 'Centro', 'Factura', 'Mes anterior sin enviar', 'Comentarios'],
+  const gastos = [['Fecha factura', 'Fecha pago', 'Empresa', 'NIF', 'Nº factura', 'Concepto', 'Importe', 'Categoría', 'Subcategoría', 'Método de pago', 'Pagado', 'Centro', 'Factura', 'Mes anterior sin enviar', 'Comentarios', 'Tipo', 'Banco'],
     ...d.lista.map((g) => [g.fecha_factura || '', g.fecha_pago || '', g.empresa || '', g.nif || '', g.factura_nr || '', g.concepto || '', num(g.cantidad),
       cat(g)?.nombre || g.categoria_texto || '', sub(g)?.nombre || g.subcategoria_texto || '', g.metodo_pago || '', g.pago || '', centro(g.centro_id),
-      g.sin_factura ? 'Sin factura' : String(g.link_factura || '').startsWith('storage:') ? 'En el ZIP' : (g.link_factura || 'FALTA'), d.gAnt.includes(g) ? 'Sí' : '', g.comentarios || ''])];
+      g.sin_factura ? 'Sin factura' : String(g.link_factura || '').startsWith('storage:') ? 'En el ZIP' : (g.link_factura || 'FALTA'), d.gAnt.includes(g) ? 'Sí' : '', g.comentarios || '', esAbono(g) ? 'ABONO / NOTA DE CRÉDITO (importe negativo)' : 'Factura', estadoBanco(g, d)])];
   gastos.push([], ['', '', '', '', '', 'TOTAL', d.lista.reduce((s, g) => s + num(g.cantidad), 0)]);
   const ingresos = [['Nº factura', 'Nº recibo', 'Fecha operación', 'Fecha pago', 'Alumno', 'Centro', 'Descripción', 'Método de pago', 'Base', 'IVA', 'Total'],
     ...d.ingresos.map((f) => [f.num_factura || '', f.num_recibo || '', f.fecha_operacion || '', f.fecha_pago || '', f.alumno || '', f.centro || '', f.descripcion || '', f.metodo_pago || '', num(f.importe), num(f.iva), num(f.total)])];
@@ -98,7 +121,17 @@ export function hojasPaquete(d, ctx) {
     ['Cuenta', 'Saldo inicial', 'Saldo final', 'Extractos (desde - hasta)'],
     ...d.porCuenta.map((x) => [x.cuenta.nombre, x.extractos[0]?.saldo_inicial ?? '', x.extractos[0]?.saldo_final ?? '', x.extractos.map((e) => `${e.fecha_desde} a ${e.fecha_hasta}${e.archivo_pdf ? ' PDF' : ''}${e.archivo_n43 ? ' N43' : ''}`).join(' · ') || 'FALTA'])];
   const banco = [['Fecha', 'Cuenta', 'Concepto', 'Importe', 'Estado'], ...d.movs.map((m) => [m.fecha, d.porCuenta.find((x) => x.cuenta.id === m.cuenta_id)?.cuenta.nombre || '', m.concepto || '', num(m.importe), m.estado || ''])];
-  return { gastos, ingresos, balance, banco };
+  const empresaG = (g) => `${g.empresa || ''}${g.factura_nr ? ` ${g.factura_nr}` : ''}`;
+  const cab = ['Situación', 'Fecha movimiento', 'Cuenta', 'Concepto del banco', 'Importe del movimiento', 'Empresa / nº factura', 'Concepto del gasto', 'Importe de la factura', 'Importe cubierto por este movimiento', 'Pendiente de la factura', 'Pendiente del movimiento'];
+  const fila = (x) => [x.situacion, x.m.fecha, d.porCuenta.find((c) => c.cuenta.id === x.m.cuenta_id)?.cuenta.nombre || '', x.m.concepto || '', num(x.m.importe), empresaG(x.g), x.g.concepto || '', num(x.g.cantidad), x.importe, x.pendienteGasto, x.pendienteMov];
+  const orden = (a, b) => a[1].localeCompare(b[1]);
+  const conciliacion = [cab, ...d.conc.filas.map(fila).sort(orden)];
+  if (!d.conc.filas.length) conciliacion.push(['Sin movimientos enlazados en este periodo']);
+  const abonos = [['Fecha', 'Empresa / nº factura', 'Concepto', 'Importe (negativo)', 'Devolución cobrada', 'Pendiente de cobrar', 'Movimientos del banco'],
+    ...d.abonos.map((g) => [fechaGasto(g), empresaG(g), g.concepto || '', num(g.cantidad), asignadoGasto(g, d.enlaces), restanteGasto(g, d.enlaces), estadoBanco(g, d)])];
+  if (!d.abonos.length) abonos.push(['Sin abonos ni notas de crédito en este envío']);
+  const variosPagos = [cab, ...d.conc.variosPagos.map(fila).sort(orden)], variosFacturas = [cab, ...d.conc.variosFacturas.map(fila).sort(orden)];
+  return { gastos, ingresos, balance, banco, conciliacion, abonos, variosPagos, variosFacturas };
 }
 
 async function renderGestoria(cont, ctx) {
@@ -107,6 +140,7 @@ async function renderGestoria(cont, ctx) {
   const [cuentas, extractos, envios, notas, facturacion] = await Promise.all([db.getCuentas(), db.getExtractos(), db.getEnvios(), db.getGestoriaNotas(), ctx.state.facturacion ? Promise.resolve(ctx.state.facturacion) : db.getFacturacion()]);
   ctx.state.facturacion = facturacion;
   if (!ctx.state.movimientos) ctx.state.movimientos = await db.getMovimientos();
+  if (!ctx.state.movGastos) ctx.state.movGastos = await db.getMovGastos();
   const gastosPorCurso = new Map();
   for (const c of ctx.state.cursosVisibles) gastosPorCurso.set(c.id, await ctx.gastos(c.id));
   const todosGastos = () => [...gastosPorCurso.values()].flat();
@@ -118,7 +152,7 @@ async function renderGestoria(cont, ctx) {
   const cuerpo = h('div', { class: 'gestoria' });
   const nombreCuenta = (id) => cuentas.find((c) => c.id === id)?.nombre || '—';
 
-  const datos = () => datosPeriodo({ periodo, gastos: todosGastos(), facturacion, movimientos: ctx.state.movimientos, extractos, cuentas, incluirAnteriores });
+  const datos = () => datosPeriodo({ periodo, gastos: todosGastos(), facturacion, movimientos: ctx.state.movimientos, extractos, cuentas, incluirAnteriores, enlaces: ctx.state.movGastos || [] });
 
   function pintar() {
     const d = datos();
@@ -269,6 +303,8 @@ async function renderGestoria(cont, ctx) {
     const hojas = hojasPaquete(d, ctx);
     archivos.push({ nombre: `${base}/Gastos ${periodo}.xlsx`, datos: await crearXlsx([{ nombre: 'Gastos', filas: hojas.gastos }]).arrayBuffer() });
     archivos.push({ nombre: `${base}/Ingresos ${periodo}.xlsx`, datos: await crearXlsx([{ nombre: 'Facturas emitidas', filas: hojas.ingresos }]).arrayBuffer() });
+    archivos.push({ nombre: `${base}/Conciliacion bancaria ${periodo}.xlsx`, datos: await crearXlsx([{ nombre: 'Conciliación', filas: hojas.conciliacion }, { nombre: 'Abonos', filas: hojas.abonos },
+      { nombre: 'Factura en varios pagos', filas: hojas.variosPagos }, { nombre: 'Pago de varias facturas', filas: hojas.variosFacturas }]).arrayBuffer() });
     archivos.push({ nombre: `${base}/Balance ${periodo}.xlsx`, datos: await crearXlsx([{ nombre: 'Balance', filas: hojas.balance }, { nombre: 'Movimientos banco', filas: hojas.banco }]).arrayBuffer() });
     const errores = [];
     for (const g of d.enStorage) {
@@ -290,6 +326,12 @@ async function renderGestoria(cont, ctx) {
     if (env?.notas) lineas.push('NOTAS DEL ENVÍO', env.notas, '');
     const nm = notas.filter((n) => n.periodo === periodo);
     if (nm.length) lineas.push('NOTAS DEL MES', ...nm.map((n) => `- ${n.texto}${n.hecho ? ' (hecho)' : ''}`), '');
+    lineas.push('CONCILIACIÓN BANCARIA Y ABONOS',
+      '- Importe NEGATIVO en "Gastos" = abono / nota de crédito del proveedor (p. ej. por una devolución). Se resta del gasto; su devolución llega al banco como un ingreso.',
+      '- Una factura puede pagarse con 2 o más movimientos del banco, y un único movimiento puede pagar 2 o más facturas. Cada pareja movimiento-factura con el importe que cubre está en "Conciliacion bancaria ' + periodo + '.xlsx" (hoja "Conciliación").',
+      `- Facturas pagadas en varios pagos: ${new Set(d.conc.variosPagos.map((f) => f.g.id)).size} · Pagos que cubren varias facturas: ${new Set(d.conc.variosFacturas.map((f) => f.m.id)).size} (hojas "Factura en varios pagos" y "Pago de varias facturas").`,
+      `- Abonos / notas de crédito del envío: ${d.abonos.length}${d.abonosSinCobro.length ? ` (${d.abonosSinCobro.length} todavía sin devolución cobrada en el banco)` : ''} (hoja "Abonos"). La columna "Banco" de "Gastos" indica cómo está cubierto cada gasto.`,
+      ...d.parciales.map((g) => `- PARCIAL: ${fechaGasto(g)} ${g.empresa} ${g.factura_nr || ''} ${fmtEUR2(g.cantidad)}: ${estadoBanco(g, d)}`), '');
     if (faltan.length) lineas.push('PENDIENTE / AVISOS', ...faltan.map((c) => `- ${c.texto}`), '');
     if (d.soloEnlace.length) lineas.push('FACTURAS COMO ENLACE (no van en el ZIP)', ...d.soloEnlace.map((g) => `- ${fechaGasto(g)} ${g.empresa} ${g.factura_nr || ''} ${fmtEUR2(g.cantidad)}: ${g.link_factura}`), '');
     if (errores.length) lineas.push('NO SE HAN PODIDO AÑADIR', ...errores.map((e) => `- ${e}`), '');
