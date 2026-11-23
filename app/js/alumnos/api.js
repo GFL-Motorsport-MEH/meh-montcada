@@ -5,6 +5,7 @@ import * as ac from '../academia/api.js';
 
 export const { alumnos, profesoras, aulas, grupos, tutorias, prestamos, anotaciones, calendarioDias, formularios, formRespuestas, recogidas, invalidar } = ac;
 export const actividades = ac.alActividades;
+export const teens = ac.alTeens;
 const chk = ({ data, error }) => { if (error) throw new Error(traducirError(error)); return data; };
 const PAGE = 1000;
 

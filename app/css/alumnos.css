@@ -38,3 +38,12 @@
 .sc-pop-fila { margin: 2px 0; }
 .sc-pop-alu { margin: 2px 0 0; padding-left: 18px; }
 @media (max-width: 700px) { .sc-dia { min-height: 64px; } .sc-chip-t { display: none; } }
+/* TEENS Championship */
+.teens-podio { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 8px 0 12px; }
+.teens-puesto { text-align: center; padding: 10px; }
+.teens-pos { font-size: 22px; font-weight: 700; }
+.teens-puesto.p1 .teens-pos { color: #b8860b; } .teens-puesto.p2 .teens-pos { color: #6b7280; } .teens-puesto.p3 .teens-pos { color: #a0522d; }
+.teens-media { font-size: 20px; font-weight: 600; }
+.teens-scroll { overflow-x: auto; }
+.teens-tabla td, .teens-tabla th { white-space: nowrap; }
+.teens-nota { width: 56px; text-align: right; }

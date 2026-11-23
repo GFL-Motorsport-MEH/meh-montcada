@@ -12,7 +12,7 @@ const PAGE = 1000;
 // (La base de datos aplica lo mismo a los usuarios con centro fijo: esto es para que el resto vea solo el centro elegido.)
 let centroActivo = '';
 let centroPrincipal = null;
-const RAIZ = new Set(['al_actividades', 'ac_alumnos', 'ac_grupos', 'ac_aulas', 'ac_profesoras', 'ac_tareas', 'ac_reuniones', 'ac_documentos', 'ac_biblioteca_items', 'ac_remesas', 'ac_responsables']);
+const RAIZ = new Set(['al_teens_grupos', 'al_teens_alumnos', 'al_teens_notas', 'al_teens_config', 'al_actividades', 'ac_alumnos', 'ac_grupos', 'ac_aulas', 'ac_profesoras', 'ac_tareas', 'ac_reuniones', 'ac_documentos', 'ac_biblioteca_items', 'ac_remesas', 'ac_responsables']);
 export function setCentro(id, principalId) {
   const nuevo = id || '';
   const cambia = nuevo !== centroActivo;
@@ -92,6 +92,7 @@ const CLAVES = {
   ac_profesoras: /^profesoras$/, ac_aulas: /^aulas$/, ac_vinculos: /^vinculos$/, ac_responsables: /^(responsables|alumnos)$/,
   ac_alumnos: /^(alumnos|bajas|prestamos|tutorias|anot|rec|rpag|ag)/,
   al_actividades: /^alact$/,
+  al_teens_grupos: /^teens$/, al_teens_alumnos: /^teens$/, al_teens_notas: /^teens$/, al_teens_config: /^teens$/,
 };
 // tablas cuyas filas se parchean en la propia caché sin volver a descargar nada (la fila ya viene completa de la escritura)
 const PARCHEABLES = new Set(['ac_cuotas', 'ac_inscripciones', 'ac_wp_precios', 'ac_remesas', 'ac_recogidas_pagos']);
@@ -266,6 +267,9 @@ export async function quitarArchivoPortal(ruta) {
 export const responsables = () => memo('responsables', () => all('ac_responsables'));
 // actividades del módulo Alumnos (salidas, talleres…): tabla de centro, por eso se lee desde aquí
 export const alActividades = () => memo('alact', () => all('al_actividades').then((l) => l.sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')))));
+
+// TEENS Championship (módulo Alumnos): grupos, alumnos, notas en bruto y configuración de pesos/totales
+export const alTeens = () => memo('teens', async () => { const [grupos, alumnos, notas, config] = await Promise.all([all('al_teens_grupos'), all('al_teens_alumnos'), all('al_teens_notas'), all('al_teens_config')]); return { grupos, alumnos, notas, config }; });
 
 // lee una foto o PDF de una ficha de inscripción (función del servidor «escanear-ficha»); no guarda nada
 export async function escanearFicha(imagen, tipo) {

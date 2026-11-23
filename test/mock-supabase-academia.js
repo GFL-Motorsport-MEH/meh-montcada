@@ -13,9 +13,9 @@ const PERMISOS_DB = [
   P('profesora', 'ac_grupos', 'propio', false), P('profesora', 'ac_calendario', 'todo', false), P('profesora', 'ac_tutorias', 'propio', true), P('profesora', 'ac_seguimiento', 'propio', true), P('profesora', 'ac_biblioteca', 'todo', true), P('profesora', 'ac_documentos', 'todo', false), P('profesora', 'ac_portal', 'propio', false), ...TR.map((k) => P('profesora', k, 'propio', false)),
   P('escaner', 'escaner', 'todo', true),
 ];
-const AL = ['al_ficha', 'al_notas', 'al_tareas', 'al_informes', 'al_comunicaciones', 'al_documentos', 'al_actividades', 'al_studyclub'];
+const AL = ['al_ficha', 'al_notas', 'al_tareas', 'al_informes', 'al_comunicaciones', 'al_documentos', 'al_actividades', 'al_studyclub', 'al_teens'];
 PERMISOS_DB.push(...AL.map((k) => P('direccion', k, 'todo', true)), ...AL.map((k) => P('coordinacion', k, 'todo', true)),
-  P('profesora', 'al_ficha', 'propio', false), P('profesora', 'al_studyclub', 'todo', false), P('profesora', 'al_notas', 'propio', true), P('profesora', 'al_tareas', 'propio', true), P('profesora', 'al_informes', 'propio', true), P('profesora', 'al_comunicaciones', 'propio', true), P('profesora', 'al_actividades', 'todo', false));
+  P('profesora', 'al_ficha', 'propio', false), P('profesora', 'al_studyclub', 'todo', false), P('profesora', 'al_notas', 'propio', true), P('profesora', 'al_tareas', 'propio', true), P('profesora', 'al_informes', 'propio', true), P('profesora', 'al_comunicaciones', 'propio', true), P('profesora', 'al_actividades', 'todo', false), P('profesora', 'al_teens', 'todo', true));
 const db = {
   roles: ROLES_DB, rol_permisos: PERMISOS_DB,
   profiles: [ADMIN], cursos: CURSOS, categorias: [], subcategorias: [], centros: [{ id: 'ce1', nombre: 'MONTCADA', principal: true, activo: true, orden: 0 }, { id: 'ce2', nombre: 'ALCANTARILLA', principal: false, activo: true, orden: 1 }], gastos: [], listas: [], empresas: [],
@@ -40,7 +40,7 @@ const REL = {
   ac_formulario_respuestas: { alumno: ['ac_alumnos', 'alumno_id', 'uno'] }, ac_tutorias: { alumno: ['ac_alumnos', 'alumno_id', 'uno'], profesora: ['ac_profesoras', 'profesora_id', 'uno'] },
   ac_anotaciones: { alumno: ['ac_alumnos', 'alumno_id', 'uno'], profesora: ['ac_profesoras', 'profesora_id', 'uno'] },
 };
-Object.assign(db, { al_studyclub_config: [{ id: 1, dias: [1, 2, 3, 4], hora_inicio: '20:10:00', hora_fin: '20:40:00', plazas: 6, profesora_id: null, semanas_adelante: 8 }], al_studyclub_sesiones: [], al_studyclub_reservas: [], al_studyclub_ics: [], al_evaluaciones: [], al_tareas_extra: [], al_informes: [], al_mensajes: [], al_documentos_familia: [], al_actividades: [], al_actividad_inscritos: [] });
+Object.assign(db, { al_studyclub_config: [{ id: 1, dias: [1, 2, 3, 4], hora_inicio: '20:10:00', hora_fin: '20:40:00', plazas: 6, profesora_id: null, semanas_adelante: 8 }], al_studyclub_sesiones: [], al_studyclub_reservas: [], al_studyclub_ics: [], al_evaluaciones: [], al_tareas_extra: [], al_informes: [], al_mensajes: [], al_documentos_familia: [], al_actividades: [], al_actividad_inscritos: [], al_teens_grupos: [], al_teens_alumnos: [], al_teens_notas: [], al_teens_config: [] });
 REL.al_studyclub_sesiones = { profesora: ['ac_profesoras', 'profesora_id', 'uno'] };
 for (const t of ['al_evaluaciones', 'al_tareas_extra', 'al_informes']) REL[t] = { profesora: ['ac_profesoras', 'profesora_id', 'uno'] };
 let session = { user: { id: ADMIN.id, email: ADMIN.email }, access_token: 'x' };

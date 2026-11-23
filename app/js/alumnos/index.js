@@ -10,6 +10,7 @@ import { renderComunicaciones } from './comunicaciones.js';
 import { renderDocumentosFamilia } from './documentos.js';
 import { renderActividades } from './actividades.js';
 import { renderStudyClub } from './studyclub.js';
+import { renderTeens } from './teens.js';
 
 // reutiliza las hojas de estilo de Academia (tablas, formularios) y añade la suya; se cargan solo al entrar
 const CSS = ['/css/academia.css', '/css/alumnos.css'];
@@ -29,5 +30,6 @@ export const RUTAS_ALUMNOS = {
   al_documentos: A('Documentación', renderDocumentosFamilia, 'al_documentos'),
   al_actividades: A('Actividades', renderActividades, 'al_actividades'),
   al_studyclub: A('Study Club', renderStudyClub, 'al_studyclub'),
+  al_teens: A('TEENS Championship', renderTeens, 'al_teens'),
 };
-export const TABS_ALUMNOS = [['al_ficha', 'Ficha'], ['al_notas', 'Notas'], ['al_tareas', 'Tareas y material'], ['al_informes', 'Informes y notas'], ['al_comunicaciones', 'Comunicaciones'], ['al_documentos', 'Documentación'], ['al_actividades', 'Actividades'], ['al_studyclub', 'Study Club']];
+export const TABS_ALUMNOS = [['al_ficha', 'Ficha'], ['al_notas', 'Notas'], ['al_tareas', 'Tareas y material'], ['al_informes', 'Informes y notas'], ['al_comunicaciones', 'Comunicaciones'], ['al_documentos', 'Documentación'], ['al_actividades', 'Actividades'], ['al_studyclub', 'Study Club'], ['al_teens', 'TEENS Championship']];

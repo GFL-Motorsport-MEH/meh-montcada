@@ -64,8 +64,8 @@ try:
         pg.locator(".modulos .modulo", has_text="Alumnos").click(); pg.wait_for_timeout(600)
         check(pg.evaluate("document.body.dataset.modulo") == "alumnos", "se abre el módulo Alumnos")
         tt = [t.strip() for t in pg.locator(".tabs .tab").all_inner_texts()]
-        check(tt == ["Ficha", "Notas", "Tareas y material", "Informes y notas", "Comunicaciones", "Documentación", "Actividades", "Study Club", "Configuración"], f"pestañas {tt}")
-        for r in ["al_ficha", "al_notas", "al_tareas", "al_informes", "al_comunicaciones", "al_documentos", "al_actividades"]:
+        check(tt == ["Ficha", "Notas", "Tareas y material", "Informes y notas", "Comunicaciones", "Documentación", "Actividades", "Study Club", "TEENS Championship", "Configuración"], f"pestañas {tt}")
+        for r in ["al_ficha", "al_notas", "al_tareas", "al_informes", "al_comunicaciones", "al_documentos", "al_actividades", "al_teens"]:
             ir(pg, r); check(pg.locator(".banner.error").count() == 0, f"{r} carga sin errores")
 
         print("2. ficha 360º")
@@ -194,12 +194,29 @@ try:
         pg.locator(".sc-dia.con", has=pg.locator(".sc-chip", has_text="Past Simple")).hover(); pg.wait_for_timeout(250)
         pop = pg.locator(".sc-pop").inner_text()
         check("Mar Franco" in pop and "Past Simple" in pop, f"el popup del día muestra la profesora y el temario")
+        print("10b. TEENS Championship: grupo, alumnos, notas y clasificación")
+        pg = abrir(b, "admin", "al_teens")
+        pg.get_by_role("button", name="Alumnos y grupos").click(); pg.wait_for_timeout(300)
+        pg.get_by_placeholder("Nombre del grupo nuevo").fill("Tigers"); pg.get_by_role("button", name="+ Grupo").click(); pg.wait_for_timeout(600)
+        pg.get_by_placeholder("Nombre del alumno").fill("Lucía"); pg.get_by_role("button", name="+ Alumno").click(); pg.wait_for_timeout(600)
+        pg.get_by_placeholder("Nombre del alumno").fill("Pablo"); pg.get_by_role("button", name="+ Alumno").click(); pg.wait_for_timeout(600)
+        check(len(db(pg, "al_teens_alumnos")) == 2 and len(db(pg, "al_teens_grupos")) == 1, "crea grupo y dos alumnos")
+        pg.get_by_role("button", name="Notas", exact=True).click(); pg.wait_for_timeout(300)
+        c = pg.locator("input[aria-label='T1 de Lucía']"); c.fill("8"); c.dispatch_event("change"); pg.wait_for_timeout(500)
+        c = pg.locator("input[aria-label='Ex. Final de Lucía']"); c.fill("5"); c.dispatch_event("change"); pg.wait_for_timeout(500)
+        check(len(db(pg, "al_teens_notas")) == 2, "guarda las notas en bruto")
+        check("6,00" in pg.locator("tbody tr").first.inner_text(), "media ponderada (8×1 + 5×2)/3 = 6,00")
+        pg.get_by_role("button", name="Clasificación").click(); pg.wait_for_timeout(300)
+        check("Tigers" in pg.locator(".teens-podio").inner_text(), "el grupo sale en el podio")
+        pg.get_by_role("button", name="Configuración").click(); pg.wait_for_timeout(300)
+        t = pg.locator("input[aria-label='total_u1']"); t.fill("16"); pg.get_by_role("button", name="Guardar configuración").click(); pg.wait_for_timeout(600)
+        check(any(f["clave"] == "total_u1" and float(f["valor"]) == 16 for f in db(pg, "al_teens_config")), "guarda el total de una prueba")
         pg.close()
 
         print("10. profesora: ve las pestañas de lo suyo y no la documentación")
         pg = abrir(b, "profesora", "al_ficha")
         tt = [t.strip() for t in pg.locator(".tabs .tab").all_inner_texts()]
-        check(tt == ["Ficha", "Notas", "Tareas y material", "Informes y notas", "Comunicaciones", "Actividades", "Study Club", "Configuración"], f"profesora: pestañas {tt}")
+        check(tt == ["Ficha", "Notas", "Tareas y material", "Informes y notas", "Comunicaciones", "Actividades", "Study Club", "TEENS Championship", "Configuración"], f"profesora: pestañas {tt}")
         ir(pg, "al_documentos")
         check(pg.locator(".tabs .tab[aria-current=page]").inner_text().strip() == "Ficha" and pg.get_by_role("heading", name="Documentación de familias").count() == 0, "la profesora no puede abrir Documentación (vuelve a su primera pantalla)")
         ir(pg, "al_actividades")
