@@ -31,7 +31,7 @@ Total aportación empresa 589,62
   assert.equal(r.liquido, 1552.04); assert.equal(r.irpf, 224.84);
   assert.equal(r.ssTrabajador, 123.12); assert.equal(r.ssEmpresa, 589.62); assert.equal(r.ss, 712.74);
   assert.equal(r.fecha, '2026-10-31'); assert.equal(r.nif, '12345678Z');
-  assert.match(r.trabajador, /ALCALA PEREZ, PAULA/);
+  assert.match(r.trabajador, /Paula Alcala Perez/);
 }
 
 // Formato 2: sin IRPF y con la cuota del trabajador por conceptos (sin total); periodo por mes y año
@@ -56,3 +56,29 @@ Cotización empresa 305,20
 // Una factura normal no es una nómina
 assert.ok(!esNomina('FACTURA 123\nTotal 44,20 €\nVodafone'));
 console.log('OK nóminas');
+
+// nómina real (Mimag English, noviembre 2026): sin la palabra «nómina», líquido en líneas aparte, sin IRPF
+{
+  const t = `EMPRESA C.I.F. B22652960
+MIMAG ENGLISH, S.L.
+TRABAJADOR N.I.F. Nº Afiliación S.S.
+RUIPEREZ DAVILA, NURIA 39442644J 081343871109
+Del 01 de Noviembre al 30 de Noviembre de 2026 30 F. Cobro 30/11/2026
+Cot CONCEPTO DEVENGO DEDUCCION
+S Sueldo base 1.234,45
+Contingencias Comunes 4,85 % 72,15
+Desempleo 1,55 % 23,06
+Formación Profesional 0,10 % 1,49
+TOTAL TOTAL
+Determinación de las Bases de Cotización a la Seguridad Social DEVENGADO DEDUCCIONES
+Bases Cont. Comunes Otras Bases Importes 1.487,61 96,70
+Rem. Total 1.487,61 Base C.C. 1.487,61 4,85 72,15 24,35 362,24
+LIQUIDO TOTAL A PERCIBIR
+HEE-HENE 1.390,91 EUROS
+Total Cuota 96,70 478,28
+Suj. IRPF 1.487,61`;
+  assert.ok(esNomina(t));
+  const r = analizarNomina(t, { propios: ['B22652960'] });
+  assert.equal(r.trabajador, 'Nuria Ruiperez Davila'); assert.equal(r.liquido, 1390.91); assert.equal(r.ss, 574.98); assert.equal(r.irpf, 0); assert.equal(r.fecha, '2026-11-30');
+  console.log('OK nómina real');
+}

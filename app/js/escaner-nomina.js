@@ -17,7 +17,9 @@ const importeDe = (nl, lineas, i) => { const a = importes(lineas[i]); if (a.leng
 
 export function esNomina(texto) {
   const n = normalizar(texto);
-  return /\bnominas?\b|recibo (individual )?de salarios/.test(n) && /liquido (total )?a percibir|total liquido|liquido a percibir|neto a percibir/.test(n);
+  const liquido = /liquido (total )?a percibir|total liquido|neto a percibir/.test(n);
+  // muchas nóminas no llevan la palabra «nómina»: se reconocen por devengos/deducciones/bases de cotización
+  return liquido && (/\bnominas?\b|recibo (individual )?de salarios/.test(n) || (/devengo|devengado/.test(n) && /deduccion/.test(n)) || /bases? de cotizacion/.test(n));
 }
 
 export function analizarNomina(texto, { propios = [] } = {}) {
@@ -28,23 +30,37 @@ export function analizarNomina(texto, { propios = [] } = {}) {
   // líquido a percibir
   let i = nl.findIndex((l) => /liquido (total )?a percibir|neto a percibir|total a percibir/.test(l));
   if (i < 0) i = nl.findIndex((l) => /\bliquido\b/.test(l) && importes(lineas[l ? nl.indexOf(l) : 0]).length);
-  if (i >= 0) { res.liquido = importeDe(nl, lineas, i); res.confianza.liquido = res.liquido != null ? 'alta' : 'baja'; }
+  if (i >= 0) {
+    res.liquido = importes(lineas[i]).slice(-1)[0] ?? null;
+    if (res.liquido == null) { // la cifra suele estar unas líneas más abajo («1.390,91 EUROS»)
+      for (let k = i + 1; k <= i + 4 && k < lineas.length; k++) { const v = importes(lineas[k]); if (v.length && (/euros|€|eur\b/.test(nl[k]) || v.length === 1)) { res.liquido = v[v.length - 1]; break; } }
+    }
+    res.confianza.liquido = res.liquido != null ? 'alta' : 'baja';
+  }
 
-  // IRPF: línea de la retención (no la «base IRPF», salvo que traiga base y cuota)
+  // IRPF: línea de la retención (no «Suj. IRPF», que es la base). Si trae % sin importe, se calcula sobre la base sujeta a IRPF
   const reIrpf = /\birpf\b|i\.?\s?r\.?\s?p\.?\s?f|retencion|impuesto sobre la renta|ret\.? irpf/;
+  const esBaseIrpf = (l) => /\bbase\b|\bsuj\b|sujet|acumulad/.test(l);
+  const kBase = nl.findIndex((l) => reIrpf.test(l) && esBaseIrpf(l) && importes(lineas[nl.indexOf(l)]).length);
+  const sujIrpf = kBase >= 0 ? importes(lineas[kBase]).slice(-1)[0] : null;
   for (let k = 0; k < nl.length; k++) {
     if (!reIrpf.test(nl[k])) continue;
     const v = importes(lineas[k]);
-    const esBase = /\bbase\b|sujet|acumulad/.test(nl[k]);
-    if (!v.length || (esBase && v.length < 2)) continue;
-    res.irpf = v[v.length - 1]; res.confianza.irpf = 'alta'; break;
+    if (esBaseIrpf(nl[k]) && v.length < 2) continue;
+    const pct = (lineas[k].match(/(\d{1,2}(?:[.,]\d+)?)\s*%/) || [])[1];
+    if (v.length) { res.irpf = v[v.length - 1]; res.confianza.irpf = 'alta'; break; }
+    if (pct && sujIrpf) { res.irpf = r2(sujIrpf * parseFloat(pct.replace(',', '.')) / 100); res.confianza.irpf = 'media'; break; }
   }
-  if (!res.confianza.irpf) res.confianza.irpf = nl.some((l) => reIrpf.test(l)) ? 'media' : 'alta';
+  if (!res.confianza.irpf) res.confianza.irpf = 'alta'; // sin línea de retención = sin IRPF
+
+  // Seguridad Social: línea «Total Cuota» con la cuota del trabajador y la de la empresa
+  const kTc = nl.findIndex((l, k) => /^(\S+\s+)?total cuotas?\b/.test(l) && importes(lineas[k]).length >= 2);
+  if (kTc >= 0) { const v = importes(lineas[kTc]); res.ssTrabajador = v[0]; res.ssEmpresa = v[v.length - 1]; res.confianza.ssTrabajador = res.confianza.ssEmpresa = 'alta'; }
 
   // Seguridad Social: parte del trabajador
   i = nl.findIndex((l) => /total aportaciones|total cuota (obrera|trabajador)|cuota obrera|total (deducciones|cotizaciones) (s\.?s|seguridad social)|aportacion del trabajador.*total|total aportacion del trabajador/.test(l) && importes(lineas[nl.indexOf(l)]).length);
-  if (i >= 0) { res.ssTrabajador = importeDe(nl, lineas, i); res.confianza.ssTrabajador = 'alta'; }
-  else {
+  if (res.ssTrabajador == null && i >= 0) { res.ssTrabajador = importeDe(nl, lineas, i); res.confianza.ssTrabajador = 'alta'; }
+  else if (res.ssTrabajador == null) {
     // suma de los conceptos de cotización descontados (contingencias comunes, desempleo, formación, MEI…), entre DEDUCCIONES y el IRPF
     const ini = nl.findIndex((l) => /\bdeduccion/.test(l));
     const fin = nl.findIndex((l, k) => k > ini && ini >= 0 && (reIrpf.test(l) || /total a deducir|total deducciones/.test(l)));
@@ -60,7 +76,7 @@ export function analizarNomina(texto, { propios = [] } = {}) {
 
   // Seguridad Social: parte de la empresa
   const reEmp = /total (aportacion|cotizacion|cuota)(es)? (de la |a cargo de la |por la )?empresa|aportacion (de la )?empresa|cotizacion (de la )?empresa|cuota patronal|total empresa|coste (de )?(s\.?s\.?|seguridad social)( a cargo)?( de la)? empresa|seg\.? ?social empresa|total aportacion empresarial|aportacion empresarial/;
-  const candidatos = nl.map((l, k) => [l, k]).filter(([l, k]) => reEmp.test(l) && importeDe(nl, lineas, k) != null);
+  const candidatos = res.ssEmpresa != null ? [] : nl.map((l, k) => [l, k]).filter(([l, k]) => reEmp.test(l) && importeDe(nl, lineas, k) != null);
   if (candidatos.length) {
     const conTotal = candidatos.filter(([l]) => /\btotal\b/.test(l));
     const [, k] = (conTotal.length ? conTotal : candidatos).slice(-1)[0];
@@ -75,8 +91,17 @@ export function analizarNomina(texto, { propios = [] } = {}) {
     let c = lineas[iTr].replace(/^[^:]*:\s*/, '');
     if (c === lineas[iTr]) c = lineas[iTr].replace(/^\S+(\s+\S+){0,4}?\s+(?=[A-ZÁÉÍÓÚÑ]{2,},?\s)/i, '');
     c = c.replace(/\b(d\.?n\.?i\.?|n\.?i\.?f\.?|n\.?i\.?e\.?)\b.*$/i, '').replace(/\s*[\d]{6,}.*$/, '').trim();
+    // cabecera con solo etiquetas («TRABAJADOR  N.I.F.  Nº Afiliación S.S.»): el nombre va en la línea siguiente
+    if (!c || /afiliaci|^trabajador$|^s\.?s\.?$/i.test(c) || normalizar(lineas[iTr]).includes('afiliacion')) c = '';
     if (c) res.trabajador = c;
-    if (!res.trabajador && lineas[iTr + 1]) res.trabajador = lineas[iTr + 1].replace(/\b(d\.?n\.?i\.?|n\.?i\.?f\.?)\b.*$/i, '').trim();
+    if (!res.trabajador && lineas[iTr + 1]) res.trabajador = lineas[iTr + 1].replace(/\b\d{8}[A-Z]\b.*$|\b[XYZ]\d{7}[A-Z]\b.*$/i, '').replace(/\s*\d{6,}.*$/, '').trim();
+  }
+  // «APELLIDOS, NOMBRE» → «Nombre Apellidos»
+  if (res.trabajador) {
+    const t = res.trabajador.replace(/\s+/g, ' ').trim();
+    const [ap, no] = t.includes(',') ? t.split(',').map((x) => x.trim()) : [t, ''];
+    const tit = (x) => x.toLowerCase().replace(/(^|\s)(\S)/g, (m, e, l) => e + l.toUpperCase());
+    res.trabajador = tit(no ? `${no} ${ap}` : ap);
   }
   const propiosNif = propios.map((p) => p.toUpperCase().replace(/[^0-9A-Z]/g, ''));
   const nif = nifsEn(texto).map((x) => x.nif).find((n) => /^\d{8}[A-Z]$|^[XYZ]\d{7}[A-Z]$/.test(n) && !propiosNif.includes(n));
