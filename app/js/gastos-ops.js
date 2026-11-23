@@ -59,7 +59,7 @@ export function propuestaDesdePlantillas(plantillas, { curso, mes, existentes, c
     const gasto = {
       curso_id: curso.id, mes, empresa: p.empresa, concepto, cantidad: num(p.cantidad), tipo: p.tipo || (p.grupo === 'nomina' ? 'Nomina' : 'Factura'),
       categoria_id: p.categoria_id || null, subcategoria_id: p.subcategoria_id || null, metodo_pago: p.metodo_pago || null,
-      periodicidad: p.periodicidad || 'Mensual', fecha_factura: fecha, fecha_pago: fecha, pago: 'True', fiscontal: 'False',
+      periodicidad: p.periodicidad || 'Mensual', fecha_factura: fecha, fecha_pago: null, pago: 'False', fiscontal: 'False',
       check_banca: false, sin_factura: false, centro_id: p.centro_id || centroPorDefecto || null,
     };
     return { plantilla: p, gasto, duplicado: ya.has(clave(gasto.empresa, gasto.concepto, mes)) };
