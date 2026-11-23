@@ -392,7 +392,7 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
     const subDe = (nombre) => cat?.subcategorias.find((s) => normalizar(s.nombre) === nombre);
     // filas: nómina, SS, IRPF
     const defs = [
-      { clave: 'nomina', etiqueta: 'Nómina (líquido)', concepto: 'Nomina mes', sub: subDe('nominas'), valor: n.liquido, conf: n.confianza.liquido, metodo: 'Transferencia', pago: true,
+      { clave: 'nomina', etiqueta: 'Nómina (líquido)', concepto: 'Nomina mes', sub: subDe('nominas'), valor: n.liquido, conf: n.confianza.liquido, metodo: 'Transferencia', pago: false,
         detalle: null },
       { clave: 'ss', etiqueta: 'Seguridad Social', concepto: 'SS mes', sub: subDe('seguridad social'), valor: n.ss, conf: n.confianza.ss || 'baja', metodo: 'Domiciliacion', pago: false,
         detalle: n.ssTrabajador != null || n.ssEmpresa != null ? `trabajador ${n.ssTrabajador != null ? fmtEUR2(n.ssTrabajador) : '¿?'} + empresa ${n.ssEmpresa != null ? fmtEUR2(n.ssEmpresa) : '¿?'}` : null },

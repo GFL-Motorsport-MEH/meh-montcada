@@ -54,7 +54,7 @@ export async function renderEscanerVista(view, ctx) {
     const pintarSub = () => { const c = state.taxonomia.find((x) => x.id === fCat.value); fSub.replaceChildren(h('option', { value: '' }, c ? 'Elige…' : '—'), ...(c ? c.subcategorias.map((s) => h('option', { value: s.id, selected: s.id === d.subcategoria_id }, s.nombre)) : [])); fSub.disabled = !c; };
     fCat.addEventListener('change', pintarSub); pintarSub();
     const fMet = h('select', {}, h('option', { value: '' }, '—'), [...new Set([...metodos, d.metodo_pago].filter(Boolean))].map((m) => h('option', { value: m, selected: m === d.metodo_pago }, m)));
-    const fPago = h('select', {}, h('option', { value: 'True', selected: true }, 'Sí, ya está pagado'), h('option', { value: 'False' }, 'No, pendiente de pago'));
+    const fPago = h('select', {}, h('option', { value: 'True' }, 'Sí, ya está pagado'), h('option', { value: 'False', selected: true }, 'No, pendiente de pago'));
     const centros = state.centros.filter((c) => c.activo !== false);
     const fCen = centros.length > 1 ? h('select', {}, centros.map((c) => h('option', { value: c.id, selected: c.id === (d.centro_id || ctx.centroPrincipal()?.id) }, ctx.tituloCentro(c.nombre)))) : null;
     const fCom = h('textarea', { rows: 2, placeholder: 'Opcional' }, (d.comentarios || '').replace(/^Escaneada[^.]*\.\s*/, ''));

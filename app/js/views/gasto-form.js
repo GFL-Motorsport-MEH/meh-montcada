@@ -14,7 +14,7 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado, onDividido, 
   const { state } = ctx;
   const nuevo = !gasto;
   const g = gasto || {
-    curso_id: ctx.cursoActual().id, fecha_factura: hoyISO(), pago: 'True', fiscontal: 'False',
+    curso_id: ctx.cursoActual().id, fecha_factura: hoyISO(), pago: 'False', fiscontal: 'False',
     check_banca: false, sin_factura: false, centro_id: ctx.centroActual()?.id || ctx.centroPrincipal()?.id || null,
     ...(inicial || {}),
   };
