@@ -3,6 +3,7 @@
 import { h, clear, toast, normalizar, fmtEUR2, fmtFecha, fmtFechaCorta, num, mesDeFecha, hoyISO, tituloCategoria, cargando } from '../ui.js';
 import { crearGasto, crearGastos, getGastosPendientes, actualizarGasto, getListas, escanerEmpresas, agrupar } from '../db.js';
 import { montarEscaner } from './escaner.js';
+import { comboEmpresa } from '../combo-empresa.js';
 import { abrirGastoForm } from './gasto-form.js';
 import { abrirFactura, bloqueFactura } from '../factura-archivo.js';
 
@@ -25,31 +26,6 @@ export async function renderEscanerVista(view, ctx) {
   let empresas = [];
   const cargaEmpresas = escanerEmpresas().then((l) => { empresas = l.map((e) => ({ ...e, _k: normalizar(`${e.nombre_comercial} ${e.razon_social || ''} ${e.cif || ''}`) })); }).catch(() => {});
   const buscarEmpresa = (t) => { const k = normalizar(t).trim(); return k ? empresas.find((e) => normalizar(e.nombre_comercial) === k || (e.razon_social && normalizar(e.razon_social) === k) || (e.cif && normalizar(e.cif).replace(/\W/g, '') === k.replace(/\W/g, ''))) : null; };
-  // casilla con desplegable que filtra por cualquiera de los tres datos
-  function comboEmpresa(input, alElegir) {
-    const lista = h('ul', { class: 'combo-lista', role: 'listbox', hidden: true });
-    const caja = h('div', { class: 'combo' }, input, lista);
-    let activo = -1, items = [];
-    const cerrar = () => { lista.hidden = true; activo = -1; };
-    const elegir = (e) => { input.value = e.nombre_comercial; cerrar(); alElegir(e); };
-    const pintar = () => {
-      const k = normalizar(input.value).trim();
-      items = (k ? empresas.filter((e) => k.split(/\s+/).every((w) => e._k.includes(w))) : empresas).slice(0, 12);
-      lista.replaceChildren(...items.map((e, i) => h('li', { role: 'option', class: i === activo ? 'activo' : '', onmousedown: (ev) => { ev.preventDefault(); elegir(e); } },
-        h('strong', {}, e.nombre_comercial), e.razon_social && normalizar(e.razon_social) !== normalizar(e.nombre_comercial) ? h('span', { class: 'muted small' }, ` · ${e.razon_social}`) : null, e.cif && e.cif.length <= 12 ? h('span', { class: 'muted small' }, ` · ${e.cif}`) : null)));
-      lista.hidden = !items.length;
-    };
-    input.addEventListener('input', () => { activo = -1; pintar(); });
-    input.addEventListener('focus', pintar);
-    input.addEventListener('blur', () => setTimeout(cerrar, 120));
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); if (lista.hidden) pintar(); activo = (activo + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % Math.max(items.length, 1); pintar(); }
-      else if (e.key === 'Enter' && !lista.hidden && activo >= 0) { e.preventDefault(); elegir(items[activo]); }
-      else if (e.key === 'Escape') cerrar();
-    });
-    return caja;
-  }
-
   const esc = { reiniciar: () => {} };
   function pintarEscaner() { Object.assign(esc, montarEscaner(zonaEscaner, ctx, { onDatos: formulario, textoBoton: 'Continuar', onVarios: guardarVarios })); }
 
@@ -83,7 +59,7 @@ export async function renderEscanerVista(view, ctx) {
     const fCen = centros.length > 1 ? h('select', {}, centros.map((c) => h('option', { value: c.id, selected: c.id === (d.centro_id || ctx.centroPrincipal()?.id) }, ctx.tituloCentro(c.nombre)))) : null;
     const fCom = h('textarea', { rows: 2, placeholder: 'Opcional' }, (d.comentarios || '').replace(/^Escaneada[^.]*\.\s*/, ''));
     const marcar = (e) => { vinc = e || null; vinculo.textContent = e ? `✓ Vinculado con el listado${e.razon_social && normalizar(e.razon_social) !== normalizar(e.nombre_comercial) ? ` · razón social: ${e.razon_social}` : ''}` : (fEmp.value.trim() ? 'No está en el listado de empresas: se guardará con este nombre.' : ''); };
-    const cbEmp = comboEmpresa(fEmp, marcar);
+    const cbEmp = comboEmpresa(fEmp, () => empresas, marcar);
     fEmp.addEventListener('change', () => { const e = buscarEmpresa(fEmp.value); if (e) fEmp.value = e.nombre_comercial; marcar(e); });
     cargaEmpresas.then(() => { const e = buscarEmpresa(fEmp.value); if (e) { fEmp.value = e.nombre_comercial; marcar(e); } else marcar(null); });
 

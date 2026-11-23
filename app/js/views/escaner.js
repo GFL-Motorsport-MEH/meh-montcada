@@ -5,6 +5,7 @@ import { subirFactura, escanerProveedores, escanerEmpresas, escanerSugerencia, e
 import { analizarFactura, rutaSugerida, idPedido, tipoAbono, mejorNombre } from '../escaner-parse.js';
 import { esNomina, analizarNomina } from '../escaner-nomina.js';
 import { segmentar } from '../escaner-docs.js';
+import { comboEmpresa } from '../combo-empresa.js';
 
 // Renombrado al formato estándar «AAMMDD - Empresa - Nº - Concepto»: preparado pero DESACTIVADO por ahora (20-nov-2026).
 // Con false se sigue subiendo con el nombre original del archivo y el botón «Renombrar» no hace nada.
@@ -131,6 +132,7 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
   let cola = null; // PDF con varios documentos: { docs, idx, acum, file, pdf }
   // proveedores conocidos (de la BD, sin necesidad de ver los gastos)
   let conocidas = [];
+  let listado = [];
   // además de los nombres de los gastos, las empresas del listado: el texto de la factura suele llevar la razón social
   // y el gasto se guarda con el nombre comercial (canon)
   const cargaConocidas = Promise.all([escanerProveedores().catch(() => []), escanerEmpresas().catch(() => [])]).then(([gs, es]) => {
@@ -139,6 +141,10 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
     for (const e of es) { add(e.nombre_comercial, e.cif); if (e.razon_social && normalizar(e.razon_social) !== normalizar(e.nombre_comercial)) add(e.razon_social, e.cif, e.nombre_comercial); }
     for (const x of gs) if (!es.some((e) => normalizar(e.nombre_comercial) === normalizar(x.nombre))) add(x.nombre, x.nif);
     conocidas = out;
+    // listado para el desplegable del proveedor: empresas (nombre comercial) y los demás nombres usados en gastos
+    listado = [...es.map((e) => ({ nombre_comercial: e.nombre_comercial, razon_social: e.razon_social, cif: e.cif })),
+      ...gs.filter((x) => !es.some((e) => normalizar(e.nombre_comercial) === normalizar(x.nombre))).map((x) => ({ nombre_comercial: x.nombre, razon_social: null, cif: x.nif }))]
+      .filter((e) => e.nombre_comercial).map((e) => ({ ...e, _k: normalizar(`${e.nombre_comercial} ${e.razon_social || ''} ${e.cif || ''}`) }));
   });
 
   function inicio() {
@@ -242,7 +248,8 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
 
     // Datos leídos, todos editables: se corrige lo que haya leído mal antes de pasar al gasto
     const importeIni = r.total != null ? r.total.toFixed(2).replace('.', ',') : '';
-    const iEmp = h('input', { type: 'text', value: r.empresa || '', autocomplete: 'off', 'aria-label': 'Proveedor' });
+    const iEmp = h('input', { type: 'text', value: r.empresa || '', autocomplete: 'off', placeholder: 'Elige de tu listado o escribe uno nuevo', 'aria-label': 'Proveedor' });
+    const cbEmp = comboEmpresa(iEmp, () => listado, (e) => { if (!iNif.value.trim() && e.cif && e.cif.length <= 12) iNif.value = e.cif; ponerRuta(); });
     const iNif = h('input', { type: 'text', value: r.nif || '', autocomplete: 'off', 'aria-label': 'NIF' });
     const iFecha = h('input', { type: 'date', value: r.fecha || '', 'aria-label': 'Fecha factura' });
     const iNum = h('input', { type: 'text', value: r.numero || '', autocomplete: 'off', 'aria-label': 'Nº factura' });
@@ -292,7 +299,7 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
     const carpetaFinal = () => inpRuta.value.split('/').slice(0, -1).join('/').trim() || rutaActual().carpeta;
 
     // fila editable con su indicador: «Seguro / Revisar / Dudoso» según lo leído, y «Corregido» si se ha tocado
-    const filaEd = (label, input, conf, inicial, extra) => {
+    const filaEd = (label, input, conf, inicial, extra, caja = null) => {
       const badge = h('span', {});
       const pintar = () => {
         const v = input.value.trim();
@@ -300,7 +307,7 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
         badge.className = `conf ${cls}`; badge.textContent = txt;
       };
       input.addEventListener('input', pintar); pintar();
-      return h('tr', {}, h('th', { scope: 'row' }, label), h('td', {}, input, extra ? h('span', { class: 'muted small' }, ` ${extra}`) : null), h('td', {}, badge));
+      return h('tr', {}, h('th', { scope: 'row' }, label), h('td', {}, caja || input, extra ? h('span', { class: 'muted small' }, ` ${extra}`) : null), h('td', {}, badge));
     };
     for (const i of [iEmp, iNif, iFecha, iNum, iConcepto, iTotal]) i.addEventListener('input', () => { if (i === iFecha) ponerConcepto(); ponerRuta(); });
     const vista = canvas ? (() => { canvas.classList.add('escaner-preview'); return canvas; })() : null;
@@ -348,7 +355,7 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
         h('div', { class: 'escaner-datos' },
           h('div', { class: 'small muted' }, 'Revisa lo leído y corrige lo que haga falta: puedes cambiar cualquier dato antes de continuar.'),
           h('table', { class: 'data escaner-tabla' }, h('tbody', {},
-            filaEd('Proveedor', iEmp, r.confianza.empresa, r.empresa || '', r.empresaNueva && !ultimo ? '(nuevo)' : null),
+            filaEd('Proveedor', iEmp, r.confianza.empresa, r.empresa || '', r.empresaNueva && !ultimo ? '(nuevo)' : null, cbEmp),
             filaEd('NIF', iNif, r.confianza.nif, r.nif || ''),
             filaEd('Fecha factura', iFecha, r.confianza.fecha, r.fecha || ''),
             filaEd('Nº factura', iNum, r.confianza.numero, r.numero || '', !r.numero && pedido ? `(sin nº: se usa el pedido ${pedido})` : null),
@@ -376,7 +383,8 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
     const hallado = (n.trabajador && mejorNombre(n.trabajador, conocidas)) || null;
     const miniatura = miniaturaDe(canvas);
     const hoy = new Date().toISOString().slice(0, 10);
-    const iTrab = h('input', { type: 'text', value: hallado?.nombre || n.trabajador || '', autocomplete: 'off', list: 'dl-nom-trab', 'aria-label': 'Trabajador' });
+    const iTrab = h('input', { type: 'text', value: hallado?.nombre || n.trabajador || '', autocomplete: 'off', 'aria-label': 'Trabajador' });
+    const cbTrab = comboEmpresa(iTrab, () => listado, () => revisarExistentes());
     const dlTrab = h('datalist', { id: 'dl-nom-trab' }, [...new Set(trabajadores.map((e) => e.nombre))].map((v) => h('option', { value: v })));
     const iFecha = h('input', { type: 'date', value: n.fecha || '', 'aria-label': 'Fecha de la nómina (fin de mes)' });
     const impTxt = (v) => (v == null ? '' : Number(v).toFixed(2).replace('.', ','));
@@ -470,7 +478,7 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
         h('div', { class: 'escaner-datos' },
           h('div', { class: 'banner' }, h('strong', {}, 'Es una nómina. '), 'Se crean hasta 3 gastos con este mismo PDF: nómina (líquido), Seguridad Social (cuota del trabajador + cuota de la empresa) e IRPF si hay retención. Revisa los importes.'),
           h('table', { class: 'data escaner-tabla' }, h('tbody', {},
-            h('tr', {}, h('th', { scope: 'row' }, 'Trabajador'), h('td', { colspan: 2 }, iTrab, dlTrab, hallado ? null : h('span', { class: 'muted small' }, ' no está en el listado: se creará con este nombre'))),
+            h('tr', {}, h('th', { scope: 'row' }, 'Trabajador'), h('td', { colspan: 2 }, cbTrab, hallado ? null : h('span', { class: 'muted small' }, ' no está en el listado: se creará con este nombre'))),
             h('tr', {}, h('th', { scope: 'row' }, 'Fecha (fin de mes)'), h('td', { colspan: 2 }, iFecha, !n.fecha ? h('span', { class: 'muted small' }, ' no se ha encontrado el periodo: ponlo a mano') : null)),
             defs.map(fila))),
           h('div', { class: 'escaner-acciones' },
