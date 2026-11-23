@@ -821,3 +821,10 @@ table.tabla-gastos:not(.ver-reg) .c-reg { display: none; }
 table.tabla-gastos col.c-reg { width: 104px; }
 table.tabla-gastos td.reg-fecha { font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .registro-ficha { grid-column: 1 / -1; font-size: 12px; color: var(--text-secondary); margin: 0; }
+
+/* proveedor / trabajador: casilla con flecha de desplegable */
+.combo.con-flecha input { padding-right: 24px; width: 100%; }
+.combo-flecha { position: absolute; right: 1px; top: 1px; bottom: 1px; width: 22px; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; border-radius: 4px; font-size: 12px; line-height: 1; padding: 0; }
+.combo-flecha:hover { background: var(--surface-2); color: var(--text); }
+.escaner-tipopago { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 6px; }
+.escaner-tipopago select { width: 100%; min-width: 0; }

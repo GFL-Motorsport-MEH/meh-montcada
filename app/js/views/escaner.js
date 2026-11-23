@@ -252,6 +252,15 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
     const cbEmp = comboEmpresa(iEmp, () => listado, (e) => { if (!iNif.value.trim() && e.cif && e.cif.length <= 12) iNif.value = e.cif; ponerRuta(); });
     const iNif = h('input', { type: 'text', value: r.nif || '', autocomplete: 'off', 'aria-label': 'NIF' });
     const iFecha = h('input', { type: 'date', value: r.fecha || '', 'aria-label': 'Fecha factura' });
+    // desplegables que salen de las listas de la app (tipo, método de pago, periodicidad) y de los centros
+    const selLista = (lista, actual, etiqueta) => {
+      const vals = [...new Set([...state.listas.filter((x) => x.lista === lista).map((x) => x.valor), actual].filter(Boolean))];
+      return h('select', { 'aria-label': etiqueta }, h('option', { value: '' }, '—'), vals.map((v) => h('option', { value: v, selected: v === actual }, v)));
+    };
+    const sTipo = selLista('tipo', ultimo?.tipo || 'Factura', 'Tipo de documento');
+    const sMet = selLista('metodo_pago', ultimo?.metodo_pago || '', 'Método de pago');
+    const sPer = selLista('periodicidad', ultimo?.periodicidad || '', 'Periodicidad');
+    const sCentro = h('select', { 'aria-label': 'Centro' }, state.centros.map((c) => h('option', { value: c.id, selected: c.id === centroId }, c.nombre)));
     const iNum = h('input', { type: 'text', value: r.numero || '', autocomplete: 'off', 'aria-label': 'Nº factura' });
     const iConcepto = h('input', { type: 'text', value: '', autocomplete: 'off', placeholder: 'Ej. Material oficina', 'aria-label': 'Concepto' });
     const iTotal = h('input', { type: 'text', inputmode: 'decimal', value: importeIni, placeholder: '0,00', autocomplete: 'off', 'aria-label': 'Importe total' });
@@ -334,9 +343,9 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
       entregar({
         fecha_factura: fecha, empresa, factura_nr: iNum.value.trim(), cantidad: importe ?? '', nif: iNif.value.trim() || ultimo?.nif || '',
         iban: ultimo?.iban || '', swift: ultimo?.swift || '', concepto,
-        tipo: ultimo?.tipo || 'Factura', periodicidad: mismaClasif ? ultimo?.periodicidad || '' : '', metodo_pago: ultimo?.metodo_pago || '',
+        tipo: sTipo.value || 'Factura', periodicidad: sPer.value, metodo_pago: sMet.value,
         categoria_id: cat?.id || null, subcategoria_id: sub?.id || null,
-        centro_id: centroId, mes: mes || undefined, curso_id: (cursoFecha || ctx.cursoActual()).id,
+        centro_id: sCentro.value || centroId, mes: mes || undefined, curso_id: (cursoFecha || ctx.cursoActual()).id,
         link_factura: link, sin_factura: false,
         comentarios: `Escaneada${duplicado ? ' · OJO: posible duplicado' : ''}. OneDrive: Facturas & Nominas/${inpRuta.value}`,
       }, { file, link, duplicado, confianza: r.confianza, miniatura });
@@ -361,6 +370,7 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
             filaEd('Nº factura', iNum, r.confianza.numero, r.numero || '', !r.numero && pedido ? `(sin nº: se usa el pedido ${pedido})` : null),
             h('tr', {}, h('th', { scope: 'row' }, 'Concepto'), h('td', { colspan: 2 }, iConcepto)),
             filaEd('Importe total (€)', iTotal, r.confianza.total, importeIni, r.base != null && r.base !== r.total ? `(base ${fmtEUR2(r.base)})` : null),
+            h('tr', {}, h('th', { scope: 'row' }, 'Tipo y pago'), h('td', { colspan: 2 }, h('div', { class: 'escaner-tipopago' }, sTipo, sMet, sPer, state.centros.length > 1 ? sCentro : null))),
             h('tr', {}, h('th', { scope: 'row' }, 'Clasificación'), h('td', { colspan: 2 }, h('div', { class: 'escaner-clasif' }, iCat, iSub),
               ultimo
                 ? h('span', { class: 'muted small' }, `${[ultimo.metodo_pago, ultimo.periodicidad].filter(Boolean).join(' · ')}${ultimo.metodo_pago || ultimo.periodicidad ? ' · ' : ''}propuesta como el gasto del ${fmtFecha(ultimo.fecha_factura)}`)
@@ -403,6 +413,7 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
       d.chk = h('input', { type: 'checkbox', checked: d.valor != null && d.valor > 0, 'aria-label': `Crear gasto de ${d.etiqueta}` });
       d.inp = h('input', { type: 'text', inputmode: 'decimal', value: impTxt(d.valor), placeholder: '0,00', autocomplete: 'off', 'aria-label': `Importe ${d.etiqueta}` });
       d.nota = h('span', { class: 'muted small' });
+      d.selMet = h('select', { 'aria-label': `Método de pago ${d.etiqueta}` }, [...new Set([...state.listas.filter((x) => x.lista === 'metodo_pago').map((x) => x.valor), d.metodo])].map((v) => h('option', { value: v, selected: v === d.metodo }, v)));
       d.badge = h('span', {});
       const pintarBadge = () => {
         const v = d.inp.value.trim();
@@ -434,6 +445,10 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
     try { plantillas = await getPlantillas(); } catch { /* opcional */ }
     try { if (iTrab.value.trim()) ultimo = await escanerSugerencia(iTrab.value.trim(), n.nif); } catch { /* opcional */ }
 
+    const plDe = (d) => plantillas.find((p) => normalizar(p.empresa) === normalizar(iTrab.value) && d.sub && p.subcategoria_id === d.sub.id);
+    for (const d of defs) { const pl = plDe(d); if (pl?.metodo_pago && [...d.selMet.options].some((o) => o.value === pl.metodo_pago)) d.selMet.value = pl.metodo_pago; }
+    const centroIni = defs.map(plDe).find((pl) => pl?.centro_id)?.centro_id || ultimo?.centro_id || ctx.centroActual()?.id || ctx.centroPrincipal()?.id || null;
+    const sCentro = h('select', { 'aria-label': 'Centro' }, state.centros.map((c) => h('option', { value: c.id, selected: c.id === centroIni }, c.nombre)));
     const btnCrear = h('button', { class: 'btn primary', type: 'button', onclick: crear }, textoCrear('Crear los gastos marcados'));
     async function crear() {
       const emp = iTrab.value.trim(), fecha = iFecha.value;
@@ -455,11 +470,10 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
       try { link = await subirFactura(file, 'general'); } catch (ex) { toast('No se ha podido subir la nómina (se crean los gastos sin adjunto): ' + ex.message, 'error'); }
       const nombreEmp = normalizar(emp);
       const lista = elegidos.map(([d, v]) => {
-        const pl = plantillas.find((p) => normalizar(p.empresa) === nombreEmp && (d.sub && p.subcategoria_id === d.sub.id));
-        const centroId = pl?.centro_id || ultimo?.centro_id || ctx.centroActual()?.id || ctx.centroPrincipal()?.id || null;
+        const centroId = sCentro.value || centroIni;
         return {
           fecha_factura: fecha, empresa: emp, factura_nr: `Sueldos ${capitalizar(mes)}`, cantidad: v, nif: n.nif || ultimo?.nif || '', iban: ultimo?.iban || '', swift: ultimo?.swift || '',
-          concepto: d.concepto, tipo: 'Nomina', periodicidad: 'Mensual', metodo_pago: pl?.metodo_pago || d.metodo,
+          concepto: d.concepto, tipo: 'Nomina', periodicidad: 'Mensual', metodo_pago: d.selMet.value || d.metodo,
           categoria_id: cat?.id || null, subcategoria_id: d.sub?.id || null, categoria_texto: cat ? tituloCategoria(cat.nombre) : null, subcategoria_texto: d.sub?.nombre || null,
           pago: d.pago ? 'True' : 'False', fecha_pago: d.pago ? fecha : null, fiscontal: 'False', check_banca: false,
           centro_id: centroId, mes: mes || undefined, curso_id: cursoFecha.id, link_factura: link, sin_factura: !link,
@@ -471,7 +485,7 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
     }
 
     const fila = (d) => h('tr', {}, h('th', { scope: 'row' }, h('label', { class: 'check' }, d.chk, d.etiqueta)),
-      h('td', {}, d.inp, h('div', {}, d.nota)), h('td', {}, d.badge));
+      h('td', {}, h('div', { class: 'escaner-clasif' }, d.inp, d.selMet), h('div', {}, d.nota)), h('td', {}, d.badge));
     clear(cuerpo,
       h('div', { class: 'escaner-res' },
         canvas ? h('div', { class: 'escaner-vista' }, (() => { canvas.classList.add('escaner-preview'); return canvas; })()) : null,
@@ -479,6 +493,7 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
           h('div', { class: 'banner' }, h('strong', {}, 'Es una nómina. '), 'Se crean hasta 3 gastos con este mismo PDF: nómina (líquido), Seguridad Social (cuota del trabajador + cuota de la empresa) e IRPF si hay retención. Revisa los importes.'),
           h('table', { class: 'data escaner-tabla' }, h('tbody', {},
             h('tr', {}, h('th', { scope: 'row' }, 'Trabajador'), h('td', { colspan: 2 }, cbTrab, hallado ? null : h('span', { class: 'muted small' }, ' no está en el listado: se creará con este nombre'))),
+            state.centros.length > 1 ? h('tr', {}, h('th', { scope: 'row' }, 'Centro'), h('td', { colspan: 2 }, sCentro)) : null,
             h('tr', {}, h('th', { scope: 'row' }, 'Fecha (fin de mes)'), h('td', { colspan: 2 }, iFecha, !n.fecha ? h('span', { class: 'muted small' }, ' no se ha encontrado el periodo: ponlo a mano') : null)),
             defs.map(fila))),
           h('div', { class: 'escaner-acciones' },
