@@ -163,6 +163,15 @@ export function analizarFactura(texto, { conocidas = [], propios = [], nombreArc
     else if (porTexto) { res.empresa = porTexto.nombre; res.confianza.empresa = 'baja'; }
   }
   if (ajenos.length) { res.nif = ajenos[0].nif; res.confianza.nif = porNif ? 'alta' : 'media'; }
+  // marketplaces (Amazon…): el proveedor real figura como «Vendido por …»; vale si no hay un proveedor seguro
+  if (!res.empresa || res.confianza.empresa === 'baja') {
+    const mv = lineas.map((l) => l.match(/vendido por\s+(\S.*)$/i)).filter(Boolean).map((m) => m[1].split(/\s{2,}|,/)[0].trim()).find((v) => v.length > 2 && !propiosTxt.some((p) => normalizar(v).includes(p)));
+    if (mv) {
+      const conocido = mejorNombre(mv, conocidas);
+      if (conocido && conocido.sc >= 0.7) { res.empresa = conocido.nombre; res.confianza.empresa = 'media'; delete res.empresaNueva; }
+      else { res.empresa = mv; res.confianza.empresa = 'baja'; res.empresaNueva = true; }
+    }
+  }
 
   // fecha de factura
   for (let i = 0; i < nl.length && !res.fecha; i++) {

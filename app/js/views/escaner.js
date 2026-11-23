@@ -4,6 +4,7 @@ import { h, clear, toast, fmtEUR2, fmtFecha, mesDeFecha, normalizar, num, titulo
 import { subirFactura, escanerProveedores, escanerEmpresas, escanerSugerencia, escanerDuplicado, gastosDeEmpresaMes, getPlantillas } from '../db.js';
 import { analizarFactura, rutaSugerida, idPedido, tipoAbono, mejorNombre } from '../escaner-parse.js';
 import { esNomina, analizarNomina } from '../escaner-nomina.js';
+import { segmentar } from '../escaner-docs.js';
 
 // Renombrado al formato estándar «AAMMDD - Empresa - Nº - Concepto»: preparado pero DESACTIVADO por ahora (20-nov-2026).
 // Con false se sigue subiendo con el nombre original del archivo y el botón «Renombrar» no hace nada.
@@ -12,6 +13,7 @@ const RENOMBRAR_ACTIVO = false;
 
 const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs';
 const PDFJS_WORKER = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs';
+const PDFLIB = 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/+esm';
 const TESSERACT = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.esm.min.js';
 // el titular de las facturas (no es el proveedor): NIF de MIMAG y nombres con los que aparece
 export const PROPIOS = ['B22652960', 'MIMAG ENGLISH', 'MY ENGLISH HOUSE MONTCADA', 'MONTCADA - MEH', 'Maria Gomez Peñafiel'];
@@ -28,9 +30,9 @@ async function cargarPdfjs() {
   return pdfjsLib;
 }
 
-// Texto de un PDF digital, reconstruyendo las líneas por la posición vertical de cada trozo
-async function textoPdf(pdf, maxPaginas = 3) {
-  const out = [];
+// Texto de cada página de un PDF digital, reconstruyendo las líneas por la posición vertical de cada trozo
+async function textosPdf(pdf, maxPaginas = 3) {
+  const paginas = [];
   for (let p = 1; p <= Math.min(pdf.numPages, maxPaginas); p++) {
     const page = await pdf.getPage(p);
     const tc = await page.getTextContent();
@@ -43,13 +45,25 @@ async function textoPdf(pdf, maxPaginas = 3) {
       f.trozos.push({ x, s: it.str });
     }
     filas.sort((a, b) => b.y - a.y);
-    for (const f of filas) out.push(f.trozos.sort((a, b) => a.x - b.x).map((t) => t.s).join(' '));
+    paginas.push(filas.map((f) => f.trozos.sort((a, b) => a.x - b.x).map((t) => t.s).join(' ')).join('\n'));
   }
-  return out.join('\n');
+  return paginas;
+}
+const textoPdf = async (pdf, maxPaginas = 3) => (await textosPdf(pdf, maxPaginas)).join('\n');
+
+// Un PDF nuevo solo con las páginas indicadas (0, 1, …); si no se puede, devuelve el original
+async function recortarPdf(file, paginas, nombre) {
+  try {
+    const { PDFDocument } = await import(PDFLIB);
+    const origen = await PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
+    const nuevo = await PDFDocument.create();
+    (await nuevo.copyPages(origen, paginas)).forEach((p) => nuevo.addPage(p));
+    return new File([await nuevo.save()], nombre, { type: 'application/pdf' });
+  } catch { return file; }
 }
 
-async function canvasDePdf(pdf, escala = 2) {
-  const page = await pdf.getPage(1);
+async function canvasDePdf(pdf, escala = 2, pagina = 1) {
+  const page = await pdf.getPage(pagina);
   const vp = page.getViewport({ scale: escala });
   const c = document.createElement('canvas');
   c.width = vp.width; c.height = vp.height;
@@ -114,6 +128,7 @@ const CONF = { alta: ['ok', 'Seguro'], media: ['warn', 'Revisar'], baja: ['bad',
 export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar = () => {}, textoBoton = 'Revisar y crear el gasto' }) {
   const { state } = ctx;
   let cerrado = false;
+  let cola = null; // PDF con varios documentos: { docs, idx, acum, file, pdf }
   // proveedores conocidos (de la BD, sin necesidad de ver los gastos)
   let conocidas = [];
   // además de los nombres de los gastos, las empresas del listado: el texto de la factura suele llevar la razón social
@@ -127,6 +142,7 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
   });
 
   function inicio() {
+    cola = null;
     const inputArchivo = h('input', { type: 'file', accept: 'application/pdf,image/*', hidden: true, 'aria-label': 'Archivo de la factura', onchange: () => procesar(inputArchivo.files[0]) });
     const inputFoto = h('input', { type: 'file', accept: 'image/*', capture: 'environment', hidden: true, 'aria-label': 'Foto de la factura', onchange: () => procesar(inputFoto.files[0]) });
     const zona = h('div', { class: 'zona-escaner', tabindex: '0', role: 'button', 'aria-label': 'Elegir o arrastrar la factura', onclick: () => inputArchivo.click(),
@@ -151,6 +167,12 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
         const lib = await cargarPdfjs();
         const pdf = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
         texto = await textoPdf(pdf);
+        // varios documentos en un mismo PDF (nóminas de toda la plantilla, facturas seguidas): se revisan uno a uno
+        if (onVarios && pdf.numPages > 1 && texto.replace(/\s/g, '').length >= 60) {
+          ponEstado(`Leyendo las ${pdf.numPages} páginas…`);
+          const docs = segmentar(await textosPdf(pdf, 80), { analizarFactura, propios: PROPIOS });
+          if (docs.length > 1) { await cargaConocidas; if (cerrado) return; cola = { docs, idx: 0, acum: [], file, pdf }; return mostrarDoc(); }
+        }
         canvas = await canvasDePdf(pdf, texto.replace(/\s/g, '').length < 60 ? 2.2 : 1.2);
         if (texto.replace(/\s/g, '').length < 60) {
           origen = 'ocr'; ponEstado('PDF escaneado: reconociendo el texto (OCR)…');
@@ -175,6 +197,32 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
     if (cerrado) return;
     await mostrar(file, texto, canvas, origen, confOcr);
   }
+
+  // ---------- PDF con varios documentos ----------
+  async function mostrarDoc() {
+    const d = cola.docs[cola.idx];
+    clear(cuerpo, h('div', { class: 'escaner-estado' }, h('span', { class: 'spinner', 'aria-hidden': 'true' }), h('span', {}, `Preparando el documento ${cola.idx + 1} de ${cola.docs.length}…`)));
+    const base = cola.file.name.replace(/\.pdf$/i, '');
+    const canvas = await canvasDePdf(cola.pdf, 1.2, d.paginas[0] + 1);
+    const parte = await recortarPdf(cola.file, d.paginas, `${base} - ${d.paginas.length > 1 ? `págs ${d.paginas[0] + 1}-${d.paginas[d.paginas.length - 1] + 1}` : `pág ${d.paginas[0] + 1}`}.pdf`);
+    if (cerrado || !cola) return;
+    await mostrar(parte, d.texto, canvas, 'pdf', null);
+    if (cerrado || !cola) return;
+    const n = cola.docs.length, ultimo = cola.idx + 1 >= n;
+    cuerpo.prepend(h('div', { class: 'banner' },
+      h('strong', {}, `Documento ${cola.idx + 1} de ${n}`), ` (${d.tipo === 'nomina' ? 'nómina' : 'factura'}, ${d.paginas.length > 1 ? 'págs' : 'pág'} ${d.paginas.map((p) => p + 1).join('-')}). `,
+      cola.acum.length ? `Llevas ${cola.acum.length} ${cola.acum.length === 1 ? 'gasto preparado' : 'gastos preparados'}; se guardan todos al terminar. ` : 'Los gastos se guardan todos al terminar. ',
+      h('button', { class: 'link-btn', type: 'button', onclick: () => avanzar() }, ultimo ? 'Saltar este y terminar' : 'Saltar este documento')));
+  }
+  async function avanzar() {
+    cola.idx++;
+    if (cola.idx < cola.docs.length) return mostrarDoc();
+    const todo = cola.acum; cola = null;
+    if (todo.length) onVarios(todo, { file: null, link: null }); else { toast('No se ha creado ningún gasto.'); inicio(); }
+  }
+  const entregar = (dato, info) => { if (!cola) { onDatos(dato, info); return; } cola.acum.push(dato); avanzar(); };
+  const entregarVarios = (lista, info) => { if (!cola) { if (onVarios) onVarios(lista, info); else onDatos(lista[0], info); return; } cola.acum.push(...lista); avanzar(); };
+  const textoCrear = (normal) => (cola ? (cola.idx + 1 >= cola.docs.length ? 'Añadir y terminar' : 'Añadir y pasar al siguiente') : normal);
 
   async function mostrar(file, texto, canvas, origen, confOcr) {
     if (esNomina(texto)) return mostrarNomina(file, texto, canvas, origen, confOcr);
@@ -258,7 +306,7 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
     const vista = canvas ? (() => { canvas.classList.add('escaner-preview'); return canvas; })() : null;
     const verTexto = h('details', { class: 'escaner-texto' }, h('summary', {}, `Texto leído (${origen === 'ocr' ? `OCR, confianza ${Math.round(confOcr || 0)}%` : 'PDF'})`), h('pre', {}, texto.slice(0, 6000)));
 
-    const btnCrear = h('button', { class: 'btn primary', type: 'button', onclick: crear }, textoBoton);
+    const btnCrear = h('button', { class: 'btn primary', type: 'button', onclick: crear }, textoCrear(textoBoton));
     async function crear() {
       const importe = leerImporte(iTotal.value);
       if (Number.isNaN(importe)) { toast('El importe no es válido: escríbelo como 44,20.', 'error'); iTotal.focus(); return; }
@@ -276,7 +324,7 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
         link = await subirFactura(aSubir, RENOMBRAR_ACTIVO ? carpetaFinal() : 'general');
       } catch (ex) { toast('No se ha podido subir la factura (se crea el gasto sin adjunto): ' + ex.message, 'error'); }
       const empresa = iEmp.value.trim();
-      onDatos({
+      entregar({
         fecha_factura: fecha, empresa, factura_nr: iNum.value.trim(), cantidad: importe ?? '', nif: iNif.value.trim() || ultimo?.nif || '',
         iban: ultimo?.iban || '', swift: ultimo?.swift || '', concepto,
         tipo: ultimo?.tipo || 'Factura', periodicidad: mismaClasif ? ultimo?.periodicidad || '' : '', metodo_pago: ultimo?.metodo_pago || '',
@@ -378,7 +426,7 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
     try { plantillas = await getPlantillas(); } catch { /* opcional */ }
     try { if (iTrab.value.trim()) ultimo = await escanerSugerencia(iTrab.value.trim(), n.nif); } catch { /* opcional */ }
 
-    const btnCrear = h('button', { class: 'btn primary', type: 'button', onclick: crear }, 'Crear los gastos marcados');
+    const btnCrear = h('button', { class: 'btn primary', type: 'button', onclick: crear }, textoCrear('Crear los gastos marcados'));
     async function crear() {
       const emp = iTrab.value.trim(), fecha = iFecha.value;
       if (!emp) { toast('Falta el trabajador.', 'error'); iTrab.focus(); return; }
@@ -411,7 +459,7 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar 
         };
       });
       const info = { file, link, duplicado: null, confianza: n.confianza, miniatura };
-      if (onVarios) onVarios(lista, info); else onDatos(lista[0], info);
+      entregarVarios(lista, info);
     }
 
     const fila = (d) => h('tr', {}, h('th', { scope: 'row' }, h('label', { class: 'check' }, d.chk, d.etiqueta)),

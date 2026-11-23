@@ -57,8 +57,8 @@ export async function renderEscanerVista(view, ctx) {
   async function guardarVarios(lista) {
     try {
       await crearGastos(lista);
-      ctx.invalidar(lista[0].curso_id);
-      toast(`${lista.length} ${lista.length === 1 ? 'gasto creado' : 'gastos creados'} de la nómina${editor ? '' : ': quedan pendientes de revisar'}`);
+      [...new Set(lista.map((g) => g.curso_id))].forEach((c) => ctx.invalidar(c));
+      toast(`${lista.length} ${lista.length === 1 ? 'gasto creado' : 'gastos creados'}${editor ? '' : ': quedan pendientes de revisar'}`);
       clear(zonaForm); esc.reiniciar(); pintarPendientes();
     } catch (ex) { toast('No se han guardado: ' + ex.message, 'error'); esc.reiniciar(); }
   }

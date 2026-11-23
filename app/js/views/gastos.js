@@ -532,8 +532,8 @@ export async function renderGastos(view, ctx) {
     try {
       const nuevos = await crearGastos(lista);
       nuevos.forEach((g) => reemplazar(null, g));
-      toast(`${nuevos.length} ${nuevos.length === 1 ? 'gasto creado' : 'gastos creados'} de la nómina`);
-    } catch (ex) { toast('No se han guardado los gastos de la nómina: ' + ex.message, 'error'); }
+      toast(`${nuevos.length} ${nuevos.length === 1 ? 'gasto creado' : 'gastos creados'}`);
+    } catch (ex) { toast('No se han guardado los gastos: ' + ex.message, 'error'); }
   }
   function nuevoGasto(inicial, escaneo) {
     abrirGastoForm({ gasto: null, ctx, inicial, escaneo, onGuardado: (nuevo) => reemplazar(null, nuevo), onBorrado: () => {} });

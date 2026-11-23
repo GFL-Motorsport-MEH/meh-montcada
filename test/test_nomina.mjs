@@ -82,3 +82,16 @@ Suj. IRPF 1.487,61`;
   assert.equal(r.trabajador, 'Nuria Ruiperez Davila'); assert.equal(r.liquido, 1390.91); assert.equal(r.ss, 574.98); assert.equal(r.irpf, 0); assert.equal(r.fecha, '2026-11-30');
   console.log('OK nómina real');
 }
+
+// varios documentos en un PDF: una nómina por página y facturas con nº distinto
+{
+  const { segmentar } = await import('../app/js/escaner-docs.js');
+  const { analizarFactura } = await import('../app/js/escaner-parse.js');
+  const nom = (n) => `TRABAJADOR N.I.F.\nAPELLIDO${n}, NOMBRE ${n} 1111111${n}A\nDel 01 de Octubre al 31 de Octubre de 2026\nCot CONCEPTO DEVENGO DEDUCCION\nSueldo base 1.000,00\nTOTAL TOTAL DEVENGADO DEDUCCIONES\nLIQUIDO TOTAL A PERCIBIR\n900,00 EUROS`;
+  assert.deepEqual(segmentar([nom(1), nom(2), nom(3)], { analizarFactura }).map((d) => d.paginas), [[0], [1], [2]]);
+  const fra = (n, t) => `Factura\nNúmero de la factura ${n}\nFecha de la factura 20.10.2026\nTotal pendiente ${t} €`;
+  const d = segmentar([fra('AB123456', '7,99'), 'Condiciones generales del servicio, sin importes ni número, texto de continuación', fra('CD654321', '9,50')], { analizarFactura });
+  assert.deepEqual(d.map((x) => x.paginas), [[0, 1], [2]]);
+  assert.equal(segmentar([fra('AB123456', '7,99')], { analizarFactura }).length, 1);
+  console.log('OK varios documentos');
+}

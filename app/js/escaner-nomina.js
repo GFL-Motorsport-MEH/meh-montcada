@@ -32,8 +32,11 @@ export function analizarNomina(texto, { propios = [] } = {}) {
   if (i < 0) i = nl.findIndex((l) => /\bliquido\b/.test(l) && importes(lineas[l ? nl.indexOf(l) : 0]).length);
   if (i >= 0) {
     res.liquido = importes(lineas[i]).slice(-1)[0] ?? null;
-    if (res.liquido == null) { // la cifra suele estar unas líneas más abajo («1.390,91 EUROS»)
-      for (let k = i + 1; k <= i + 4 && k < lineas.length; k++) { const v = importes(lineas[k]); if (v.length && (/euros|€|eur\b/.test(nl[k]) || v.length === 1)) { res.liquido = v[v.length - 1]; break; } }
+    if (res.liquido == null) { // la cifra suele estar unas líneas más abajo («1.390,91 EUROS»); se prefiere la línea con «EUROS»
+      const sig = lineas.slice(i + 1, i + 7).map((l, d) => ({ l, v: importes(l), n: nl[i + 1 + d] })).filter((x) => x.v.length);
+      const conEuros = sig.find((x) => /euros|€|\beur\b/.test(x.n));
+      const elegido = conEuros || sig.find((x) => x.v.length === 1 && x.v[0] > 0);
+      if (elegido) res.liquido = elegido.v[elegido.v.length - 1];
     }
     res.confianza.liquido = res.liquido != null ? 'alta' : 'baja';
   }
