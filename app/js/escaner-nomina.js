@@ -85,9 +85,18 @@ export function analizarNomina(texto, { propios = [] } = {}) {
   // periodo → fecha = último día del mes de la nómina
   const lp = lineas.filter((l, k) => /periodo|liquidaci|mensualidad|nomina de|nomina del mes|mes de/.test(nl[k]));
   let fecha = null;
-  for (const l of lp) { const f = fechasEn(l); if (f.length) { fecha = f[f.length - 1].f; break; } }
+  // 1) mes nombrado en la línea del periodo («Noviembre 2026», «NOV 2026», «11/2026»): último día de ese mes
+  const reMes = new RegExp(`\\b(${MESES.join('|')}|${MESES.map((m) => m.slice(0, 3)).join('|')})\\.?\\s*(?:de\\s*|del\\s*|/|-)?\\s*(20\\d{2})\\b`);
+  for (const l of lp) {
+    const m = normalizar(l).match(reMes);
+    if (m) { fecha = finDeMes(+m[2], MESES.findIndex((x) => x === m[1] || x.slice(0, 3) === m[1]) + 1); break; }
+    const n = normalizar(l).match(/(?<![\d\/-])\b(0?[1-9]|1[0-2])\s*[\/-]\s*(20\d{2})\b(?!\s*[\/-])/);
+    if (n) { fecha = finDeMes(+n[2], +n[1]); break; }
+  }
+  // 2) fechas del periodo («01/11/2026 a 30/11/2026»): mes de la última
+  if (!fecha) for (const l of lp) { const f = fechasEn(l); if (f.length) { fecha = f[f.length - 1].f; break; } }
   if (fecha) fecha = finDeMes(+fecha.slice(0, 4), +fecha.slice(5, 7));
-  else {
+  if (!fecha) {
     const m = normalizar(texto).match(new RegExp(`\\b(${MESES.join('|')})\\s*(?:de\\s*|del\\s*|/|-)?\\s*(20\\d{2})\\b`));
     if (m) fecha = finDeMes(+m[2], MESES.indexOf(m[1]) + 1);
   }
