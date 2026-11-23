@@ -1,8 +1,9 @@
 // Escáner de facturas: lee un PDF o una foto, saca proveedor, NIF, fecha, nº e importe, y propone el gasto
 // completando la clasificación con la del último gasto de ese proveedor. Todo se hace en el navegador.
-import { h, clear, toast, fmtEUR2, fmtFecha, mesDeFecha, normalizar, num, tituloCategoria } from '../ui.js';
-import { subirFactura, escanerProveedores, escanerEmpresas, escanerSugerencia, escanerDuplicado } from '../db.js';
-import { analizarFactura, rutaSugerida, idPedido, tipoAbono } from '../escaner-parse.js';
+import { h, clear, toast, fmtEUR2, fmtFecha, mesDeFecha, normalizar, num, tituloCategoria, capitalizar } from '../ui.js';
+import { subirFactura, escanerProveedores, escanerEmpresas, escanerSugerencia, escanerDuplicado, gastosDeEmpresaMes, getPlantillas } from '../db.js';
+import { analizarFactura, rutaSugerida, idPedido, tipoAbono, mejorNombre } from '../escaner-parse.js';
+import { esNomina, analizarNomina } from '../escaner-nomina.js';
 
 // Renombrado al formato estándar «AAMMDD - Empresa - Nº - Concepto»: preparado pero DESACTIVADO por ahora (20-nov-2026).
 // Con false se sigue subiendo con el nombre original del archivo y el botón «Renombrar» no hace nada.
@@ -110,7 +111,7 @@ const CONF = { alta: ['ok', 'Seguro'], media: ['warn', 'Revisar'], baja: ['bad',
 
 // Monta el escáner dentro de un contenedor. Al terminar llama a onDatos(datos, info) con el gasto propuesto
 // (los datos leídos + la clasificación del último gasto del proveedor) y el archivo ya subido.
-export function montarEscaner(cuerpo, ctx, { onDatos, onCerrar = () => {}, textoBoton = 'Revisar y crear el gasto' }) {
+export function montarEscaner(cuerpo, ctx, { onDatos, onVarios = null, onCerrar = () => {}, textoBoton = 'Revisar y crear el gasto' }) {
   const { state } = ctx;
   let cerrado = false;
   // proveedores conocidos (de la BD, sin necesidad de ver los gastos)
@@ -176,6 +177,7 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onCerrar = () => {}, texto
   }
 
   async function mostrar(file, texto, canvas, origen, confOcr) {
+    if (esNomina(texto)) return mostrarNomina(file, texto, canvas, origen, confOcr);
     const r = analizarFactura(texto, { conocidas, propios: PROPIOS, nombreArchivo: file.name });
     const hoy = new Date().toISOString().slice(0, 10);
     if (r.fecha && r.fecha > hoy && r.confianza.fecha === 'alta') r.confianza.fecha = 'media';
@@ -319,12 +321,122 @@ export function montarEscaner(cuerpo, ctx, { onDatos, onCerrar = () => {}, texto
           verTexto)));
   }
 
+  // ---------- nómina: un PDF por trabajador → hasta 3 gastos (Nómina = líquido, SS = trabajador + empresa, IRPF) ----------
+  async function mostrarNomina(file, texto, canvas, origen, confOcr) {
+    const n = analizarNomina(texto, { propios: PROPIOS });
+    const trabajadores = conocidas.filter((e) => !e.canon);
+    const hallado = (n.trabajador && mejorNombre(n.trabajador, conocidas)) || null;
+    const miniatura = miniaturaDe(canvas);
+    const hoy = new Date().toISOString().slice(0, 10);
+    const iTrab = h('input', { type: 'text', value: hallado?.nombre || n.trabajador || '', autocomplete: 'off', list: 'dl-nom-trab', 'aria-label': 'Trabajador' });
+    const dlTrab = h('datalist', { id: 'dl-nom-trab' }, [...new Set(trabajadores.map((e) => e.nombre))].map((v) => h('option', { value: v })));
+    const iFecha = h('input', { type: 'date', value: n.fecha || '', 'aria-label': 'Fecha de la nómina (fin de mes)' });
+    const impTxt = (v) => (v == null ? '' : Number(v).toFixed(2).replace('.', ','));
+    const cat = state.taxonomia.find((c) => normalizar(c.nombre) === 'trabajadores');
+    const subDe = (nombre) => cat?.subcategorias.find((s) => normalizar(s.nombre) === nombre);
+    // filas: nómina, SS, IRPF
+    const defs = [
+      { clave: 'nomina', etiqueta: 'Nómina (líquido)', concepto: 'Nomina mes', sub: subDe('nominas'), valor: n.liquido, conf: n.confianza.liquido, metodo: 'Transferencia', pago: true,
+        detalle: null },
+      { clave: 'ss', etiqueta: 'Seguridad Social', concepto: 'SS mes', sub: subDe('seguridad social'), valor: n.ss, conf: n.confianza.ss || 'baja', metodo: 'Domiciliacion', pago: false,
+        detalle: n.ssTrabajador != null || n.ssEmpresa != null ? `trabajador ${n.ssTrabajador != null ? fmtEUR2(n.ssTrabajador) : '¿?'} + empresa ${n.ssEmpresa != null ? fmtEUR2(n.ssEmpresa) : '¿?'}` : null },
+      { clave: 'irpf', etiqueta: 'IRPF', concepto: 'IRPF', sub: subDe('irpf trabajadores'), valor: n.irpf > 0 ? n.irpf : null, conf: n.irpf > 0 ? n.confianza.irpf : 'alta', metodo: 'Domiciliacion', pago: false,
+        detalle: n.irpf > 0 ? null : 'sin retención de IRPF en esta nómina' },
+    ];
+    for (const d of defs) {
+      d.chk = h('input', { type: 'checkbox', checked: d.valor != null && d.valor > 0, 'aria-label': `Crear gasto de ${d.etiqueta}` });
+      d.inp = h('input', { type: 'text', inputmode: 'decimal', value: impTxt(d.valor), placeholder: '0,00', autocomplete: 'off', 'aria-label': `Importe ${d.etiqueta}` });
+      d.nota = h('span', { class: 'muted small' });
+      d.badge = h('span', {});
+      const pintarBadge = () => {
+        const v = d.inp.value.trim();
+        const [cls, txt] = d.clave === 'irpf' && !v ? ['ok', 'Sin IRPF'] : !v ? ['bad', 'No encontrado'] : v !== impTxt(d.valor) ? ['ok', 'Corregido'] : (CONF[d.conf] || ['bad', 'Dudoso']);
+        d.badge.className = `conf ${cls}`; d.badge.textContent = txt;
+      };
+      d.inp.addEventListener('input', () => { pintarBadge(); if (d.inp.value.trim()) d.chk.checked = true; });
+      pintarBadge();
+    }
+    // ¿ya existen esos gastos (p. ej. generados desde las plantillas)? se avisa y la casilla queda sin marcar
+    const existentes = [];
+    const revisarExistentes = async () => {
+      existentes.length = 0;
+      const fecha = iFecha.value, emp = iTrab.value.trim();
+      const curso = state.cursos.find((c) => c.fecha_inicio <= fecha && fecha <= c.fecha_fin);
+      let lista = [];
+      if (fecha && emp && curso) { try { lista = await gastosDeEmpresaMes(emp, curso.id, mesDeFecha(fecha)); } catch { /* opcional */ } }
+      for (const d of defs) {
+        const ya = lista.find((x) => (d.sub && x.subcategoria_id === d.sub.id) || normalizar(x.subcategoria_texto) === normalizar(d.sub?.nombre));
+        d.nota.textContent = ya ? `Ya hay un gasto así en ${mesDeFecha(fecha)} (${fmtEUR2(num(ya.cantidad))}): se deja sin marcar para no duplicar.` : (d.detalle || '');
+        if (ya) { d.chk.checked = false; existentes.push(d.clave); }
+      }
+    };
+    iTrab.addEventListener('change', revisarExistentes); iFecha.addEventListener('change', revisarExistentes);
+    revisarExistentes();
+
+    // método, periodicidad y centro del trabajador: de las plantillas (si está) y, si no, del último gasto
+    let plantillas = [], ultimo = null;
+    try { plantillas = await getPlantillas(); } catch { /* opcional */ }
+    try { if (iTrab.value.trim()) ultimo = await escanerSugerencia(iTrab.value.trim(), n.nif); } catch { /* opcional */ }
+
+    const btnCrear = h('button', { class: 'btn primary', type: 'button', onclick: crear }, 'Crear los gastos marcados');
+    async function crear() {
+      const emp = iTrab.value.trim(), fecha = iFecha.value;
+      if (!emp) { toast('Falta el trabajador.', 'error'); iTrab.focus(); return; }
+      if (!fecha) { toast('Falta la fecha (último día del mes de la nómina).', 'error'); iFecha.focus(); return; }
+      const cursoFecha = state.cursos.find((c) => c.fecha_inicio <= fecha && fecha <= c.fecha_fin);
+      if (!cursoFecha) { toast('No hay ningún curso para esa fecha.', 'error'); return; }
+      const elegidos = [];
+      for (const d of defs) {
+        if (!d.chk.checked) continue;
+        const v = leerImporte(d.inp.value);
+        if (v == null || Number.isNaN(v) || !d.inp.value.trim()) { toast(`El importe de «${d.etiqueta}» no es válido: escríbelo como 1234,56.`, 'error'); d.inp.focus(); return; }
+        elegidos.push([d, v]);
+      }
+      if (!elegidos.length) { toast('No hay ningún gasto marcado.', 'error'); return; }
+      const mes = mesDeFecha(fecha);
+      btnCrear.disabled = true; btnCrear.textContent = 'Subiendo la nómina…';
+      let link = null;
+      try { link = await subirFactura(file, 'general'); } catch (ex) { toast('No se ha podido subir la nómina (se crean los gastos sin adjunto): ' + ex.message, 'error'); }
+      const nombreEmp = normalizar(emp);
+      const lista = elegidos.map(([d, v]) => {
+        const pl = plantillas.find((p) => normalizar(p.empresa) === nombreEmp && (d.sub && p.subcategoria_id === d.sub.id));
+        const centroId = pl?.centro_id || ultimo?.centro_id || ctx.centroActual()?.id || ctx.centroPrincipal()?.id || null;
+        return {
+          fecha_factura: fecha, empresa: emp, factura_nr: `Sueldos ${capitalizar(mes)}`, cantidad: v, nif: n.nif || ultimo?.nif || '', iban: ultimo?.iban || '', swift: ultimo?.swift || '',
+          concepto: d.concepto, tipo: 'Nomina', periodicidad: 'Mensual', metodo_pago: pl?.metodo_pago || d.metodo,
+          categoria_id: cat?.id || null, subcategoria_id: d.sub?.id || null, categoria_texto: cat ? tituloCategoria(cat.nombre) : null, subcategoria_texto: d.sub?.nombre || null,
+          pago: d.pago ? 'True' : 'False', fecha_pago: d.pago ? fecha : null, fiscontal: 'False', check_banca: false,
+          centro_id: centroId, mes: mes || undefined, curso_id: cursoFecha.id, link_factura: link, sin_factura: !link,
+          comentarios: `Escaneada (nómina de ${emp}).`,
+        };
+      });
+      const info = { file, link, duplicado: null, confianza: n.confianza, miniatura };
+      if (onVarios) onVarios(lista, info); else onDatos(lista[0], info);
+    }
+
+    const fila = (d) => h('tr', {}, h('th', { scope: 'row' }, h('label', { class: 'check' }, d.chk, d.etiqueta)),
+      h('td', {}, d.inp, h('div', {}, d.nota)), h('td', {}, d.badge));
+    clear(cuerpo,
+      h('div', { class: 'escaner-res' },
+        canvas ? h('div', { class: 'escaner-vista' }, (() => { canvas.classList.add('escaner-preview'); return canvas; })()) : null,
+        h('div', { class: 'escaner-datos' },
+          h('div', { class: 'banner' }, h('strong', {}, 'Es una nómina. '), 'Se crean hasta 3 gastos con este mismo PDF: nómina (líquido), Seguridad Social (cuota del trabajador + cuota de la empresa) e IRPF si hay retención. Revisa los importes.'),
+          h('table', { class: 'data escaner-tabla' }, h('tbody', {},
+            h('tr', {}, h('th', { scope: 'row' }, 'Trabajador'), h('td', { colspan: 2 }, iTrab, dlTrab, hallado ? null : h('span', { class: 'muted small' }, ' no está en el listado: se creará con este nombre'))),
+            h('tr', {}, h('th', { scope: 'row' }, 'Fecha (fin de mes)'), h('td', { colspan: 2 }, iFecha, !n.fecha ? h('span', { class: 'muted small' }, ' no se ha encontrado el periodo: ponlo a mano') : null)),
+            defs.map(fila))),
+          h('div', { class: 'escaner-acciones' },
+            h('button', { class: 'btn', type: 'button', onclick: inicio }, 'Otro documento'),
+            btnCrear),
+          h('details', { class: 'escaner-texto' }, h('summary', {}, `Texto leído (${origen === 'ocr' ? `OCR, confianza ${Math.round(confOcr || 0)}%` : 'PDF'})`), h('pre', {}, texto.slice(0, 6000))))));
+  }
+
   inicio();
   return { reiniciar: inicio, cerrar: () => { cerrado = true; onCerrar(); } };
 }
 
 // Versión en ventana (se usa desde la ficha de gasto u otras pantallas)
-export function abrirEscaner(ctx, { onDatos }) {
+export function abrirEscaner(ctx, { onDatos, onVarios = null }) {
   const cuerpo = h('div', { class: 'escaner-cuerpo' });
   const overlay = h('div', { class: 'overlay modal-center', onmousedown: (e) => { if (e.target === overlay) cerrar(); } },
     h('div', { class: 'dialog escaner', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'esc-t' },
@@ -335,5 +447,5 @@ export function abrirEscaner(ctx, { onDatos }) {
   function cerrar() { esc?.cerrar(); document.removeEventListener('keydown', onKey); overlay.remove(); }
   document.addEventListener('keydown', onKey);
   document.body.append(overlay);
-  esc = montarEscaner(cuerpo, ctx, { onDatos: (d, info) => { cerrar(); onDatos(d, info); } });
+  esc = montarEscaner(cuerpo, ctx, { onDatos: (d, info) => { cerrar(); onDatos(d, info); }, onVarios: onVarios ? (l, info) => { cerrar(); onVarios(l, info); } : null });
 }

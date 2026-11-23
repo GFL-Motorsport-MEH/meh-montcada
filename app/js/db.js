@@ -184,6 +184,10 @@ export async function contarPendientes() {
 export async function escanerProveedores() { return check(await supabase.rpc('escaner_proveedores')) || []; }
 export async function escanerEmpresas() { return check(await supabase.rpc('escaner_empresas')) || []; }
 export async function escanerSugerencia(empresa, nif) { return (check(await supabase.rpc('escaner_sugerencia', { p_empresa: empresa, p_nif: nif || null })) || [])[0] || null; }
+// gastos de un trabajador en un mes (para no duplicar nómina / SS / IRPF al escanear una nómina)
+export async function gastosDeEmpresaMes(empresa, cursoId, mes) {
+  return check(await supabase.from('gastos').select('id,concepto,cantidad,subcategoria_id,subcategoria_texto,tipo').eq('curso_id', cursoId).eq('mes', mes).ilike('empresa', empresa)) || [];
+}
 export async function escanerDuplicado(empresa, numero, fecha, importe) {
   return (check(await supabase.rpc('escaner_duplicado', { p_empresa: empresa, p_numero: numero || null, p_fecha: fecha || null, p_importe: importe ?? null })) || [])[0] || null;
 }

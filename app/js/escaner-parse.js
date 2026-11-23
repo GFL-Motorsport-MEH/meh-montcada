@@ -114,7 +114,7 @@ function indexar(texto) {
   for (const w of palabras) { const k = w.slice(0, 2); if (!porInicio.has(k)) porInicio.set(k, []); porInicio.get(k).push(w); }
   return { palabras, porInicio };
 }
-function mejorNombre(texto, conocidas) {
+export function mejorNombre(texto, conocidas) {
   const { palabras, porInicio } = indexar(texto);
   let mejor = null;
   for (const e of conocidas) {

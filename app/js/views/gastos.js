@@ -4,7 +4,7 @@ import { h, clear, fmtEUR2, fmtFecha, fmtFechaCorta, num, MESES, MESES_CORTO, ca
 import { ordenGuardado, guardarOrden } from '../orden-compartido.js';
 import { abrirGastoForm } from './gasto-form.js';
 import { vista, leerV, guardarV, filtroFecha, pasaFecha, fechaActiva, describirFecha, crearAviso, FECHA_VACIA } from '../vista.js';
-import { moverGastosACentro, actualizarGasto, getListas, agrupar, getGastosPendientes } from '../db.js';
+import { crearGastos, moverGastosACentro, actualizarGasto, getListas, agrupar, getGastosPendientes } from '../db.js';
 import { generarGastosDelMes } from './plantillas.js';
 import { abrirEscaner } from './escaner.js';
 import { abrirFactura, esArchivoSubido, botonSubirFactura } from '../factura-archivo.js';
@@ -79,7 +79,7 @@ export async function renderGastos(view, ctx) {
   let verReg = !!leerV('gastos.verReg', false);
   const btnReg = h('button', { type: 'button', class: 'btn', 'aria-pressed': String(verReg), title: 'Muestra u oculta la fecha y hora en que se registró cada gasto', onclick: () => {
     verReg = !verReg; guardarV('gastos.verReg', verReg);
-    view.querySelector('table.tabla-gastos')?.classList.toggle('ver-reg', verReg);
+    tbody.closest('table')?.classList.toggle('ver-reg', verReg);
     btnReg.setAttribute('aria-pressed', String(verReg)); btnReg.textContent = verReg ? 'Ocultar registro' : 'Ver registro';
   } }, verReg ? 'Ocultar registro' : 'Ver registro');
   // altura de la barra fija (0 si está oculta), para que las cabeceras de la tabla se peguen debajo de ella
@@ -527,6 +527,14 @@ export async function renderGastos(view, ctx) {
     ctx.setGastos(curso.id, gastos);
     pintar();
   }
+  // nómina escaneada: se crean de una vez los gastos marcados (nómina, SS, IRPF)
+  async function guardarVariosEscaneo(lista) {
+    try {
+      const nuevos = await crearGastos(lista);
+      nuevos.forEach((g) => reemplazar(null, g));
+      toast(`${nuevos.length} ${nuevos.length === 1 ? 'gasto creado' : 'gastos creados'} de la nómina`);
+    } catch (ex) { toast('No se han guardado los gastos de la nómina: ' + ex.message, 'error'); }
+  }
   function nuevoGasto(inicial, escaneo) {
     abrirGastoForm({ gasto: null, ctx, inicial, escaneo, onGuardado: (nuevo) => reemplazar(null, nuevo), onBorrado: () => {} });
   }
@@ -580,7 +588,7 @@ export async function renderGastos(view, ctx) {
         btnReg,
         h('button', { class: 'btn', onclick: exportar }, 'Exportar CSV'),
         h('button', { class: 'btn', onclick: () => generarGastosDelMes(ctx, { curso, gastos, onCreados: (creados) => { gastos.unshift(...creados); ctx.setGastos(curso.id, gastos); pintar(); } }) }, 'Generar gastos del mes'),
-        h('button', { class: 'btn', onclick: () => abrirEscaner(ctx, { onDatos: (inicial, info) => nuevoGasto(inicial, info) }) }, 'Escanear factura'),
+        h('button', { class: 'btn', onclick: () => abrirEscaner(ctx, { onDatos: (inicial, info) => nuevoGasto(inicial, info), onVarios: guardarVariosEscaneo }) }, 'Escanear factura'),
         h('button', { class: 'btn primary', onclick: () => nuevoGasto() }, '+ Nuevo gasto'))),
     h('div', { class: 'filters filters-gastos' }, h('div', { class: 'search' }, fQ), fEstado),
     aviso,

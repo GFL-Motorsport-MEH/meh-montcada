@@ -1,7 +1,7 @@
 // Pestaña «Escáner»: escanear facturas y tickets y añadirlos como gasto.
 // Es la única pestaña que ve el usuario con rol «escaner»; sus gastos quedan pendientes de revisar (amarillo en Gastos).
 import { h, clear, toast, normalizar, fmtEUR2, fmtFecha, fmtFechaCorta, num, mesDeFecha, hoyISO, tituloCategoria, cargando } from '../ui.js';
-import { crearGasto, getGastosPendientes, actualizarGasto, getListas, escanerEmpresas, agrupar } from '../db.js';
+import { crearGasto, crearGastos, getGastosPendientes, actualizarGasto, getListas, escanerEmpresas, agrupar } from '../db.js';
 import { montarEscaner } from './escaner.js';
 import { abrirGastoForm } from './gasto-form.js';
 import { abrirFactura, bloqueFactura } from '../factura-archivo.js';
@@ -51,7 +51,17 @@ export async function renderEscanerVista(view, ctx) {
   }
 
   const esc = { reiniciar: () => {} };
-  function pintarEscaner() { Object.assign(esc, montarEscaner(zonaEscaner, ctx, { onDatos: formulario, textoBoton: 'Continuar' })); }
+  function pintarEscaner() { Object.assign(esc, montarEscaner(zonaEscaner, ctx, { onDatos: formulario, textoBoton: 'Continuar', onVarios: guardarVarios })); }
+
+  // nómina escaneada: se crean de una vez los gastos marcados (nómina, SS, IRPF)
+  async function guardarVarios(lista) {
+    try {
+      await crearGastos(lista);
+      ctx.invalidar(lista[0].curso_id);
+      toast(`${lista.length} ${lista.length === 1 ? 'gasto creado' : 'gastos creados'} de la nómina${editor ? '' : ': quedan pendientes de revisar'}`);
+      clear(zonaForm); esc.reiniciar(); pintarPendientes();
+    } catch (ex) { toast('No se han guardado: ' + ex.message, 'error'); esc.reiniciar(); }
+  }
 
   // ---------- formulario corto del gasto ----------
   function formulario(d = {}, info = {}) {
