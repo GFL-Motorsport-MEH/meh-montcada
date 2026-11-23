@@ -17,3 +17,24 @@
 .al-bulk td { padding: 3px 6px; }
 .al-bulk input { width: 100%; }
 @media (max-width: 700px) { .al-grid { grid-template-columns: 1fr; } }
+
+/* Study Club · calendario mensual */
+.sc-mes { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.sc-cab { text-align: center; font-size: 12px; font-weight: 700; color: var(--text-muted); padding: 4px 0; }
+.sc-dia { min-height: 92px; border: 1px solid var(--border, #e3e1da); border-radius: 6px; padding: 4px 5px; display: flex; flex-direction: column; gap: 3px; background: var(--surface, #fff); }
+.sc-dia.fuera { opacity: .45; }
+.sc-dia.hoy { border-color: var(--accent, #4f7cff); box-shadow: inset 0 0 0 1px var(--accent, #4f7cff); }
+.sc-dia.con { cursor: default; }
+.sc-dia.con:hover, .sc-dia.con:focus { background: rgba(79, 124, 255, .07); outline: none; }
+.sc-num { font-size: 12px; font-weight: 700; color: var(--text-muted); }
+.sc-chip { display: flex; justify-content: space-between; gap: 4px; width: 100%; text-align: left; border: 0; border-radius: 4px; padding: 2px 5px; font-size: 11.5px; cursor: pointer; background: rgba(46, 157, 91, .16); color: inherit; }
+.sc-chip:hover { background: rgba(46, 157, 91, .3); }
+.sc-chip.cerrada { background: rgba(140, 138, 129, .22); text-decoration: line-through; }
+.sc-chip-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-chip-n { font-weight: 700; flex: none; }
+.sc-pop { position: fixed; z-index: 3000; max-width: 320px; min-width: 220px; background: var(--surface, #fff); color: var(--text, #222); border: 1px solid var(--border, #d9d7cf); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, .18); padding: 10px 12px; font-size: 13px; pointer-events: none; }
+.sc-pop-ses + .sc-pop-ses { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border, #e3e1da); }
+.sc-pop-h { margin-bottom: 4px; }
+.sc-pop-fila { margin: 2px 0; }
+.sc-pop-alu { margin: 2px 0 0; padding-left: 18px; }
+@media (max-width: 700px) { .sc-dia { min-height: 64px; } .sc-chip-t { display: none; } }

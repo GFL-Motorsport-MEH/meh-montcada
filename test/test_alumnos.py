@@ -29,8 +29,8 @@ SEMILLA = """() => { const m = window.__mock.db, hoy = new Date().toISOString().
   m.ac_prestamos.push({ id: 'pr1', tipo: 'mascota', alumno_id: 'a1', libro: 'Mascota Nivel 1', fecha_salida: '2020-01-01', fecha_devolucion: null });
   m.ac_formularios.push({ id: 'f1', slug: 'granja', titulo: 'Salida granja', tipo: 'generico', activo: true, campos: [] });
   m.ac_formulario_respuestas.push({ id: 'fr1', formulario_id: 'f1', alumno_id: 'a2', estado: 'procesada', datos: {} }, { id: 'fr2', formulario_id: 'f1', alumno_id: null, estado: 'nueva', datos: {} });
-  m.al_studyclub_sesiones.push({ id: 'sc1', centro_id: 'ce1', fecha: '2099-03-02', hora_inicio: '20:10:00', hora_fin: '20:40:00', titulo: 'Past Simple', profesora_id: 'p1', plazas: 2, estado: 'abierta', notas: null, profesora: { id: 'p1', nombre: 'Mar Franco' } },
-    { id: 'sc2', centro_id: 'ce1', fecha: '2099-03-03', hora_inicio: '20:10:00', hora_fin: '20:40:00', titulo: null, profesora_id: null, plazas: 6, estado: 'abierta', notas: null });
+  m.al_studyclub_sesiones.push({ id: 'sc1', centro_id: 'ce1', fecha: new Date(Date.now() + 86400000).toISOString().slice(0, 10), hora_inicio: '20:10:00', hora_fin: '20:40:00', titulo: 'Past Simple', profesora_id: 'p1', plazas: 2, estado: 'abierta', notas: null, profesora: { id: 'p1', nombre: 'Mar Franco' } },
+    { id: 'sc2', centro_id: 'ce1', fecha: new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10), hora_inicio: '20:10:00', hora_fin: '20:40:00', titulo: null, profesora_id: null, plazas: 6, estado: 'abierta', notas: null });
   m.al_studyclub_reservas.push({ id: 'rs1', sesion_id: 'sc1', nombre: 'Ana García', email: 'marta@ejemplo.es', telefono: '600111222', tema: 'Past Simple', estado: 'apuntado', origen: 'web', created_at: '2099-01-01T10:00:00Z' });
   m.ac_tutorias.push({ id: 'tu1', alumno_id: 'a1', alumno: { id: 'a1' }, fecha: '2099-01-10', estado: 'pendiente', profesora_id: 'p1' });
 }"""
@@ -186,6 +186,14 @@ try:
         d.get_by_role("button", name="Cerrar").click()
         pg.get_by_role("tab", name="Calendario por profesora").click(); pg.wait_for_timeout(300)
         check("Mar Franco" in pg.locator("main").inner_text(), "calendario semanal por profesora")
+        pg.get_by_role("tab", name="Calendario mensual").click(); pg.wait_for_timeout(300)
+        for _ in range(3):
+            if pg.locator(".sc-chip", has_text="Past Simple").count(): break
+            pg.get_by_role("button", name="Siguiente ›").click()
+        check(pg.locator(".sc-chip", has_text="Past Simple").count() == 1, "el mes de la sesión muestra su chip en el calendario mensual")
+        pg.locator(".sc-dia.con", has=pg.locator(".sc-chip", has_text="Past Simple")).hover(); pg.wait_for_timeout(250)
+        pop = pg.locator(".sc-pop").inner_text()
+        check("Mar Franco" in pop and "Past Simple" in pop, f"el popup del día muestra la profesora y el temario")
         pg.close()
 
         print("10. profesora: ve las pestañas de lo suyo y no la documentación")

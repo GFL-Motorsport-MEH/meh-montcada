@@ -50,8 +50,9 @@ export async function renderStudyClub(view, ctx) {
   const aPor = new Map(alumnos.map((a) => [a.id, a]));
   const activas = (sid) => reservas.filter((r) => r.sesion_id === sid && r.estado === 'apuntado');
   const mia = (s) => !!yo && s.profesora_id === yo.id;
-  let vista = leerV('sc.vista', yo && !editor ? 'calendario' : 'sesiones'); if (!['sesiones', 'calendario', 'ajustes'].includes(vista)) vista = 'sesiones';
+  let vista = leerV('sc.vista', yo && !editor ? 'calendario' : 'sesiones'); if (!['sesiones', 'calendario', 'mes', 'ajustes'].includes(vista)) vista = 'sesiones';
   let semana = lunesDe(hoyISO());
+  let mes = hoyISO().slice(0, 7) + '-01';
   let verPasadas = false; let soloMias = !!yo && !editor;
   const cont = h('div');
 
@@ -93,6 +94,53 @@ export async function renderStudyClub(view, ctx) {
       ? h('div', { class: 'card' }, h('table', { class: 'tbl' }, h('thead', {}, h('tr', {}, h('th', {}, 'Profesora'), fechas.map((f) => h('th', {}, larga(f))))),
         h('tbody', {}, filas.map((p) => h('tr', {}, h('td', {}, avatarDe(p.nombre, p.siglas), ' ', p.nombre), fechas.map((f) => celda(p, f)))))))
       : h('div', { class: 'card empty' }, 'No hay profesoras activas.'));
+  }
+
+
+  // ---------- 2b) calendario mensual: al pasar por un día, ventana con sus sesiones, profesoras y alumnos ----------
+  let pop = null;
+  const quitarPop = () => { pop?.remove(); pop = null; };
+  function mostrarPop(celda, lista) {
+    quitarPop();
+    pop = h('div', { class: 'sc-pop', role: 'tooltip' }, lista.map((s) => {
+      const p = pPor.get(s.profesora_id); const ap = activas(s.id);
+      return h('div', { class: 'sc-pop-ses' },
+        h('div', { class: 'sc-pop-h' }, h('strong', {}, `${hhmm(s.hora_inicio)} - ${hhmm(s.hora_fin)}`), ' · ', titulo(s), s.estado !== 'abierta' ? pill(s.estado, 'off') : null),
+        h('div', { class: 'sc-pop-fila' }, h('span', { class: 'muted' }, 'Profesora: '), p ? h('span', {}, avatarDe(p.nombre, p.siglas), ' ', p.nombre) : h('span', { class: 'muted' }, 'sin asignar')),
+        h('div', { class: 'sc-pop-fila' }, h('span', { class: 'muted' }, `Alumnos (${ap.length}/${s.plazas}): `), ap.length ? '' : h('span', { class: 'muted' }, 'nadie apuntado')),
+        ap.length ? h('ul', { class: 'sc-pop-alu' }, ap.map((r) => h('li', {}, r.nombre, r.asistencia === 'asistio' ? ' ✓' : r.asistencia === 'falta' ? ' ✗' : ''))) : null);
+    }));
+    document.body.append(pop);
+    const r = celda.getBoundingClientRect(); const w = pop.offsetWidth; const hh = pop.offsetHeight;
+    let x = r.right + 8; if (x + w > window.innerWidth - 8) x = Math.max(8, r.left - w - 8);
+    const y = Math.min(Math.max(8, r.top), Math.max(8, window.innerHeight - hh - 8));
+    pop.style.left = `${x}px`; pop.style.top = `${y}px`;
+  }
+  function pintarMes() {
+    const hoy = hoyISO(); const primero = mes; const dMes = aFecha(primero);
+    const finMes = new Date(Date.UTC(dMes.getUTCFullYear(), dMes.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
+    const ini = lunesDe(primero); const fin = sumar(lunesDe(finMes), 6);
+    const delMes = sesiones.filter((x) => x.fecha >= ini && x.fecha <= fin && x.estado !== 'cancelada' && (!soloMias || mia(x)));
+    const mover = (n) => { const d = aFecha(primero); d.setUTCMonth(d.getUTCMonth() + n); mes = d.toISOString().slice(0, 7) + '-01'; pintar(); };
+    const nav = h('div', { class: 'al-barra' },
+      h('button', { class: 'btn small', type: 'button', onclick: () => mover(-1) }, '‹ Anterior'),
+      h('strong', { style: 'min-width:150px;text-align:center;text-transform:capitalize' }, dMes.toLocaleDateString('es-ES', { month: 'long', year: 'numeric', timeZone: 'UTC' })),
+      h('button', { class: 'btn small', type: 'button', onclick: () => mover(1) }, 'Siguiente ›'),
+      h('button', { class: 'btn small ghost', type: 'button', onclick: () => { mes = hoy.slice(0, 7) + '-01'; pintar(); } }, 'Hoy'),
+      yo ? h('label', { class: 'al-check' }, h('input', { type: 'checkbox', checked: soloMias, onchange: (e) => { soloMias = e.target.checked; pintar(); } }), ' Solo mi calendario') : null,
+      h('span', { class: 'small muted' }, 'Pasa el ratón por un día para ver profesoras y alumnos.'));
+    const celdas = [];
+    for (let f = ini; f <= fin; f = sumar(f, 1)) {
+      const l = delMes.filter((x) => x.fecha === f);
+      const fuera = f.slice(0, 7) !== primero.slice(0, 7);
+      const c = h('div', { class: 'sc-dia' + (fuera ? ' fuera' : '') + (f === hoy ? ' hoy' : '') + (l.length ? ' con' : ''), tabindex: l.length ? '0' : null },
+        h('div', { class: 'sc-num' }, String(aFecha(f).getUTCDate())),
+        l.map((x) => h('button', { type: 'button', class: 'sc-chip' + (x.estado !== 'abierta' ? ' cerrada' : ''), onclick: (e) => { e.stopPropagation(); quitarPop(); abrir(x); } },
+          h('span', { class: 'sc-chip-t' }, titulo(x)), h('span', { class: 'sc-chip-n' }, `${activas(x.id).length}/${x.plazas}`))));
+      if (l.length) { c.addEventListener('mouseenter', () => mostrarPop(c, l)); c.addEventListener('mouseleave', quitarPop); c.addEventListener('focus', () => mostrarPop(c, l)); c.addEventListener('blur', quitarPop); }
+      celdas.push(c);
+    }
+    clear(cont, nav, h('div', { class: 'card' }, h('div', { class: 'sc-mes' }, ['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((d) => h('div', { class: 'sc-cab' }, d)), celdas)));
   }
 
   // ---------- 3) ajustes + calendarios suscribibles ----------
@@ -178,9 +226,9 @@ export async function renderStudyClub(view, ctx) {
   }
 
   // ---------- cabecera y pestañas internas ----------
-  const seg = h('div', { class: 'segmented', role: 'tablist' }, [['sesiones', 'Sesiones'], ['calendario', 'Calendario por profesora'], ['ajustes', 'Ajustes y calendarios']].map(([k, l]) =>
+  const seg = h('div', { class: 'segmented', role: 'tablist' }, [['sesiones', 'Sesiones'], ['calendario', 'Calendario por profesora'], ['mes', 'Calendario mensual'], ['ajustes', 'Ajustes y calendarios']].map(([k, l]) =>
     h('button', { class: 'seg-btn', role: 'tab', type: 'button', 'aria-selected': String(vista === k), onclick: () => { vista = k; guardarV('sc.vista', k); seg.querySelectorAll('.seg-btn').forEach((b) => b.setAttribute('aria-selected', String(b.textContent === l))); pintar(); } }, l)));
-  function pintar() { if (!cfg) { clear(cont, h('div', { class: 'card empty' }, 'Study Club no está configurado todavía.')); return; } (vista === 'calendario' ? pintarCalendario : vista === 'ajustes' ? pintarAjustes : pintarLista)(); }
+  function pintar() { quitarPop(); if (!cfg) { clear(cont, h('div', { class: 'card empty' }, 'Study Club no está configurado todavía.')); return; } (vista === 'calendario' ? pintarCalendario : vista === 'mes' ? pintarMes : vista === 'ajustes' ? pintarAjustes : pintarLista)(); }
   const proximas = sesiones.filter((s) => s.fecha >= hoyISO() && s.estado === 'abierta');
   clear(view, cabecera('Study Club', `${proximas.length} sesiones próximas · ${reservas.filter((r) => r.estado === 'apuntado').length} reservas en total`, seg), cont);
   pintar();
