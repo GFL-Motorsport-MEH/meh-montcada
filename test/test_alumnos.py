@@ -29,6 +29,9 @@ SEMILLA = """() => { const m = window.__mock.db, hoy = new Date().toISOString().
   m.ac_prestamos.push({ id: 'pr1', tipo: 'mascota', alumno_id: 'a1', libro: 'Mascota Nivel 1', fecha_salida: '2020-01-01', fecha_devolucion: null });
   m.ac_formularios.push({ id: 'f1', slug: 'granja', titulo: 'Salida granja', tipo: 'generico', activo: true, campos: [] });
   m.ac_formulario_respuestas.push({ id: 'fr1', formulario_id: 'f1', alumno_id: 'a2', estado: 'procesada', datos: {} }, { id: 'fr2', formulario_id: 'f1', alumno_id: null, estado: 'nueva', datos: {} });
+  m.al_studyclub_sesiones.push({ id: 'sc1', centro_id: 'ce1', fecha: '2099-03-02', hora_inicio: '20:10:00', hora_fin: '20:40:00', titulo: 'Past Simple', profesora_id: 'p1', plazas: 2, estado: 'abierta', notas: null, profesora: { id: 'p1', nombre: 'Mar Franco' } },
+    { id: 'sc2', centro_id: 'ce1', fecha: '2099-03-03', hora_inicio: '20:10:00', hora_fin: '20:40:00', titulo: null, profesora_id: null, plazas: 6, estado: 'abierta', notas: null });
+  m.al_studyclub_reservas.push({ id: 'rs1', sesion_id: 'sc1', nombre: 'Ana García', email: 'marta@ejemplo.es', telefono: '600111222', tema: 'Past Simple', estado: 'apuntado', origen: 'web', created_at: '2099-01-01T10:00:00Z' });
   m.ac_tutorias.push({ id: 'tu1', alumno_id: 'a1', alumno: { id: 'a1' }, fecha: '2099-01-10', estado: 'pendiente', profesora_id: 'p1' });
 }"""
 
@@ -61,7 +64,7 @@ try:
         pg.locator(".modulos .modulo", has_text="Alumnos").click(); pg.wait_for_timeout(600)
         check(pg.evaluate("document.body.dataset.modulo") == "alumnos", "se abre el módulo Alumnos")
         tt = [t.strip() for t in pg.locator(".tabs .tab").all_inner_texts()]
-        check(tt == ["Ficha", "Notas", "Tareas y material", "Informes y notas", "Comunicaciones", "Documentación", "Actividades", "Configuración"], f"pestañas {tt}")
+        check(tt == ["Ficha", "Notas", "Tareas y material", "Informes y notas", "Comunicaciones", "Documentación", "Actividades", "Study Club", "Configuración"], f"pestañas {tt}")
         for r in ["al_ficha", "al_notas", "al_tareas", "al_informes", "al_comunicaciones", "al_documentos", "al_actividades"]:
             ir(pg, r); check(pg.locator(".banner.error").count() == 0, f"{r} carga sin errores")
 
@@ -165,10 +168,30 @@ try:
         check("Salida a la granja" in pg.locator("main").inner_text() and "apuntado/a" in pg.locator("main").inner_text(), "la ficha del alumno muestra que está apuntado a la actividad")
         pg.close()
 
+        print("9b. Study Club: sesiones, temario, profesora, apuntados y calendario")
+        pg = abrir(b, "admin", "al_studyclub")
+        check(pg.locator("main").inner_text().count("Past Simple") >= 1 and "por definir" in pg.locator("main").inner_text(), "lista las sesiones con su temario y las que no tienen")
+        pg.get_by_text("por definir").first.click(); pg.wait_for_timeout(400)
+        d = pg.locator(".drawer"); d.get_by_label("Temario que se repasa").fill("Present Perfect"); d.get_by_label("Profesora").select_option(label="Mar Franco")
+        check(d.get_by_role("link", name="Añadir a Google Calendar").get_attribute("href").startswith("https://calendar.google.com/calendar/render?"), "enlace a Google Calendar de la sesión")
+        d.get_by_role("button", name="Guardar").click(); pg.wait_for_timeout(600)
+        s2 = [x for x in db(pg, "al_studyclub_sesiones") if x["id"] == "sc2"][0]
+        check(s2["titulo"] == "Present Perfect" and s2["profesora_id"] == "p1", f"temario y profesora guardados {s2.get('titulo')}")
+        pg.get_by_text("Past Simple").first.click(); pg.wait_for_timeout(400)
+        d = pg.locator(".drawer"); d.locator(".al-barra input[type=text]").first.fill("Luis Pérez"); d.get_by_role("button", name="Apuntar", exact=True).click(); pg.wait_for_timeout(500)
+        rs = db(pg, "al_studyclub_reservas")
+        check(len(rs) == 2 and rs[1]["origen"] == "manual", "se apunta a mano a un alumno")
+        d.get_by_role("button", name="Cancelar plaza").first.click(); pg.wait_for_timeout(400)
+        check(db(pg, "al_studyclub_reservas")[0]["estado"] == "cancelado", "se cancela una plaza")
+        d.get_by_role("button", name="Cerrar").click()
+        pg.get_by_role("tab", name="Calendario por profesora").click(); pg.wait_for_timeout(300)
+        check("Mar Franco" in pg.locator("main").inner_text(), "calendario semanal por profesora")
+        pg.close()
+
         print("10. profesora: ve las pestañas de lo suyo y no la documentación")
         pg = abrir(b, "profesora", "al_ficha")
         tt = [t.strip() for t in pg.locator(".tabs .tab").all_inner_texts()]
-        check(tt == ["Ficha", "Notas", "Tareas y material", "Informes y notas", "Comunicaciones", "Actividades", "Configuración"], f"profesora: pestañas {tt}")
+        check(tt == ["Ficha", "Notas", "Tareas y material", "Informes y notas", "Comunicaciones", "Actividades", "Study Club", "Configuración"], f"profesora: pestañas {tt}")
         ir(pg, "al_documentos")
         check(pg.locator(".tabs .tab[aria-current=page]").inner_text().strip() == "Ficha" and pg.get_by_role("heading", name="Documentación de familias").count() == 0, "la profesora no puede abrir Documentación (vuelve a su primera pantalla)")
         ir(pg, "al_actividades")

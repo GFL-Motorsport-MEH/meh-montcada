@@ -51,4 +51,4 @@ export function casillaFamilia(valor, texto = 'Visible para la familia en el por
   el.input = i;
   return el;
 }
-export const PERMISOS_ALUMNOS = ['al_ficha', 'al_notas', 'al_tareas', 'al_informes', 'al_comunicaciones', 'al_documentos', 'al_actividades'];
+export const PERMISOS_ALUMNOS = ['al_ficha', 'al_notas', 'al_tareas', 'al_informes', 'al_comunicaciones', 'al_documentos', 'al_actividades', 'al_studyclub'];

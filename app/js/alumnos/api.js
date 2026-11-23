@@ -33,6 +33,13 @@ export const tareas = async (alumnoId) => (await delCentro(await todo('al_tareas
 export const informes = async (alumnoId) => (await delCentro(await todo('al_informes', '*' + PROF, deAlumno(alumnoId)))).sort(porFecha('created_at'));
 export const mensajes = async (alumnoId) => (await delCentro(await todo('al_mensajes', '*', deAlumno(alumnoId)))).sort(porFecha('created_at'));
 export const docsFamilia = async (alumnoId) => (await delCentro(await todo('al_documentos_familia', '*', deAlumno(alumnoId)))).sort(porFecha('created_at'));
+// Study Club: sesiones (con su profesora), reservas y configuración. Las sesiones futuras las crea el servidor (studyclub_generar).
+export const scConfig = async () => chk(await supabase.from('al_studyclub_config').select('*').eq('id', 1).maybeSingle());
+export const scSesiones = async () => (await todo('al_studyclub_sesiones', '*' + PROF)).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.hora_inicio.localeCompare(b.hora_inicio));
+export const scReservas = async () => todo('al_studyclub_reservas', '*');
+export const scTokens = async () => chk(await supabase.from('al_studyclub_ics').select('*'));
+export const scGenerar = async (desde, hasta) => chk(await supabase.rpc('studyclub_generar', { p_desde: desde, p_hasta: hasta }));
+export const scNuevoToken = async (profesoraId) => chk(await supabase.from('al_studyclub_ics').upsert({ profesora_id: profesoraId, token: crypto.randomUUID() }).select().single());
 export const inscritos = async ({ alumnoId, actividadId } = {}) => (await delCentro(await todo('al_actividad_inscritos', '*', (q) => (alumnoId ? q.eq('alumno_id', alumnoId) : actividadId ? q.eq('actividad_id', actividadId) : q))));
 
 // ---------- escrituras ----------
