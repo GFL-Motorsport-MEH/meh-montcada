@@ -148,6 +148,7 @@ export async function renderGastos(view, ctx) {
     h('option', { value: 'comentarios' }, 'Con comentarios'));
 
   const titulo = h('div', { class: 'count' });
+  const pendPago = h('div', { class: 'count pend-pago', role: 'status' });
   const btnUltimo = h('button', { class: 'link-btn small', type: 'button', hidden: true, onclick: () => { orden = { campo: -1, asc: false }; guardarOrden('gastos', { cls: null, asc: false }); pintar(); } }, 'Volver al orden por último movimiento');
   const tbody = h('tbody');
   const pie = h('div', { class: 'table-foot' });
@@ -522,6 +523,12 @@ export async function renderGastos(view, ctx) {
   function actualizarTotales() {
     const total = listaActual.reduce((s, g) => s + num(g.cantidad), 0);
     titulo.textContent = `${listaActual.length} de ${gastos.length} gastos · total ${fmtEUR2(total)}`;
+    // Pendiente de pago: gastos metidos y no marcados como pagados (los abonos, con importe negativo, restan)
+    const sinPagar = (l) => l.filter((g) => !esVerdad(g.pago));
+    const suma = (l) => l.reduce((a, g) => a + num(g.cantidad), 0);
+    const todos = sinPagar(ctx.filtrarCentro(gastos)), vista = sinPagar(listaActual);
+    pendPago.replaceChildren(h('strong', {}, `Falta por pagar: ${fmtEUR2(suma(todos))}`), ` en ${todos.length} ${todos.length === 1 ? 'gasto' : 'gastos'} sin marcar como pagados`,
+      vista.length !== todos.length || listaActual.length !== gastos.length ? ` · en la vista actual: ${fmtEUR2(suma(vista))} (${vista.length})` : '');
   }
 
   function pintar() {
@@ -617,7 +624,7 @@ export async function renderGastos(view, ctx) {
     avisoRevision,
     h('div', { class: 'banner' }, h('span', {}, 'Los cambios de la tabla se guardan al salir de cada celda. ', h('strong', {}, 'Deshacer'), ' (arriba, o Ctrl+Z fuera de un campo) vuelve atrás el último cambio.')),
     h('div', { class: 'section-head' },
-      h('div', {}, h('h2', {}, `Gastos · ${curso.nombre}`), titulo, btnUltimo),
+      h('div', {}, h('h2', {}, `Gastos · ${curso.nombre}`), titulo, pendPago, btnUltimo),
       h('div', { class: 'section-actions' },
         btnReg,
         btnAncho,

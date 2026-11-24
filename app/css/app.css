@@ -832,3 +832,5 @@ table.tabla-gastos td.reg-fecha { font-size: 11px; color: var(--text-secondary);
 .col-resizer { position: absolute; top: 0; right: 0; width: 6px; height: 100%; cursor: col-resize; z-index: 2; touch-action: none; }
 .col-resizer:hover, .col-resizer.activo { background: color-mix(in oklab, var(--accent) 45%, transparent); }
 table.tabla-gastos { max-width: none; }
+.pend-pago { color: var(--text); }
+.pend-pago strong { color: var(--warning, #b45309); }
