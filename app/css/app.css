@@ -828,3 +828,7 @@ table.tabla-gastos td.reg-fecha { font-size: 11px; color: var(--text-secondary);
 .combo-flecha:hover { background: var(--surface-2); color: var(--text); }
 .escaner-tipopago { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 6px; }
 .escaner-tipopago select { width: 100%; min-width: 0; }
+/* Ajuste manual del ancho de columnas (Gastos) */
+.col-resizer { position: absolute; top: 0; right: 0; width: 6px; height: 100%; cursor: col-resize; z-index: 2; touch-action: none; }
+.col-resizer:hover, .col-resizer.activo { background: color-mix(in oklab, var(--accent) 45%, transparent); }
+table.tabla-gastos { max-width: none; }

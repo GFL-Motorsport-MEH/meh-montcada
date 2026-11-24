@@ -78,7 +78,7 @@ export async function renderGastos(view, ctx) {
   // columna «Registrado» (fecha y hora de alta del gasto): oculta; un clic la muestra
   let verReg = !!leerV('gastos.verReg', false);
   const btnReg = h('button', { type: 'button', class: 'btn', 'aria-pressed': String(verReg), title: 'Muestra u oculta la fecha y hora en que se registró cada gasto', onclick: () => {
-    verReg = !verReg; guardarV('gastos.verReg', verReg);
+    verReg = !verReg; guardarV('gastos.verReg', verReg); restablecerAnchos();   // cambia el nº de columnas visibles
     tbody.closest('table')?.classList.toggle('ver-reg', verReg);
     btnReg.setAttribute('aria-pressed', String(verReg)); btnReg.textContent = verReg ? 'Ocultar registro' : 'Ver registro';
   } }, verReg ? 'Ocultar registro' : 'Ver registro');
@@ -200,6 +200,33 @@ export async function renderGastos(view, ctx) {
     return t;
   });
   { const g = ordenGuardado('gastos'); const i = g && g.cls ? COLDEF.findIndex((c) => c.cls === g.cls && c.orden) : -1; orden = { campo: i, asc: i >= 0 ? !!g.asc : false }; } // por defecto: último movimiento (lo último añadido arriba) hasta que se ordene por una columna
+
+  // Ancho de columnas ajustable arrastrando el borde de la cabecera. Solo vive mientras dura esta pantalla:
+  // al refrescar o cambiar de pestaña se vuelve a construir la vista y recupera el ancho original.
+  const cols = COLS.map(([c]) => h('col', { class: c }));
+  const tablaG = h('table', { class: 'data tabla-gastos' + (conCentro ? ' con-centro' : '') + (verReg ? ' ver-reg' : '') });
+  const btnAncho = h('button', { class: 'btn', type: 'button', hidden: true, title: 'Volver al ancho original de las columnas', onclick: () => restablecerAnchos() }, 'Restablecer columnas');
+  function restablecerAnchos() { cols.forEach((c) => { c.style.width = ''; }); tablaG.style.width = ''; btnAncho.hidden = true; }
+  const congelarAnchos = () => {
+    if (tablaG.style.width) return;
+    ths.forEach((t, i) => { cols[i].style.width = `${t.getBoundingClientRect().width}px`; });
+    tablaG.style.width = `${ths.reduce((a, t) => a + t.getBoundingClientRect().width, 0)}px`;
+  };
+  ths.forEach((t, i) => {
+    if (COLDEF[i].th || !COLDEF[i].orden && !COLDEF[i].label) return;
+    t.style.position = 'relative';
+    const asa = h('span', { class: 'col-resizer', title: 'Arrastra para cambiar el ancho', 'aria-hidden': 'true' });
+    asa.addEventListener('click', (e) => e.stopPropagation());
+    asa.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation(); congelarAnchos();
+      const x0 = e.clientX, w0 = parseFloat(cols[i].style.width), tabla0 = parseFloat(tablaG.style.width);
+      asa.setPointerCapture(e.pointerId); asa.classList.add('activo');
+      const mover = (ev) => { const w = Math.max(24, w0 + ev.clientX - x0); cols[i].style.width = `${w}px`; tablaG.style.width = `${tabla0 + w - w0}px`; btnAncho.hidden = false; };
+      const soltar = () => { asa.classList.remove('activo'); asa.removeEventListener('pointermove', mover); asa.removeEventListener('pointerup', soltar); asa.removeEventListener('pointercancel', soltar); };
+      asa.addEventListener('pointermove', mover); asa.addEventListener('pointerup', soltar); asa.addEventListener('pointercancel', soltar);
+    });
+    t.append(asa);
+  });
 
   const alFiltrar = () => { limite = POR_PAGINA; pintar(); };
   const filaFiltros = COLDEF.map((c, i) => {
@@ -586,6 +613,7 @@ export async function renderGastos(view, ctx) {
       h('div', {}, h('h2', {}, `Gastos · ${curso.nombre}`), titulo, btnUltimo),
       h('div', { class: 'section-actions' },
         btnReg,
+        btnAncho,
         h('button', { class: 'btn', onclick: exportar }, 'Exportar CSV'),
         h('button', { class: 'btn', onclick: () => generarGastosDelMes(ctx, { curso, gastos, onCreados: (creados) => { gastos.unshift(...creados); ctx.setGastos(curso.id, gastos); pintar(); } }) }, 'Generar gastos del mes'),
         h('button', { class: 'btn', onclick: () => abrirEscaner(ctx, { onDatos: (inicial, info) => nuevoGasto(inicial, info), onVarios: guardarVariosEscaneo }) }, 'Escanear factura'),
@@ -593,9 +621,7 @@ export async function renderGastos(view, ctx) {
     h('div', { class: 'filters filters-gastos' }, h('div', { class: 'search' }, fQ), fEstado),
     aviso,
     barra, empresasDL,
-    h('div', { class: 'table-wrap' }, h('table', { class: 'data tabla-gastos' + (conCentro ? ' con-centro' : '') + (verReg ? ' ver-reg' : '') },
-      h('colgroup', {}, COLS.map(([c]) => h('col', { class: c }))),
-      h('thead', {}, h('tr', {}, ths), h('tr', { class: 'fila-filtros' }, filaFiltros)), tbody)),
+    h('div', { class: 'table-wrap' }, (tablaG.append(h('colgroup', {}, cols), h('thead', {}, h('tr', {}, ths), h('tr', { class: 'fila-filtros' }, filaFiltros)), tbody), tablaG)),
     pie);
   pintar();
 }
