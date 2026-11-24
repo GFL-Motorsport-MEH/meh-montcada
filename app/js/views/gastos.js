@@ -303,6 +303,13 @@ export async function renderGastos(view, ctx) {
     return fmtEUR2(v).includes(expr) || (Number.isFinite(n(expr)) && Math.abs(v - n(expr)) < 0.005);
   }
 
+  // Desempate: lo de una misma persona/empresa y fecha va junto y, en las nóminas, en el orden Nómina → SS → IRPF → resto
+  const rangoNomina = (g) => { const t = normalizar(g.concepto || ''); return /^nomina/.test(t) ? 0 : /^(ss\b|seg\w* social)/.test(t) ? 1 : /^irpf/.test(t) ? 2 : 3; };
+  const desempate = (a, b) => (b.fecha_factura || '').localeCompare(a.fecha_factura || '')
+    || normalizar(a.empresa || '').localeCompare(normalizar(b.empresa || ''))
+    || rangoNomina(a) - rangoNomina(b)
+    || (a.concepto || '').localeCompare(b.concepto || '', 'es')
+    || String(a.id).localeCompare(String(b.id));
   function filtrados() {
     const q = normalizar(f.q.trim());
     const enCentro = new Set(ctx.filtrarCentro(gastos));
@@ -328,10 +335,10 @@ export async function renderGastos(view, ctx) {
       }
       return true;
     }).sort((a, b) => {
-      if (!c) return (b.created_at || '').localeCompare(a.created_at || '') || (b.fecha_factura || '').localeCompare(a.fecha_factura || '') || String(b.id).localeCompare(String(a.id));
+      if (!c) return (b.created_at || '').localeCompare(a.created_at || '') || desempate(a, b);
       let va = c.orden(a), vb = c.orden(b);
-      if (typeof va === 'string') return dir * va.localeCompare(vb, 'es', { sensitivity: 'base', numeric: true }) || (b.fecha_factura || '').localeCompare(a.fecha_factura || '');
-      return dir * (va - vb) || (b.fecha_factura || '').localeCompare(a.fecha_factura || '');
+      if (typeof va === 'string') return dir * va.localeCompare(vb, 'es', { sensitivity: 'base', numeric: true }) || desempate(a, b);
+      return dir * (va - vb) || desempate(a, b);
     });
   }
 
