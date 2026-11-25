@@ -550,3 +550,15 @@ export async function restaurarAuditoria(id) {
 export async function exportarTabla(tabla) {
   return selectAll(tabla, '*', (q) => q);
 }
+
+// Recibos devueltos / impagados de las remesas (restan de lo esperado al conciliar): curso + mes + banco
+const DV_COLS = 'id,curso_id,mes,banco,remesa_nombre,alumno_id,alumno_num,concepto,importe';
+export async function getRemesaDevoluciones() { return selectAll('remesa_devoluciones', DV_COLS, (q) => q.order('id', { ascending: true })); }
+export async function reemplazarRemesaDevoluciones({ curso_id, mes, banco }, filas) {
+  check(await supabase.from('remesa_devoluciones').delete().eq('curso_id', curso_id).eq('mes', mes).eq('banco', banco).select('id'));
+  return filas.length ? check(await supabase.from('remesa_devoluciones').insert(filas).select(DV_COLS)) : [];
+}
+// Líneas (alumno, remesa, importe) de un envío guardado, para elegir qué recibos se devolvieron
+export async function getEnvioLineas(envioId) {
+  return selectAll('ac_remesa_envio_lineas', 'id,alumno_id,alumno_num,alumno_nombre,remesa_nombre,importe', (q) => q.eq('envio_id', envioId).order('alumno_num', { ascending: true }));
+}
