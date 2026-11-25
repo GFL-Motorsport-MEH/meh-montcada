@@ -342,6 +342,14 @@ try:
         # volver al mes en curso (sin envío): vista viva
         page.evaluate("() => { const s = document.querySelector('select[aria-label=Mes]'); const o = [...s.options].find((x) => !x.textContent.includes('enviado')); s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); }")
         page.wait_for_timeout(500)
+        # remesa trimestral: primer mes de pago + cada 3 meses
+        page.get_by_role("button", name="Gestionar remesas").click(); page.wait_for_timeout(300)
+        page.locator(".ac-rventana select[aria-label='Primer mes de pago']").first.select_option("octubre"); page.wait_for_timeout(300)
+        page.locator(".ac-rventana select[aria-label='Periodicidad']").first.select_option("3"); page.wait_for_timeout(400)
+        lr = db(page, "ac_remesas_lista")
+        check(any(r.get("periodicidad") == 3 and r.get("primer_mes") == "octubre" for r in lr), "una remesa se puede pasar a trimestral con su primer mes de pago")
+        page.keyboard.press("Escape"); page.wait_for_timeout(300)
+        expect(page.locator(".ac-rresumen").first).to_contain_text("trimestral")
         # archivar y restaurar
         page.locator("table.ac-domi tr", has_text="Foz, Anna").get_by_role("button", name="Archivar").click(); page.wait_for_timeout(200)
         page.locator(".dialog-actions .btn.primary").click(); page.wait_for_timeout(500)

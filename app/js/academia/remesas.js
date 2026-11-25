@@ -117,7 +117,7 @@ export async function renderRemesas(view, ctx) {
   const calc = () => {
     const rp = remPor();
     const imp = (a) => Number(inscPor.get(a.id)?.cuota_mensual || 0);
-    const mk = (d, a) => ({ dom: d, a, rem: d?.remesa_id ? rp.get(d.remesa_id) : null, importe: imp(a) });
+    const mk = (d, a) => { const rem = d?.remesa_id ? rp.get(d.remesa_id) : null; const per = rem?.periodicidad || 1; return { dom: d, a, rem, cuota: imp(a), per, importe: cmp2(imp(a) * per) }; };
     const activos = doms.filter((d) => !d.archivado && alPor.has(d.alumno_id));
     const archivados = doms.filter((d) => d.archivado && alPor.has(d.alumno_id));
     const conRemesa = new Set(activos.filter((d) => d.remesa_id).map((d) => d.alumno_id));
@@ -135,7 +135,13 @@ export async function renderRemesas(view, ctx) {
     arch = archivados.filter((d) => !pendSet.has(d.alumno_id)).map((d) => mk(d, alPor.get(d.alumno_id))).sort((x, y) => (y.dom.archivado_el || '').localeCompare(x.dom.archivado_el || ''));
     pend.sort((x, y) => Number(x.a.num) - Number(y.a.num));
   };
-  const cuentaRemesa = (r) => main.filter((x) => x.rem?.id === r.id && x.a.estado === 'inscrito');
+  // una remesa bimensual/trimestral solo se cobra en su mes de inicio y cada 2/3 meses después
+  const cobraEn = (r, mes) => {
+    const per = r?.periodicidad || 1; if (per === 1 || !r.primer_mes) return true;
+    const d = MESES.indexOf(mes) - MESES.indexOf(r.primer_mes); if (MESES.indexOf(mes) < 0 || MESES.indexOf(r.primer_mes) < 0) return true;
+    return (((d % 12) + 12) % 12) % per === 0;
+  };
+  const cuentaRemesa = (r) => (cobraEn(r, mesSel.value) ? main.filter((x) => x.rem?.id === r.id && x.a.estado === 'inscrito') : []);
   const avisosDe = (x) => {
     const av = [];
     if (!x.dom?.remesa_id) av.push('Sin remesa');
@@ -282,7 +288,7 @@ export async function renderRemesas(view, ctx) {
       ...(env ? [{ t: 'OK', k: (i) => (i.g?.ok ? 1 : 0) }, { t: 'Nota', k: (i) => i.g?.nota || '' }] : [])];
     const fila = (i) => {
       const llena = !env && i.r?.capacidad && i.cobros > i.r.capacidad;
-      const tds = [h('td', {}, h('strong', {}, i.n)), h('td', {}, nombreBanco(i.r?.banco || bancoDeNombre(i.n))),
+      const tds = [h('td', {}, h('strong', {}, i.n), i.r && i.r.periodicidad > 1 ? h('span', { class: 'muted small', style: 'margin-left:6px' }, `${i.r.periodicidad === 3 ? 'trimestral' : 'bimensual'}${!env && !cobraEn(i.r, mesSel.value) ? ' · no se cobra este mes' : ''}`) : null), h('td', {}, nombreBanco(i.r?.banco || bancoDeNombre(i.n))),
         h('td', { class: 'num' }, llena ? h('span', { class: 'pill warn', title: `Pasa de ${i.r.capacidad} cobros` }, String(i.cobros)) : String(i.cobros)), h('td', { class: 'num' }, fmtEUR2(i.total))];
       if (env) {
         const g = i.g;
@@ -383,7 +389,7 @@ export async function renderRemesas(view, ctx) {
   }
   async function detallarEnvio(env) {
     if (!await confirmar({ titulo: `Detallar ${capitalizar(env.mes)} por alumno`, texto: 'Este mes solo guardó totales por remesa. Se crea una lista por alumno copiando las remesas actuales y los totales pasan a calcularse con ella; después quitas o cambias lo que no estuviera. No se modifica nada más.', ok: 'Crear detalle' })) return;
-    const filas = main.filter((x) => x.rem && x.a.estado === 'inscrito' && x.importe > 0).map((x) => ({ envio_id: env.id, ...datosLinea(x, x.rem.nombre) }));
+    const filas = lista.flatMap((r) => cuentaRemesa(r)).filter((x) => x.importe > 0).map((x) => ({ envio_id: env.id, ...datosLinea(x, x.rem.nombre) }));
     try { setLineas(filas.length ? [...await api.insMany('ac_remesa_envio_lineas', filas)] : []); await sincronizarResumen(env); await pintarResumen(); pintarVista(); toast(`Detalle creado (${filas.length} líneas)`); } catch (ex) { toast(ex.message, 'error'); }
   }
 
@@ -401,7 +407,7 @@ export async function renderRemesas(view, ctx) {
       const orden = mismos.length ? Math.max(...mismos) + 1 : (banco.value === 'BBVA' ? 101 : 1);
       try { const r = await api.ins('ac_remesas_lista', { nombre: n, banco: banco.value, capacidad: cap.value ? Number(cap.value) : null, orden }); lista.push(r); lista.sort((a, b) => a.orden - b.orden); toast(`Remesa «${n}» añadida`); pintarTodo(); } catch (ex) { toast(ex.message, 'error'); }
     } }, 'Añadir');
-    const cols = [{ t: 'Remesa', k: (r) => r.orden }, { t: 'Banco', k: (r) => r.banco }, { t: 'Máx.', num: true, k: (r) => r.capacidad ?? '' }, { t: 'Líneas', num: true, k: (r) => doms.filter((d) => !d.archivado && d.remesa_id === r.id).length }, { t: '' }];
+    const cols = [{ t: 'Remesa', k: (r) => r.orden }, { t: 'Banco', k: (r) => r.banco }, { t: 'Máx.', num: true, k: (r) => r.capacidad ?? '' }, { t: 'Se cobra', k: (r) => r.periodicidad || 1 }, { t: 'Primer mes', k: (r) => r.primer_mes || '' }, { t: 'Líneas', num: true, k: (r) => doms.filter((d) => !d.archivado && d.remesa_id === r.id).length }, { t: '' }];
     const fila = (r) => {
       const n = doms.filter((d) => !d.archivado && d.remesa_id === r.id).length;
       const nom = h('input', { type: 'text', value: r.nombre, disabled: !editor, style: 'width:150px' });
@@ -409,11 +415,19 @@ export async function renderRemesas(view, ctx) {
         try { Object.assign(r, await api.upd('ac_remesas_lista', r.id, { nombre: v })); toast('Nombre cambiado'); pintarResumen(); pintarVista(); } catch (ex) { nom.value = r.nombre; toast(ex.message, 'error'); } });
       const cp = h('input', { type: 'number', min: '1', value: r.capacidad ?? '', disabled: !editor, style: 'width:60px' });
       cp.addEventListener('change', async () => { try { Object.assign(r, await api.upd('ac_remesas_lista', r.id, { capacidad: cp.value ? Number(cp.value) : null })); pintarResumen(); } catch (ex) { toast(ex.message, 'error'); } });
+      const per = sel([[1, 'Cada mes'], [2, 'Cada 2 meses'], [3, 'Cada 3 meses']], String(r.periodicidad || 1), { disabled: !editor, 'aria-label': 'Periodicidad' });
+      const pm = sel(MESES.map((m) => [m, capitalizar(m)]), r.primer_mes || '', { vacio: '—', disabled: !editor, 'aria-label': 'Primer mes de pago' });
+      const guardarPer = async () => {
+        const p = Number(per.value);
+        if (p > 1 && !pm.value) { toast('Elige el primer mes de pago', 'error'); return; }
+        try { Object.assign(r, await api.upd('ac_remesas_lista', r.id, { periodicidad: p, primer_mes: p > 1 ? pm.value : (pm.value || null) })); calc(); toast('Periodicidad guardada: el importe de cada línea pasa a ser cuota × meses'); pintarTodo(); } catch (ex) { toast(ex.message, 'error'); }
+      };
+      per.addEventListener('change', guardarPer); pm.addEventListener('change', guardarPer);
       const bor = h('button', { class: 'btn danger small', type: 'button', disabled: !editor, onclick: async () => {
         if (!await confirmar({ titulo: `Eliminar la remesa ${r.nombre}`, texto: n ? `Sus ${n} líneas pasan a Pendientes (no se borra a nadie).` : 'La remesa está vacía.', ok: 'Eliminar', peligro: true })) return;
         try { await api.del('ac_remesas_lista', r.id); lista = lista.filter((x) => x.id !== r.id); doms = doms.map((d) => (d.remesa_id === r.id ? { ...d, remesa_id: null } : d)); toast('Remesa eliminada'); pintarTodo(); } catch (ex) { toast(ex.message, 'error'); }
       } }, 'Eliminar');
-      return h('tr', {}, h('td', {}, nom), h('td', {}, nombreBanco(r.banco)), h('td', { class: 'num' }, cp), h('td', { class: 'num' }, String(n)), h('td', {}, bor));
+      return h('tr', {}, h('td', {}, nom), h('td', {}, nombreBanco(r.banco)), h('td', { class: 'num' }, cp), h('td', {}, per), h('td', {}, pm), h('td', { class: 'num' }, String(n)), h('td', {}, bor));
     };
     clear(gestionEl,
       h('div', { class: 'ac-fila', style: 'margin-bottom:8px;gap:6px;flex-wrap:wrap' }, nombre, banco, cap, anadir),
@@ -451,10 +465,11 @@ export async function renderRemesas(view, ctx) {
     inp.addEventListener('change', async () => {
       const v = Number(String(inp.value).replace(',', '.'));
       if (!Number.isFinite(v) || v < 0) { inp.value = String(x.importe); return; }
-      if (!await confirmar({ titulo: 'Cambiar la cuota', texto: `${nombreAlumno(x.a)}: ${fmtEUR2(x.importe)} → ${fmtEUR2(v)}. Es la cuota mensual de su inscripción, así que también cambia en Alumnos.`, ok: 'Cambiar' })) { inp.value = String(x.importe); return; }
-      try { Object.assign(ins, await api.upd('ac_inscripciones', ins.id, { cuota_mensual: cmp2(v) })); calc(); pintarTodo(); toast('Cuota actualizada también en Alumnos'); } catch (ex) { inp.value = String(x.importe); toast(ex.message, 'error'); }
+      const cuotaNueva = cmp2(v / x.per);
+      if (!await confirmar({ titulo: 'Cambiar la cuota', texto: `${nombreAlumno(x.a)}: ${fmtEUR2(x.importe)} → ${fmtEUR2(v)}.${x.per > 1 ? ` La remesa cobra ${x.per} meses de golpe, así que la cuota mensual pasa a ${fmtEUR2(cuotaNueva)}.` : ''} Es la cuota mensual de su inscripción, así que también cambia en Alumnos.`, ok: 'Cambiar' })) { inp.value = String(x.importe); return; }
+      try { Object.assign(ins, await api.upd('ac_inscripciones', ins.id, { cuota_mensual: cuotaNueva })); calc(); pintarTodo(); toast('Cuota actualizada también en Alumnos'); } catch (ex) { inp.value = String(x.importe); toast(ex.message, 'error'); }
     });
-    return h('td', { class: `num ${camb ? 'ac-cuota-cambio' : ''}`, 'data-tip': camb ? 'Cuota cambiada este mes (entre el 5 y el 25): ' + camb.map((c) => `${fmtEUR2(c.anterior)} → ${fmtEUR2(c.nueva)} el ${fmtFecha(c.fecha)}`).join(' · ') : null }, inp);
+    return h('td', { class: `num ${camb ? 'ac-cuota-cambio' : ''}`, 'data-tip': camb ? 'Cuota mensual cambiada este mes (entre el 5 y el 25): ' + camb.map((c) => `${fmtEUR2(c.anterior)} → ${fmtEUR2(c.nueva)} el ${fmtFecha(c.fecha)}`).join(' · ') : null }, inp);
   };
   const celdaAlumno = (x, avisos) => h('td', {}, nombreAlumno(x.a), avisos?.length ? h('span', { class: 'pill warn', style: 'margin-left:6px;cursor:help', tabindex: '0', 'data-tip': avisos.join('\n'), 'aria-label': 'Aviso: ' + avisos.join('. ') }, '⚠') : null);
 
@@ -484,7 +499,7 @@ export async function renderRemesas(view, ctx) {
         lineas > 1 ? h('button', { class: 'ac-rbtn', type: 'button', disabled: !editor, title: 'Quitar esta línea duplicada', 'aria-label': 'Quitar línea', onclick: async () => {
           if (!await confirmar({ titulo: 'Quitar línea duplicada', texto: `Se quita esta línea de ${nombreAlumno(x.a)}; el alumno conserva las demás.`, ok: 'Quitar', peligro: true })) return;
           try { await api.del('ac_domiciliaciones', x.dom.id); doms = doms.filter((d) => d.id !== x.dom.id); calc(); pintarVista(); pintarResumen(); toast('Línea quitada'); } catch (ex) { toast(ex.message, 'error'); } } }, '✕') : null);
-      return h('tr', { class: x.a.estado !== 'inscrito' ? 'ac-baja' : '' },
+      return h('tr', { class: x.a.estado !== 'inscrito' || (x.rem && !cobraEn(x.rem, mesSel.value)) ? 'ac-baja' : '', title: x.rem && !cobraEn(x.rem, mesSel.value) ? `La remesa ${x.rem.nombre} no se cobra en ${mesSel.value}` : null },
         h('td', { class: 'num' }, String(x.a.num)), celdaAlumno(x, av), h('td', {}, respTxt(x.a) || '—'), h('td', {}, celdaIban(x)), celdaImporte(x), h('td', {}, celdaNotas(x)), h('td', {}, man), h('td', {}, selR), h('td', {}, acciones));
     };
     return tablaOrd('main', cols, vis, fila, { clase: 'ac-domi', vacio: 'No hay líneas con esos filtros.' });
@@ -591,7 +606,7 @@ export async function renderRemesas(view, ctx) {
   });
   escuchar(f, () => avisoF.actualizar());
   const filtrosMain = h('span', { class: 'ac-fila', style: 'gap:8px;flex-wrap:wrap' }, selRemesa, selBanco, chk('Solo con avisos ⚠', 'soloAvisos'));
-  const btnGestion = h('button', { class: 'btn', type: 'button', onclick: () => { pintarGestion(); ventana('Gestionar remesas', gestionEl, { ancho: 540 }); } }, 'Gestionar remesas');
+  const btnGestion = h('button', { class: 'btn', type: 'button', onclick: () => { pintarGestion(); ventana('Gestionar remesas', gestionEl, { ancho: 700 }); } }, 'Gestionar remesas');
   const csv = h('button', { class: 'btn', type: 'button', onclick: () => descargarCSV(`domiciliaciones-${curso.nombre}.csv`, [['ID', 'Alumno', 'Responsable', 'IBAN', 'Importe', 'Cambios/Comentarios', 'Mandato', 'Remesa', 'Banco'], ...main.filter((x) => pasa(x, 'main')).map((x) => [x.a.num, nombreAlumno(x.a), respTxt(x.a), ibanDe(x), x.importe.toFixed(2).replace('.', ','), notasDe(x.a.id).map((n, i) => `${i + 1}) ${n.texto}`).join(' | '), x.dom?.ref_mandato || x.a.num, x.rem?.nombre || '', x.rem ? nombreBanco(x.rem.banco) : ''])]) }, 'Descargar CSV');
 
   await cargarLineas();
