@@ -259,7 +259,7 @@ async function renderConciliacion(cont, ctx) {
     }
     clear(remesasEl, h('details', { class: 'card abonos-pend', open: hayPend }, h('summary', {}, `Remesas: esperado frente a ingresado en el banco${hayPend ? ' (hay diferencias o sin ingreso)' : ' ✓'}`),
       h('p', { class: 'muted small' }, 'Lo esperado es lo guardado con «REMESAS ENVIADAS» en la pestaña Remesas. Se comparan solo los totales por mes y banco.'),
-      h('div', { class: 'table-wrap' }, h('table', { class: 'data' }, h('thead', {}, h('tr', {}, ['Remesas de', 'Banco', 'Esperado', 'Ingresado', 'Diferencia', 'Estado', ''].map((t, i) => h('th', { scope: 'col', class: [2, 3, 4].includes(i) ? 'num' : '' }, t)))), h('tbody', {}, filas)))));
+      h('div', { class: 'table-wrap' }, h('table', { class: 'data', 'data-no-ordenar': '' }, h('thead', {}, h('tr', {}, ['Remesas de', 'Banco', 'Esperado', 'Ingresado', 'Diferencia', 'Estado', ''].map((t, i) => h('th', { scope: 'col', class: [2, 3, 4].includes(i) ? 'num' : '' }, t)))), h('tbody', {}, filas)))));
   }
 
   // ---- cuentas ----

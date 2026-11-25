@@ -91,6 +91,30 @@ try:
         check(col() == ["C", "A", "B"], f"Alumno ↓ y luego Estado ↑: por estado y, dentro, por alumno ↓ → {col()}")
         check("1" in t.locator("th.sortable", has_text="Estado").inner_text() and "2" in t.locator("th.sortable", has_text="Alumno").inner_text(), "las flechas muestran el nivel de cada columna")
 
+        print("3b. orden automático: cualquier tabla de listado se ordena pinchando en su cabecera")
+        page.evaluate("async () => { const m = await import('/js/vista.js'); m.fijarUsuario('u1'); for (const k of Object.keys(localStorage)) if (k.includes('.orden.')) localStorage.removeItem(k); }")
+        poner = """() => { document.querySelectorAll('#t-auto').forEach((x) => x.remove());
+          const f = (a) => { const tr = document.createElement('tr'); a.forEach((v) => { const td = document.createElement('td'); td.textContent = v; tr.append(td); }); return tr; };
+          const t = document.createElement('table'); t.id = 't-auto'; t.className = 'data prueba-auto';
+          t.innerHTML = '<thead><tr><th>Nombre</th><th>Importe</th><th>Fecha</th></tr></thead>';
+          const tb = document.createElement('tbody'); tb.append(f(['A', '1.200,50 €', '20/10/2026']), f(['B', '300 €', '05/09/2026']), f(['C', '', '02/11/2026']), f(['D', '300 €', '01/01/2027']));
+          t.append(tb); document.body.append(t); }"""
+        page.evaluate(poner); page.wait_for_timeout(300)
+        ta = page.locator("#t-auto")
+        nom = lambda: ta.locator("tbody tr td:first-child").all_inner_texts()
+        check(ta.locator("th.sortable").count() == 3, "la tabla sin orden propio ahora tiene las cabeceras ordenables")
+        ta.locator("th", has_text="Importe").click()
+        check(nom() == ["B", "D", "A", "C"], f"Importe ↑ (números con coma y €, vacíos al final) → {nom()}")
+        ta.locator("th", has_text="Importe").click()
+        check(nom() == ["A", "B", "D", "C"], f"Importe ↓ → {nom()}")
+        ta.locator("th", has_text="Fecha").click()
+        check(nom() == ["B", "A", "C", "D"], f"Fecha ↑ (fechas dd/mm/aaaa) → {nom()}")
+        check("1" in ta.locator("th", has_text="Fecha").inner_text() and "2" in ta.locator("th", has_text="Importe").inner_text(), "varias columnas: la última pulsada es el nivel 1 y la anterior el 2")
+        antes = nom()
+        page.evaluate(poner); page.wait_for_timeout(300)  # se vuelve a pintar la tabla (como al refrescar): el orden sigue
+        check(page.locator("#t-auto tbody tr td:first-child").all_inner_texts() == antes, "el orden se mantiene al volver a pintar la tabla")
+        page.evaluate("() => document.querySelectorAll('#t-auto').forEach((x) => x.remove())")
+
         print("4. pantallas: el filtro sobrevive a refrescar la página y avisa")
         page.reload(); expect(page.locator("main")).to_be_visible(timeout=10000)  # vuelve el usuario real de la sesión
         ir(page, "ac_tutorias")

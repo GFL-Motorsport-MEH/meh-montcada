@@ -2,6 +2,7 @@ import { authHash } from './hash.js'; // debe ir el primero
 import { h, clear, cargando, toast, hoyISO } from './ui.js';
 import { cargarOrdenes } from './orden-compartido.js';
 import { fijarUsuario } from './vista.js';
+import { ordenAutomatico } from './tabla-auto.js';
 import * as db from './db.js';
 import { renderLogin, renderNuevaPassword, renderPendiente } from './views/auth.js';
 import { renderPanel } from './views/panel.js';
@@ -591,4 +592,5 @@ async function inicio() {
       h('button', { class: 'btn primary', onclick: () => window.location.reload() }, 'Reintentar'))));
   }
 }
+ordenAutomatico(); // cualquier tabla de listado se ordena pinchando en su cabecera
 inicio();

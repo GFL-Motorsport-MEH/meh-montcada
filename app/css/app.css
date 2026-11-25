@@ -834,3 +834,8 @@ table.tabla-gastos td.reg-fecha { font-size: 11px; color: var(--text-secondary);
 table.tabla-gastos { max-width: none; }
 .pend-pago { color: var(--text); }
 .pend-pago strong { color: var(--warning, #b45309); }
+
+/* orden automático de tablas (tabla-auto.js) */
+th.ord-auto { cursor: pointer; user-select: none; }
+th.ord-auto:hover { color: var(--text-primary); }
+th.ord-auto .ord-flecha { font-size: 9px; color: var(--text-secondary); white-space: nowrap; }
