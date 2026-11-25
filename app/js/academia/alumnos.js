@@ -126,7 +126,7 @@ export async function renderAlumnos(view, ctx) {
     contador.textContent = `${filas.length} de ${alumnos.length} alumnos`;
     const e = f.editar;
     const cols = [
-      { t: 'Nº', v: (a) => a.num ?? '' },
+      { t: 'Nº', s: (a) => Number(a.num) || 0, v: (a) => (e ? h('input', { type: 'text', inputmode: 'decimal', value: a.num ?? '', class: 'ac-celda ac-celda-num', 'aria-label': 'ID del alumno', onchange: (ev) => { const t = ev.target.value.trim().replace(',', '.'); if (t && !Number.isFinite(Number(t))) { toast('El ID debe ser un número.', 'error'); ev.target.value = a.num ?? ''; return; } guardarCampo(a, 'num', t ? Number(t) : null); } }) : a.num ?? '') },
       { t: 'Datos', s: (a) => (esActivo(a) ? faltan(a).length : 0), v: (a) => { if (!esActivo(a)) return ''; const m = faltan(a); return m.length ? h('span', { class: 'ac-faltan', title: 'Faltan datos obligatorios:\n· ' + m.join('\n· ') }, '⚠ ' + m.length) : h('span', { class: 'ac-ok', title: 'Datos obligatorios completos' }, '✓'); } },
       { t: 'Alumno', s: (a) => nombreAlumno(a), v: (a) => (e ? h('div', { class: 'ac-nombre-edit' }, inp(a, 'apellidos', { placeholder: 'Apellidos', required: true }), inp(a, 'nombre', { placeholder: 'Nombre', required: true }), h('button', { type: 'button', class: 'btn small ghost', title: 'Abrir ficha', 'aria-label': 'Abrir ficha', onclick: () => abrirFicha(a, ctx, recargar) }, '↗')) : h('strong', {}, nombreAlumno(a))) },
       { t: 'Familia', s: (a) => (fam.de(a.id).length ? `hermanos ${fam.resumen(a.id, descPor).aplicado === false ? 'sin descuento' : ''}` : ''), v: celdaFamilia },
@@ -183,6 +183,7 @@ export async function abrirFicha(alumno, ctx, onCambio, prefill = null) {
 
   // --- datos ---
   const F = {
+    num: txt(a.num ?? '', { inputmode: 'decimal', placeholder: 'ID del CRM de la franquicia' }),
     apellidos: txt(a.apellidos, { required: true }), nombre: txt(a.nombre, { required: true }), nacimiento: fecha(a.fecha_nacimiento),
     colegio: txt(a.colegio, { list: 'dl-colegio' }), estado: sel(ESTADOS, a.estado), entrada: fecha(a.fecha_entrada),
     modalidad: sel(ls.modalidad || [], a.modalidad, { vacio: '—' }), nivel: txt(a.nivel), metodo: sel(ls.metodo_pago || [], a.metodo_pago, { vacio: '—' }),
@@ -201,7 +202,7 @@ export async function abrirFicha(alumno, ctx, onCambio, prefill = null) {
   const conocios = h('datalist', { id: 'dl-conocio' }, (ls.como_conocio || []).map((c) => h('option', { value: c })));
 
   const secDatos = h('div', { class: 'form-section' }, h('h3', {}, 'Alumno'),
-    campo('Apellidos', F.apellidos, { req: true }), campo('Nombre', F.nombre, { req: true }),
+    campo('ID alumno (CRM franquicia)', F.num), campo('Apellidos', F.apellidos, { req: true }), campo('Nombre', F.nombre, { req: true }),
     campo('Fecha de nacimiento', F.nacimiento), campo('Colegio', F.colegio),
     campo('Estado', F.estado), campo('Fecha de inscripción', F.entrada),
     campo('Modalidad', F.modalidad), campo('Nivel', F.nivel),
@@ -228,8 +229,10 @@ export async function abrirFicha(alumno, ctx, onCambio, prefill = null) {
           await api.guardarPrivados(respId, { dni: F.rDni.value.trim() || null, iban: F.rIban.value.replace(/\s+/g, '').toUpperCase() || null });
         }
       }
+      const numTxt = F.num.value.trim().replace(',', '.');
+      if (numTxt && !Number.isFinite(Number(numTxt))) { toast('El ID del alumno debe ser un número.', 'error'); return false; }
       const fila = {
-        apellidos: F.apellidos.value.trim(), nombre: F.nombre.value.trim(), fecha_nacimiento: F.nacimiento.value || null, colegio: F.colegio.value.trim() || null,
+        num: numTxt ? Number(numTxt) : null, apellidos: F.apellidos.value.trim(), nombre: F.nombre.value.trim(), fecha_nacimiento: F.nacimiento.value || null, colegio: F.colegio.value.trim() || null,
         estado: F.estado.value, fecha_entrada: F.entrada.value || null, modalidad: F.modalidad.value || null, nivel: F.nivel.value.trim() || null,
         metodo_pago: F.metodo.value || null, como_nos_conocio: F.conocio.value.trim() || null, intolerancias: F.intol.value.trim() || null,
         info: F.info.value.trim() || null, codigo_postal: F.cp.value.trim() || null, autoriza_rrss: F.rrss.checked, responsable_id: respId,

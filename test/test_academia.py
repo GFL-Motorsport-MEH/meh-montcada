@@ -155,9 +155,11 @@ try:
         page.get_by_role("button", name="✎ Editar en tabla").click(); page.wait_for_timeout(300)
         page.evaluate("""() => { for (const tr of document.querySelectorAll('table.ac-tabla tbody tr')) if ([...tr.querySelectorAll('input')].some((i) => i.value === 'Leo')) tr.setAttribute('data-t', 'leo'); }""")
         fl = page.locator("tr[data-t=leo]")
-        c = fl.locator("input.ac-celda").nth(2); check(c.input_value() == "Escola Sol", "celda de colegio editable"); c.fill("Escola Nova"); c.press("Tab"); page.wait_for_timeout(500)
+        c = fl.locator("input.ac-celda").nth(3); check(c.input_value() == "Escola Sol", "celda de colegio editable"); n = fl.locator("input.ac-celda-num"); n.fill("9999,5"); n.press("Tab"); page.wait_for_timeout(500)
+        check(any(str(x.get("num")) in ("9999.5",) for x in db(page, "ac_alumnos")), "ID del alumno editable en tabla")
+        c.fill("Escola Nova"); c.press("Tab"); page.wait_for_timeout(500)
         check([a for a in db(page, "ac_alumnos") if a["nombre"] == "Leo"][0]["colegio"] == "Escola Nova", "editar colegio en la tabla se guarda")
-        c = fl.locator("input.ac-celda").nth(4); check(c.input_value() == "Lactosa", "celda de alergias editable"); c.fill("Lactosa y gluten"); c.press("Tab"); page.wait_for_timeout(500)
+        c = fl.locator("input.ac-celda").nth(5); check(c.input_value() == "Lactosa", "celda de alergias editable"); c.fill("Lactosa y gluten"); c.press("Tab"); page.wait_for_timeout(500)
         check([a for a in db(page, "ac_alumnos") if a["nombre"] == "Leo"][0]["intolerancias"] == "Lactosa y gluten", "editar alergias en la tabla se guarda")
         # grupo como desplegable
         fl.locator("select.ac-celda-grupo").select_option(index=1); page.wait_for_timeout(900)
