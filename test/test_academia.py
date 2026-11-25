@@ -299,6 +299,8 @@ try:
         dm = db(page, "ac_domiciliaciones")
         check(len(dm) == 1 and dm[0]["remesa_id"] == rl[0]["id"], "al asignar remesa en Pendientes se guarda la domiciliación y pasa a Remesas")
         page.get_by_role("button", name="Remesas (1)").click()
+        page.locator("td.ac-cuota-cambio").first.hover(); page.wait_for_timeout(150)
+        expect(page.locator(".ac-tip")).to_contain_text("→")
         expect(page.locator("body")).to_contain_text("1/20")
         expect(page.locator("td.ac-cuota-cambio")).to_have_count(1)
         # cambios/comentarios con fecha y edición

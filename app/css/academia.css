@@ -516,3 +516,5 @@ main table.data.ac-compacta > thead { top: 0; }
 .fe-plantilla { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); cursor: pointer; font: inherit; color: inherit; }
 .fe-plantilla:hover { border-color: #2563eb; }
 .fe-nota { font-size: 22px; font-weight: 700; } .fe-ok { color: #15803d; font-weight: 700; } .fe-ko { color: #b91c1c; font-size: 12px; }
+/* leyenda flotante de Remesas (avisos ⚠, cambios de cuota) */
+.ac-tip { position: fixed; z-index: 10000; display: none; max-width: 340px; padding: 6px 9px; border-radius: 6px; background: #1f2937; color: #fff; font-size: 12px; line-height: 1.35; white-space: pre-line; box-shadow: 0 4px 14px rgba(0,0,0,.25); pointer-events: none; }

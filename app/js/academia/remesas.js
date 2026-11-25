@@ -62,8 +62,27 @@ function tablaOrd(clave, cols, items, filaFn, { pie = null, clase = '', vacio = 
   return h('div', { class: 'table-wrap' }, h('table', { class: `data ${clase}` }, h('thead', {}, h('tr', {}, ths)), tbody, pie));
 }
 
+// leyenda flotante al pasar el ratón (o enfocar) sobre cualquier elemento con data-tip; no la recorta el scroll de las tablas
+let tipEl = null;
+let leyendasOn = false;
+function activarLeyendas() {
+  if (leyendasOn) return; leyendasOn = true;
+  const ocultar = () => { if (tipEl) tipEl.style.display = 'none'; };
+  const mostrar = (el) => {
+    if (!tipEl) { tipEl = h('div', { class: 'ac-tip', role: 'tooltip' }); document.body.append(tipEl); }
+    tipEl.textContent = el.dataset.tip; tipEl.style.display = 'block';
+    const r = el.getBoundingClientRect(); const t = tipEl.getBoundingClientRect();
+    tipEl.style.left = `${Math.max(6, Math.min(window.innerWidth - t.width - 6, r.left))}px`;
+    tipEl.style.top = `${r.bottom + 6 + t.height > window.innerHeight ? Math.max(6, r.top - t.height - 6) : r.bottom + 6}px`;
+  };
+  document.addEventListener('mouseover', (e) => { const el = e.target.closest?.('[data-tip]'); if (el) mostrar(el); else ocultar(); });
+  document.addEventListener('focusin', (e) => { const el = e.target.closest?.('[data-tip]'); if (el) mostrar(el); });
+  document.addEventListener('focusout', ocultar); window.addEventListener('scroll', ocultar, true);
+}
+
 export async function renderRemesas(view, ctx) {
   clear(view, cargando());
+  activarLeyendas();
   const curso = ctx.cursoActual();
   const editor = ctx.edita('ac_remesas') || ctx.edita('ac_pagos');
   const [lista0, doms0, alumnos, insc, cambios, envios0, notas0] = await Promise.all([api.remesasLista(), api.domiciliaciones(), api.alumnos(), api.inscripciones(curso.id), api.cuotaCambios(curso.id), api.remesaEnvios(curso.id), api.domiNotas().catch(() => [])]);
@@ -423,11 +442,11 @@ export async function renderRemesas(view, ctx) {
     const camb = cambiosPor.get(x.a.id);
     const enviado = x.dom ? lineasEnvio.get(x.dom.id) : undefined;
     const distinto = enviado !== undefined && Math.abs(enviado - x.importe) >= 0.005;
-    return h('td', { class: `num ${camb ? 'ac-cuota-cambio' : ''}`, title: camb ? 'Cuota cambiada este mes (entre el 5 y el 25): ' + camb.map((c) => `${fmtEUR2(c.anterior)} → ${fmtEUR2(c.nueva)} el ${fmtFecha(c.fecha)}`).join(' · ') : null },
+    return h('td', { class: `num ${camb ? 'ac-cuota-cambio' : ''}`, 'data-tip': camb ? 'Cuota cambiada este mes (entre el 5 y el 25): ' + camb.map((c) => `${fmtEUR2(c.anterior)} → ${fmtEUR2(c.nueva)} el ${fmtFecha(c.fecha)}`).join(' · ') : null },
       fmtEUR2(x.importe), distinto ? h('div', { class: 'small ac-dif' }, `enviado ${fmtEUR2(enviado)}`) : null,
       lineasEnvioFull.length && x.dom && x.rem && x.a.estado === 'inscrito' && !lineasEnvio.has(x.dom.id) ? h('div', { class: 'small ac-dif' }, 'no estaba en el envío') : null);
   };
-  const celdaAlumno = (x, avisos) => h('td', {}, nombreAlumno(x.a), avisos?.length ? h('span', { class: 'pill warn', style: 'margin-left:6px', title: avisos.join(' · ') }, '⚠') : null);
+  const celdaAlumno = (x, avisos) => h('td', {}, nombreAlumno(x.a), avisos?.length ? h('span', { class: 'pill warn', style: 'margin-left:6px;cursor:help', tabindex: '0', 'data-tip': avisos.join('\n'), 'aria-label': 'Aviso: ' + avisos.join('. ') }, '⚠') : null);
 
   function vistaMain(vis) {
     const opc = opcionesRemesa();
