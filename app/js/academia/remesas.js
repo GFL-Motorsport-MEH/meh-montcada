@@ -309,6 +309,11 @@ export async function renderRemesas(view, ctx) {
     const env = envios.find((e) => e.id === f.envioId); if (!env) return;
     let lineas;
     try { lineas = [...await api.remesaEnvioLineas(env.id)]; } catch (ex) { toast(ex.message, 'error'); return; }
+    // un envío que solo guardó totales se detalla solo, a partir de las remesas actuales (los totales guardados no cambian hasta editar una línea)
+    if (!lineas.length && editor) {
+      const filas = main.filter((x) => x.rem && x.a.estado === 'inscrito' && x.importe > 0).map((x) => ({ envio_id: env.id, domiciliacion_id: x.dom?.id || null, alumno_id: x.a.id, alumno_num: x.a.num, remesa_nombre: x.rem.nombre, importe: x.importe }));
+      try { if (filas.length) { lineas = await api.insMany('ac_remesa_envio_lineas', filas); setLineas([...lineas]); pintarVista(); toast(`Detalle por alumno creado a partir de las remesas actuales (${lineas.length} líneas)`); } } catch (ex) { toast(ex.message, 'error'); }
+    }
     const fq = { q: '', remesa: '' };
     const hoyTxt = fmtFecha(hoyISO());
     const num2 = (v) => Number(String(v).replace(',', '.'));
