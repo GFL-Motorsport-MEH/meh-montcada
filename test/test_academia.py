@@ -325,18 +325,23 @@ try:
         page.locator(".dialog-actions .btn.primary").click(); page.wait_for_timeout(700)
         ev = db(page, "ac_remesa_envios"); rs = db(page, "ac_remesa_envio_resumen"); ln = db(page, "ac_remesa_envio_lineas")
         check(len(ev) == 1 and len(rs) == 1 and float(rs[0]["total"]) == 65 and len(ln) == 1, "REMESAS ENVIADAS guarda el resumen y las líneas del mes")
-        # editar un envío guardado: cambiar importe y quitar una línea
-        page.get_by_role("button", name="Editar este envío").click()
-        page.locator(".ac-rventana input[aria-label='Importe enviado']").fill("50")
-        page.locator(".ac-rventana input[aria-label='Importe enviado']").press("Tab"); page.wait_for_timeout(400)
+        # el mes enviado se ve y se edita en la vista principal, sin tocar nada más
+        cuota0 = [i["cuota_mensual"] for i in db(page, "ac_inscripciones")]
+        page.locator("table.ac-domi input[aria-label='Importe']").first.fill("50")
+        page.locator("table.ac-domi input[aria-label='Importe']").first.press("Tab"); page.wait_for_timeout(400)
         rs = db(page, "ac_remesa_envio_resumen"); ln = db(page, "ac_remesa_envio_lineas")
-        check(float(rs[0]["total"]) == 50 and float(ln[0]["importe"]) == 50 and rs[0]["ok"] is False and "→" in (rs[0].get("nota") or ""), "cambiar el importe de una línea enviada ajusta el total de la remesa y deja nota")
-        page.locator(".ac-rventana").get_by_role("button", name="Quitar línea").click(); page.wait_for_timeout(200)
+        check(float(rs[0]["total"]) == 50 and float(ln[0]["importe"]) == 50 and rs[0]["ok"] is False, "cambiar el importe en el mes enviado ajusta el total de la remesa")
+        check([i["cuota_mensual"] for i in db(page, "ac_inscripciones")] == cuota0, "editar un mes enviado no cambia la cuota del alumno")
+        page.locator("table.ac-domi").get_by_role("button", name="Quitar línea").first.click(); page.wait_for_timeout(200)
         page.locator(".dialog-actions .btn.danger, .dialog-actions .btn.primary").last.click(); page.wait_for_timeout(500)
         rs = db(page, "ac_remesa_envio_resumen"); ln = db(page, "ac_remesa_envio_lineas")
-        check(len(ln) == 0 and float(rs[0]["total"]) == 0 and int(rs[0]["cobros"]) == 0, "quitar una línea del envío resta su importe y su cobro del resumen")
-        page.keyboard.press("Escape")
-        expect(page.locator(".ac-rresumen")).to_contain_text("diferencia")
+        check(len(ln) == 0 and float(rs[0]["total"]) == 0 and int(rs[0]["cobros"]) == 0, "quitar una línea del mes enviado resta su importe y su cobro")
+        # comparar dos meses: A y B con colores distintos
+        page.locator(".ac-rresumen summary", has_text="Comparar dos meses").click(); page.wait_for_timeout(300)
+        check(page.locator(".ac-rresumen td.ac-cmp-a").count() > 0 and page.locator(".ac-rresumen td.ac-cmp-b").count() > 0, "la comparación muestra los dos meses en columnas de distinto color")
+        # volver al mes en curso (sin envío): vista viva
+        page.evaluate("() => { const s = document.querySelector('select[aria-label=Mes]'); const o = [...s.options].find((x) => !x.textContent.includes('enviado')); s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); }")
+        page.wait_for_timeout(500)
         # archivar y restaurar
         page.locator("table.ac-domi tr", has_text="Foz, Anna").get_by_role("button", name="Archivar").click(); page.wait_for_timeout(200)
         page.locator(".dialog-actions .btn.primary").click(); page.wait_for_timeout(500)

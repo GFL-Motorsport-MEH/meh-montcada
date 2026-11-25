@@ -109,8 +109,7 @@ export async function renderRemesas(view, ctx) {
   const f = vistaEstado('remesas.f', { q: '', remesa: '', banco: '', soloCambios: false, soloAvisos: false, vista: 'main' }); // se recuerda al refrescar
   if (!['main', 'pend', 'arch'].includes(f.vista)) f.vista = 'main';
   const envioOrden = () => [...envios].sort((a, b) => (b.enviado_el || '').localeCompare(a.enviado_el || ''));
-  f.envioId = envioOrden()[0]?.id || '';
-  let lineasEnvio = new Map(); let lineasEnvioFull = []; // domiciliacion_id → importe enviado (solo si el envío guardó líneas)
+  let lineasEnvioFull = []; // líneas del mes seleccionado cuando es un envío guardado
 
   const remPor = () => new Map(lista.map((r) => [r.id, r]));
   // main: líneas ya procesadas · pend: alumnos nuevos / que pasan a domiciliación · arch: archivados
@@ -230,169 +229,162 @@ export async function renderRemesas(view, ctx) {
       h('button', { class: 'ac-rbtn', type: 'button', disabled: !editor, title: x.a.responsable_id ? 'Modificar IBAN (también en Alumnos)' : 'Sin responsable: pulsa para crearlo y poner el IBAN', 'aria-label': 'Modificar IBAN', onclick: () => editarIban(x) }, '✎'));
   };
 
-  // ---------- resumen de remesas ----------
+  // ---------- mes seleccionado: «actual» (en curso) o un envío guardado (copia propia, editable sin afectar al resto) ----------
+  const ver = () => envios.find((e) => e.mes === mesSel.value) || null;
+  const setLineas = (arr) => { lineasEnvioFull = arr; };
   async function cargarLineas() {
     setLineas([]);
-    if (!f.envioId) return;
-    try { setLineas([...await api.remesaEnvioLineas(f.envioId)]); } catch { /* sin líneas */ }
-  }
-  const setLineas = (arr) => { lineasEnvioFull = arr; lineasEnvio = new Map(arr.filter((x) => x.domiciliacion_id).map((x) => [x.domiciliacion_id, Number(x.importe)])); };
-  // Compara lo actual con lo registrado en el envío: por línea si el envío tiene detalle por alumno, y si no, por total de cada remesa
-  function diferenciasEnvio(env) {
-    const items = []; const actuales = main.filter((x) => x.rem && x.a.estado === 'inscrito');
-    if (!lineasEnvioFull.length) {
-      const nombres = new Set([...lista.map((r) => r.nombre), ...(env.resumen || []).map((r) => r.remesa_nombre)]);
-      for (const n of nombres) {
-        const act = cmp2(actuales.filter((x) => x.rem.nombre === n).reduce((a, x) => a + x.importe, 0)); const g = Number((env.resumen || []).find((r) => r.remesa_nombre === n)?.total || 0);
-        if (Math.abs(act - g) >= 0.005) items.push(`${n}: ahora ${fmtEUR2(act)}, enviado ${fmtEUR2(g)} (${fmtDif(cmp2(act - g))})`);
-      }
-      return { detalle: false, items };
-    }
-    const guardadas = new Map(lineasEnvioFull.filter((l) => l.domiciliacion_id).map((l) => [l.domiciliacion_id, l]));
-    const actualIds = new Set(actuales.filter((x) => x.dom).map((x) => x.dom.id));
-    const quien = (a, num) => `ID ${num ?? a?.num} ${a ? nombreAlumno(a) : ''}`.trim();
-    for (const x of actuales) {
-      const l = x.dom ? guardadas.get(x.dom.id) : null;
-      if (!l) { items.push(`${quien(x.a)}: no estaba en el envío (ahora ${fmtEUR2(x.importe)} en ${x.rem.nombre})`); continue; }
-      if (l.remesa_nombre !== x.rem.nombre) items.push(`${quien(x.a)}: enviado en ${l.remesa_nombre}, ahora en ${x.rem.nombre}`);
-      if (Math.abs(Number(l.importe) - x.importe) >= 0.005) items.push(`${quien(x.a)}: enviado ${fmtEUR2(Number(l.importe))}, ahora ${fmtEUR2(x.importe)}`);
-    }
-    for (const l of lineasEnvioFull) if (!l.domiciliacion_id || !actualIds.has(l.domiciliacion_id)) items.push(`${quien(alPor.get(l.alumno_id), l.alumno_num)}: estaba en el envío (${fmtEUR2(Number(l.importe))} en ${l.remesa_nombre}) y ya no está en las remesas actuales`);
-    return { detalle: true, items };
+    const env = ver(); if (!env) return;
+    try { setLineas([...await api.remesaEnvioLineas(env.id)]); } catch { /* sin líneas */ }
   }
   const resumenAbierto = () => { try { return localStorage.getItem('remesas_resumen') !== '0'; } catch { return true; } };
-  function pintarResumen() {
-    const env = envios.find((e) => e.id === f.envioId);
-    const guardado = new Map((env?.resumen || []).map((r) => [r.remesa_nombre, r]));
-    const envSel = sel(envioOrden().map((e) => [e.id, `${capitalizar(e.mes)} · enviado ${fmtFecha((e.enviado_el || '').slice(0, 10))}`]), f.envioId, { vacio: envios.length ? '— sin comparar —' : 'Aún no hay envíos guardados' });
-    envSel.addEventListener('change', async () => { f.envioId = envSel.value; await cargarLineas(); pintarResumen(); pintarVista(); const e2 = envios.find((e) => e.id === f.envioId); const d2 = e2 ? diferenciasEnvio(e2) : null; if (d2?.items.length) toast(`Hay ${d2.items.length} diferencias con lo registrado en el envío de ${e2.mes}`, 'error'); });
-    let tActual = 0; let tGuardado = 0; let nActual = 0;
-    const items = lista.map((r) => {
-      const l = cuentaRemesa(r); const total = cmp2(l.reduce((s, x) => s + x.importe, 0)); const g = guardado.get(r.nombre);
-      tActual += total; nActual += l.length; tGuardado += Number(g?.total || 0);
-      return { r, n: l.length, total, g, dif: g ? cmp2(total - Number(g.total)) : null };
-    });
-    const cols = [
-      { t: 'Remesa', k: (i) => i.r.orden }, { t: 'Banco', k: (i) => i.r.banco }, { t: 'Cobros', num: true, k: (i) => i.n }, { t: 'Suma actual', num: true, k: (i) => i.total },
-      { t: 'Suma enviada', num: true, k: (i) => (i.g ? Number(i.g.total) : '') }, { t: 'Diferencia', num: true, k: (i) => (i.dif === null ? '' : Math.abs(i.dif)) }, { t: 'OK', k: (i) => (i.g ? (i.g.ok ? 1 : 0) : '') }, { t: 'Nota', k: (i) => i.g?.nota || '' }];
-    const fila = ({ r, n, total, g, dif }) => {
-      const llena = r.capacidad && n > r.capacidad;
-      const ok = h('input', { type: 'checkbox', checked: !!g?.ok, disabled: !g || !editor, title: g ? 'Revisado: lo que entró en el banco coincide' : 'Solo en remesas del envío guardado' });
-      ok.addEventListener('change', async () => { try { Object.assign(g, await api.upd('ac_remesa_envio_resumen', g.id, { ok: ok.checked })); } catch (ex) { ok.checked = !ok.checked; toast(ex.message, 'error'); } });
-      const nota = h('input', { type: 'text', class: 'cell', value: g?.nota || '', disabled: !g || !editor, placeholder: g ? 'Nota…' : '', style: 'width:100%;min-width:120px' });
-      nota.addEventListener('change', async () => { try { Object.assign(g, await api.upd('ac_remesa_envio_resumen', g.id, { nota: nota.value.trim() || null })); toast('Nota guardada'); } catch (ex) { toast(ex.message, 'error'); } });
-      return h('tr', {},
-        h('td', {}, h('strong', {}, r.nombre)), h('td', {}, nombreBanco(r.banco)),
-        h('td', { class: 'num' }, llena ? h('span', { class: 'pill warn', title: `Pasa de ${r.capacidad} cobros` }, `${n}/${r.capacidad}`) : (r.capacidad ? `${n}/${r.capacidad}` : String(n))),
-        h('td', { class: 'num' }, fmtEUR2(total)), h('td', { class: 'num' }, g ? fmtEUR2(g.total) : '—'),
-        h('td', { class: `num ${dif && Math.abs(dif) >= 0.005 ? 'ac-dif' : ''}` }, dif === null ? '' : fmtDif(dif)),
-        h('td', { class: 'center' }, ok), h('td', {}, nota));
+  const bancoDeNombre = (n) => lista.find((r) => r.nombre === n)?.banco || 'SABADELL';
+  // cifras por remesa de un mes: 'actual' o el id de un envío (de sus líneas si tiene detalle, y si no, de los totales guardados)
+  async function cifrasDe(clave) {
+    const m = new Map();
+    const suma = (n, c, t) => { const o = m.get(n) || { n: 0, total: 0 }; o.n += c; o.total = cmp2(o.total + t); m.set(n, o); };
+    if (clave === 'actual') { for (const r of lista) { const l = cuentaRemesa(r); if (l.length) suma(r.nombre, l.length, l.reduce((s, x) => s + x.importe, 0)); } return m; }
+    const env = envios.find((e) => e.id === clave); if (!env) return m;
+    let lin = env.id === ver()?.id ? lineasEnvioFull : null;
+    if (!lin) { try { lin = await api.remesaEnvioLineas(env.id); } catch { lin = []; } }
+    if (lin.length) for (const l of lin) suma(l.remesa_nombre || '—', 1, Number(l.importe));
+    else for (const r of env.resumen || []) suma(r.remesa_nombre, Number(r.cobros), Number(r.total));
+    return m;
+  }
+  // tras editar las líneas de un envío, sus totales por remesa se recalculan (lo guardado queda coherente con el detalle)
+  async function sincronizarResumen(env) {
+    const m = new Map();
+    for (const l of lineasEnvioFull) { const o = m.get(l.remesa_nombre) || { n: 0, total: 0 }; o.n += 1; o.total = cmp2(o.total + Number(l.importe)); m.set(l.remesa_nombre, o); }
+    for (const r of env.resumen || []) {
+      const o = m.get(r.remesa_nombre) || { n: 0, total: 0 };
+      if (Number(r.cobros) !== o.n || Math.abs(Number(r.total) - o.total) >= 0.005) Object.assign(r, await api.upd('ac_remesa_envio_resumen', r.id, { cobros: o.n, total: o.total, ok: false }));
+      m.delete(r.remesa_nombre);
+    }
+    for (const [nombre, o] of m) {
+      const rl = lista.find((x) => x.nombre === nombre);
+      const nuevo = (await api.insMany('ac_remesa_envio_resumen', [{ envio_id: env.id, remesa_nombre: nombre, banco: rl?.banco || 'SABADELL', orden: rl?.orden ?? 9999, cobros: o.n, total: o.total }]))[0];
+      env.resumen = [...(env.resumen || []), nuevo];
+    }
+  }
+  const datosLinea = (x, remesaNombre) => ({ alumno_id: x.a.id, alumno_num: x.a.num, domiciliacion_id: x.dom?.id || null, remesa_nombre: remesaNombre, importe: x.importe,
+    alumno_nombre: nombreAlumno(x.a), responsable_nombre: respTxt(x.a) || null, iban: ibanDe(x) || null, ref_mandato: x.dom?.ref_mandato || null });
+
+  async function pintarResumen() {
+    const env = ver();
+    const cifras = await cifrasDe(env ? env.id : 'actual');
+    const nombres = [...new Set([...lista.map((r) => r.nombre), ...cifras.keys()])];
+    const filas = nombres.map((n) => {
+      const r = lista.find((x) => x.nombre === n); const c = cifras.get(n) || { n: 0, total: 0 };
+      return { n, r, cobros: c.n, total: c.total, g: env ? (env.resumen || []).find((x) => x.remesa_nombre === n) : null };
+    }).filter((x) => x.cobros || x.g || x.r).sort((a, b) => (a.r ? a.r.orden : 9999) - (b.r ? b.r.orden : 9999));
+    const tn = filas.reduce((s, x) => s + x.cobros, 0); const tt = cmp2(filas.reduce((s, x) => s + x.total, 0));
+    const cols = [{ t: 'Remesa', k: (i) => (i.r ? i.r.orden : 9999) }, { t: 'Banco', k: (i) => i.r?.banco || bancoDeNombre(i.n) }, { t: 'Cobros', num: true, k: (i) => i.cobros }, { t: 'Suma', num: true, k: (i) => i.total },
+      ...(env ? [{ t: 'OK', k: (i) => (i.g?.ok ? 1 : 0) }, { t: 'Nota', k: (i) => i.g?.nota || '' }] : [])];
+    const fila = (i) => {
+      const llena = !env && i.r?.capacidad && i.cobros > i.r.capacidad;
+      const tds = [h('td', {}, h('strong', {}, i.n)), h('td', {}, nombreBanco(i.r?.banco || bancoDeNombre(i.n))),
+        h('td', { class: 'num' }, llena ? h('span', { class: 'pill warn', title: `Pasa de ${i.r.capacidad} cobros` }, String(i.cobros)) : String(i.cobros)), h('td', { class: 'num' }, fmtEUR2(i.total))];
+      if (env) {
+        const g = i.g;
+        const ok = h('input', { type: 'checkbox', checked: !!g?.ok, disabled: !g || !editor, title: 'Revisado: lo que entró en el banco coincide' });
+        ok.addEventListener('change', async () => { try { Object.assign(g, await api.upd('ac_remesa_envio_resumen', g.id, { ok: ok.checked })); } catch (ex) { ok.checked = !ok.checked; toast(ex.message, 'error'); } });
+        const nota = h('input', { type: 'text', class: 'cell', value: g?.nota || '', disabled: !g || !editor, placeholder: g ? 'Nota…' : '', style: 'width:100%;min-width:120px' });
+        nota.addEventListener('change', async () => { try { Object.assign(g, await api.upd('ac_remesa_envio_resumen', g.id, { nota: nota.value.trim() || null })); toast('Nota guardada'); } catch (ex) { toast(ex.message, 'error'); } });
+        tds.push(h('td', { class: 'center' }, ok), h('td', {}, nota));
+      }
+      return h('tr', {}, tds);
     };
-    const pendImp = cmp2(pend.reduce((s, x) => s + x.importe, 0));
-    const pie = h('tfoot', {}, h('tr', {}, h('th', { colspan: 2 }, 'Total'), h('th', { class: 'num' }, String(nActual)), h('th', { class: 'num' }, fmtEUR2(tActual)), h('th', { class: 'num' }, env ? fmtEUR2(tGuardado) : ''), h('th', { class: 'num' }, env ? fmtDif(cmp2(tActual - tGuardado)) : ''), h('th', {}), h('th', {}, pend.length ? `${pend.length} pendientes de procesar (${fmtEUR2(pendImp)})` : '')));
-    const dif = env ? diferenciasEnvio(env) : null;
-    const aviso = !dif ? null : dif.items.length
-      ? h('div', { class: 'ac-dif small', style: 'margin:4px 0' }, h('strong', {}, `⚠ ${dif.items.length} diferencia${dif.items.length > 1 ? 's' : ''} entre lo actual y lo registrado en el envío de ${env.mes}`), dif.detalle ? '' : ' (este envío solo guardó totales por remesa)',
-        h('ul', { style: 'margin:2px 0 2px 18px;padding:0' }, dif.items.slice(0, 12).map((t) => h('li', {}, t)), dif.items.length > 12 ? h('li', {}, `…y ${dif.items.length - 12} más`) : null),
-        h('span', { class: 'muted' }, 'Si lo registrado está mal, corrígelo con «Editar este envío»; si lo actual es lo que cambió, no hace falta tocar nada.'))
-      : h('div', { class: 'small muted', style: 'margin:4px 0' }, `✓ Lo actual coincide con lo registrado en el envío de ${env.mes}.`);
+    const pie = h('tfoot', {}, h('tr', {}, h('th', { colspan: 2 }, 'Total'), h('th', { class: 'num' }, String(tn)), h('th', { class: 'num' }, fmtEUR2(tt)), env ? h('th', { colspan: 2 }) : null));
+    const titulo = env ? `${capitalizar(env.mes)} · enviado ${fmtFecha((env.enviado_el || '').slice(0, 10))}` : 'Mes en curso (datos actuales)';
     const det = h('details', { class: 'card ac-rresumen', open: resumenAbierto() },
-      h('summary', {}, h('strong', {}, 'Resumen de remesas'), h('span', { class: 'muted small' }, ` · ${nActual} cobros · ${fmtEUR2(tActual)}${env ? ` · comparando con ${capitalizar(env.mes)} (${fmtDif(cmp2(tActual - tGuardado))})${dif?.items.length ? ` · ⚠ ${dif.items.length} diferencias` : ''}` : ''}`)),
-      h('div', { class: 'ac-fila', style: 'margin:4px 0' }, h('label', { class: 'small muted' }, 'Comparar con el envío de ', envSel), env ? h('button', { class: 'btn small', type: 'button', disabled: !editor, title: 'Añadir, quitar o cambiar el importe de líneas de este envío ya guardado (para que cuadre con lo que entró en el banco)', onclick: () => editarEnvio() }, 'Editar este envío') : null),
-      aviso, tablaOrd('resumen', cols, items, fila, { pie, clase: 'ac-compacta' }));
+      h('summary', {}, h('strong', {}, 'Resumen de remesas'), h('span', { class: 'muted small' }, ` · ${titulo} · ${tn} cobros · ${fmtEUR2(tt)}`)),
+      tablaOrd('resumen', cols, filas, fila, { pie, clase: 'ac-compacta' }));
     det.addEventListener('toggle', () => { try { localStorage.setItem('remesas_resumen', det.open ? '1' : '0'); } catch { /* sin almacenamiento */ } });
-    clear(resumenEl, det);
+    clear(resumenEl, det, await panelComparar());
   }
 
-  // ---------- editar un envío ya guardado (añadir, quitar, cambiar importe o remesa de una línea) ----------
-  async function editarEnvio() {
-    const env = envios.find((e) => e.id === f.envioId); if (!env) return;
-    let lineas;
-    try { lineas = [...await api.remesaEnvioLineas(env.id)]; } catch (ex) { toast(ex.message, 'error'); return; }
-    // un envío que solo guardó totales se detalla solo, a partir de las remesas actuales (los totales guardados no cambian hasta editar una línea)
-    if (!lineas.length && editor) {
-      const filas = main.filter((x) => x.rem && x.a.estado === 'inscrito' && x.importe > 0).map((x) => ({ envio_id: env.id, domiciliacion_id: x.dom?.id || null, alumno_id: x.a.id, alumno_num: x.a.num, remesa_nombre: x.rem.nombre, importe: x.importe }));
-      try { if (filas.length) { lineas = await api.insMany('ac_remesa_envio_lineas', filas); setLineas([...lineas]); pintarVista(); toast(`Detalle por alumno creado a partir de las remesas actuales (${lineas.length} líneas)`); } } catch (ex) { toast(ex.message, 'error'); }
-    }
-    const fq = { q: '', remesa: '' };
-    const hoyTxt = fmtFecha(hoyISO());
-    const num2 = (v) => Number(String(v).replace(',', '.'));
-    // aplica la diferencia al resumen de la remesa (no recalcula desde las líneas, para respetar los totales guardados);
-    // la remesa pierde el «OK» (hay que volver a comprobarla) y recibe una nota del cambio
-    async function sincronizar(nombre, dTotal, dCobros, nota) {
-      if (!nombre) return;
-      let r = env.resumen.find((x) => x.remesa_nombre === nombre);
-      if (!r) {
-        const rl = lista.find((x) => x.nombre === nombre);
-        r = (await api.insMany('ac_remesa_envio_resumen', [{ envio_id: env.id, remesa_nombre: nombre, banco: rl?.banco || 'SABADELL', orden: rl?.orden ?? 9999, cobros: Math.max(0, dCobros), total: Math.max(0, cmp2(dTotal)), nota }]))[0];
-        env.resumen.push(r); return;
-      }
-      Object.assign(r, await api.upd('ac_remesa_envio_resumen', r.id, { cobros: Math.max(0, Number(r.cobros) + dCobros), total: Math.max(0, cmp2(Number(r.total) + dTotal)), nota: [r.nota, nota].filter(Boolean).join(' · ') || null, ok: false }));
-    }
-    const refrescar = () => { setLineas([...lineas]); pintarResumen(); pintarVista(); pintaLista(); };
-    const opcionesR = () => lista.map((r) => [r.nombre, r.nombre]);
-    const listaEl = h('div', { style: 'max-height:50vh;overflow:auto' }); const difEl = h('div', { class: 'small' }); const inicioEl = h('div', {}); const totEl = h('div', { class: 'small', role: 'status' });
-    const nom = (l) => { const a = alPor.get(l.alumno_id); return a ? nombreAlumno(a) : `ID ${l.alumno_num ?? '?'}`; };
-    function pintaLista() {
-      const q = normalizar(fq.q.trim());
-      const vis = lineas.filter((l) => (!fq.remesa || l.remesa_nombre === fq.remesa) && (!q || normalizar(`${l.alumno_num} ${nom(l)} ${l.remesa_nombre}`).includes(q)));
-      const orden = new Map(env.resumen.map((r) => [r.remesa_nombre, r.orden]));
-      vis.sort((x, y) => (orden.get(x.remesa_nombre) ?? 9999) - (orden.get(y.remesa_nombre) ?? 9999) || Number(x.alumno_num) - Number(y.alumno_num));
-      const fila = (l) => {
-        const imp = h('input', { type: 'text', inputmode: 'decimal', 'data-punto': '1', autocomplete: 'off', class: 'cell', value: Number(l.importe), disabled: !editor, style: 'width:70px;text-align:right', 'aria-label': 'Importe enviado' });
-        imp.addEventListener('change', async () => {
-          const v = num2(imp.value); if (!Number.isFinite(v) || v < 0) { imp.value = Number(l.importe); toast('Importe no válido', 'error'); return; }
-          if (v === Number(l.importe)) return;
-          const antes = Number(l.importe);
-          try { Object.assign(l, await api.upd('ac_remesa_envio_lineas', l.id, { importe: v })); await sincronizar(l.remesa_nombre, v - antes, 0, `${hoyTxt}: ID ${l.alumno_num} ${fmtEUR2(antes)} → ${fmtEUR2(v)}`); refrescar(); toast('Importe cambiado'); } catch (ex) { imp.value = antes; toast(ex.message, 'error'); }
-        });
-        const selR = sel(opcionesR(), l.remesa_nombre || '', { vacio: '—', disabled: !editor, 'aria-label': 'Remesa de la línea' });
-        selR.addEventListener('change', async () => {
-          const de = l.remesa_nombre; const a = selR.value; if (!a || a === de) { selR.value = de || ''; return; }
-          try { Object.assign(l, await api.upd('ac_remesa_envio_lineas', l.id, { remesa_nombre: a })); const im = Number(l.importe); await sincronizar(de, -im, -1, `${hoyTxt}: ID ${l.alumno_num} pasa a ${a}`); await sincronizar(a, im, 1, `${hoyTxt}: ID ${l.alumno_num} viene de ${de}`); refrescar(); toast('Línea movida'); } catch (ex) { selR.value = de || ''; toast(ex.message, 'error'); }
-        });
-        const bor = h('button', { class: 'ac-rbtn', type: 'button', disabled: !editor, title: 'Quitar esta línea del envío', 'aria-label': 'Quitar línea', onclick: async () => {
-          if (!await confirmar({ titulo: 'Quitar del envío', texto: `${nom(l)} (ID ${l.alumno_num}, ${fmtEUR2(Number(l.importe))}) deja de contar en ${l.remesa_nombre || 'el envío'} de ${env.mes}. No cambia la remesa actual del alumno, solo lo que se dio por enviado.`, ok: 'Quitar', peligro: true })) return;
-          try { await api.del('ac_remesa_envio_lineas', l.id); lineas = lineas.filter((x) => x.id !== l.id); await sincronizar(l.remesa_nombre, -Number(l.importe), -1, `${hoyTxt}: quitado ID ${l.alumno_num} (${fmtEUR2(Number(l.importe))})`); refrescar(); toast('Línea quitada del envío'); } catch (ex) { toast(ex.message, 'error'); }
-        } }, '✕');
-        return h('tr', {}, h('td', { class: 'num' }, String(l.alumno_num ?? '')), h('td', {}, nom(l)), h('td', {}, selR), h('td', { class: 'num' }, imp), h('td', {}, bor));
-      };
-      clear(listaEl, h('table', { class: 'data ac-compacta' }, h('thead', {}, h('tr', {}, h('th', { class: 'num' }, 'ID'), h('th', {}, 'Alumno'), h('th', {}, 'Remesa'), h('th', { class: 'num' }, 'Importe'), h('th', {}))),
-        h('tbody', {}, vis.length ? vis.map(fila) : h('tr', {}, h('td', { colspan: 5, class: 'empty' }, 'Sin líneas.')))));
-      const difs = env.resumen.map((r) => ({ r, d: cmp2(lineas.filter((l) => l.remesa_nombre === r.remesa_nombre).reduce((a, l) => a + Number(l.importe), 0) - Number(r.total)) })).filter((x) => lineas.length && Math.abs(x.d) >= 0.005);
-      clear(difEl, difs.length ? h('div', { class: 'ac-dif' }, 'Las líneas no suman lo guardado en: ', difs.map((x) => `${x.r.remesa_nombre} (líneas ${x.d > 0 ? '+' : ''}${fmtEUR2(x.d)} sobre el total guardado ${fmtEUR2(Number(x.r.total))})`).join(' · '), '. Quita o corrige la línea que sobra hasta que cuadre.') : null);
-      clear(inicioEl, lineas.length ? null : h('div', { class: 'card', style: 'padding:8px' }, h('p', { class: 'small' }, 'Este envío solo guardó los totales por remesa, sin el detalle por alumno. Puedes detallarlo a partir de las remesas actuales y luego quitar o corregir las líneas que no se enviaron. Los totales guardados no cambian hasta que modifiques una línea.'),
-        h('button', { class: 'btn primary small', type: 'button', disabled: !editor, onclick: async () => {
-          const filas = main.filter((x) => x.rem && x.a.estado === 'inscrito' && x.importe > 0).map((x) => ({ envio_id: env.id, domiciliacion_id: x.dom?.id || null, alumno_id: x.a.id, alumno_num: x.a.num, remesa_nombre: x.rem.nombre, importe: x.importe }));
-          try { lineas = await api.insMany('ac_remesa_envio_lineas', filas); refrescar(); toast(`${lineas.length} líneas creadas a partir de las remesas actuales`); } catch (ex) { toast(ex.message, 'error'); }
-        } }, 'Detallar por alumno desde las remesas actuales')));
-      totEl.textContent = `${lineas.length} líneas · ${fmtEUR2(cmp2(lineas.reduce((a, l) => a + Number(l.importe), 0)))} en total${vis.length !== lineas.length ? ` · ${vis.length} visibles` : ''}`;
-    }
-    // añadir una línea que faltaba en el envío
-    const dl = h('datalist', { id: 'ac-envio-alumnos' }, alumnos.filter((a) => a.estado === 'inscrito').sort((x, y) => Number(x.num) - Number(y.num)).map((a) => h('option', { value: `${a.num} · ${nombreAlumno(a)}` })));
-    const aBusca = h('input', { type: 'text', list: 'ac-envio-alumnos', placeholder: 'Alumno a añadir (ID o nombre)…', style: 'min-width:220px', 'aria-label': 'Alumno a añadir' });
-    const aRem = sel(opcionesR(), '', { vacio: 'Remesa…', 'aria-label': 'Remesa de la línea nueva' });
-    const aImp = h('input', { type: 'text', inputmode: 'decimal', 'data-punto': '1', autocomplete: 'off', placeholder: 'Importe', style: 'width:80px', 'aria-label': 'Importe de la línea nueva' });
-    const resolver = () => { const t = aBusca.value.trim(); const n = Number(t.split('·')[0]); return alumnos.find((a) => Number(a.num) === n && t.startsWith(String(a.num))) || alumnos.find((a) => normalizar(nombreAlumno(a)) === normalizar(t)); };
-    aBusca.addEventListener('change', () => { const a = resolver(); if (a) { aImp.value = String(inscPor.get(a.id)?.cuota_mensual || ''); const d = doms.find((x) => !x.archivado && x.alumno_id === a.id && x.remesa_id); const r = d && lista.find((x) => x.id === d.remesa_id); if (r) aRem.value = r.nombre; } });
-    const anadir = h('button', { class: 'btn primary small', type: 'button', disabled: !editor, onclick: async () => {
-      const a = resolver(); const v = num2(aImp.value);
-      if (!a) { toast('Elige un alumno de la lista', 'error'); return; }
-      if (!aRem.value) { toast('Elige la remesa', 'error'); return; }
-      if (!Number.isFinite(v) || v <= 0) { toast('Pon un importe mayor que 0', 'error'); return; }
-      try {
-        const d = doms.find((x) => !x.archivado && x.alumno_id === a.id && x.remesa_id && lista.find((r) => r.id === x.remesa_id)?.nombre === aRem.value) || doms.find((x) => !x.archivado && x.alumno_id === a.id);
-        const l = await api.ins('ac_remesa_envio_lineas', { envio_id: env.id, domiciliacion_id: d?.id || null, alumno_id: a.id, alumno_num: a.num, remesa_nombre: aRem.value, importe: v });
-        lineas.push(l); await sincronizar(aRem.value, v, 1, `${hoyTxt}: añadido ID ${a.num} (${fmtEUR2(v)})`); aBusca.value = ''; aImp.value = ''; refrescar(); toast('Línea añadida al envío');
-      } catch (ex) { toast(ex.message, 'error'); }
-    } }, 'Añadir línea');
-    const busca2 = h('input', { type: 'search', placeholder: 'Buscar ID, alumno o remesa…', 'aria-label': 'Buscar en el envío', oninput: (e) => { fq.q = e.target.value; pintaLista(); } });
-    const selF = sel(opcionesR(), '', { vacio: 'Todas las remesas', 'aria-label': 'Filtrar por remesa' }); selF.addEventListener('change', () => { fq.remesa = selF.value; pintaLista(); });
-    pintaLista();
-    ventana(`Editar envío de ${capitalizar(env.mes)}`, h('div', { style: 'display:flex;flex-direction:column;gap:8px' },
-      h('p', { class: 'small muted' }, 'Corrige lo que se dio por enviado (por ejemplo, quitar a alguien que aún no estaba, o cambiar un importe) para que el resumen cuadre con lo que entró en el banco. No modifica las remesas actuales ni las cuotas. Cada cambio deja una nota en la remesa y le quita el OK.'),
-      inicioEl, h('div', { class: 'ac-fila', style: 'gap:6px;flex-wrap:wrap' }, busca2, selF), totEl, difEl, listaEl,
-      h('div', { class: 'ac-fila', style: 'gap:6px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:8px' }, aBusca, dl, aRem, aImp, anadir)), { ancho: 640 });
+  // ---------- comparar dos meses: cifras en dos colores, una al lado de la otra ----------
+  const opcionesMes = () => [['actual', 'Actual (en curso)'], ...envioOrden().map((e) => [e.id, `${capitalizar(e.mes)} (enviado)`])];
+  async function panelComparar() {
+    if (!f.cmpA || (f.cmpA !== 'actual' && !envios.some((e) => e.id === f.cmpA))) f.cmpA = envioOrden()[0]?.id || 'actual';
+    if (!f.cmpB || (f.cmpB !== 'actual' && !envios.some((e) => e.id === f.cmpB))) f.cmpB = 'actual';
+    const [A, B] = await Promise.all([cifrasDe(f.cmpA), cifrasDe(f.cmpB)]);
+    const nombres = [...new Set([...lista.map((r) => r.nombre), ...A.keys(), ...B.keys()])].filter((n) => A.has(n) || B.has(n)).sort((a, b) => (lista.find((r) => r.nombre === a)?.orden ?? 9999) - (lista.find((r) => r.nombre === b)?.orden ?? 9999));
+    const z = { n: 0, total: 0 };
+    const items = nombres.map((n) => ({ n, a: A.get(n) || z, b: B.get(n) || z }));
+    const cols = [{ t: 'Remesa', k: (i) => i.n }, { t: 'Cobros A', num: true, k: (i) => i.a.n }, { t: 'Suma A', num: true, k: (i) => i.a.total }, { t: 'Cobros B', num: true, k: (i) => i.b.n }, { t: 'Suma B', num: true, k: (i) => i.b.total }, { t: 'Dif. cobros (B−A)', num: true, k: (i) => i.b.n - i.a.n }, { t: 'Dif. suma (B−A)', num: true, k: (i) => cmp2(i.b.total - i.a.total) }];
+    const fila = (i) => { const dn = i.b.n - i.a.n; const dt = cmp2(i.b.total - i.a.total);
+      return h('tr', {}, h('td', {}, h('strong', {}, i.n)), h('td', { class: 'num ac-cmp-a' }, String(i.a.n)), h('td', { class: 'num ac-cmp-a' }, fmtEUR2(i.a.total)), h('td', { class: 'num ac-cmp-b' }, String(i.b.n)), h('td', { class: 'num ac-cmp-b' }, fmtEUR2(i.b.total)),
+        h('td', { class: `num ${dn ? 'ac-dif' : ''}` }, dn ? (dn > 0 ? '+' : '') + dn : '0'), h('td', { class: `num ${Math.abs(dt) >= 0.005 ? 'ac-dif' : ''}` }, fmtDif(dt))); };
+    const sum = (m) => [...m.values()].reduce((s, x) => ({ n: s.n + x.n, total: cmp2(s.total + x.total) }), { n: 0, total: 0 });
+    const ta = sum(A); const tb = sum(B);
+    const pie = h('tfoot', {}, h('tr', {}, h('th', {}, 'Total'), h('th', { class: 'num ac-cmp-a' }, String(ta.n)), h('th', { class: 'num ac-cmp-a' }, fmtEUR2(ta.total)), h('th', { class: 'num ac-cmp-b' }, String(tb.n)), h('th', { class: 'num ac-cmp-b' }, fmtEUR2(tb.total)), h('th', { class: 'num' }, String(tb.n - ta.n)), h('th', { class: 'num' }, fmtDif(cmp2(tb.total - ta.total)))));
+    const sA = sel(opcionesMes(), f.cmpA); const sB = sel(opcionesMes(), f.cmpB);
+    sA.className = 'ac-cmp-a'; sB.className = 'ac-cmp-b';
+    sA.addEventListener('change', () => { f.cmpA = sA.value; pintarResumen(); }); sB.addEventListener('change', () => { f.cmpB = sB.value; pintarResumen(); });
+    return h('details', { class: 'card ac-rresumen', open: (() => { try { return localStorage.getItem('remesas_comparar') === '1'; } catch { return false; } })(), ontoggle: (e) => { try { localStorage.setItem('remesas_comparar', e.target.open ? '1' : '0'); } catch { /* sin almacenamiento */ } } },
+      h('summary', {}, h('strong', {}, 'Comparar dos meses')),
+      h('div', { class: 'ac-fila', style: 'margin:4px 0;gap:10px;flex-wrap:wrap' }, h('label', { class: 'small' }, h('span', { class: 'ac-cmp-a' }, 'A '), sA), h('label', { class: 'small' }, h('span', { class: 'ac-cmp-b' }, 'B '), sB)),
+      tablaOrd('comparar', cols, items, fila, { pie, clase: 'ac-compacta', vacio: 'No hay datos que comparar.' }));
+  }
+
+  // ---------- vista de un mes ya enviado: copia propia de ese mes, editable ----------
+  async function guardarLinea(env, l, parche) {
+    Object.assign(l, await api.upd('ac_remesa_envio_lineas', l.id, parche));
+    await sincronizarResumen(env); setLineas([...lineasEnvioFull]);
+  }
+  function vistaEnvio(env, q) {
+    const nomDe = (l) => l.alumno_nombre || (alPor.get(l.alumno_id) ? nombreAlumno(alPor.get(l.alumno_id)) : `ID ${l.alumno_num ?? '?'}`);
+    const respDe = (l) => l.responsable_nombre ?? (alPor.get(l.alumno_id) ? respTxt(alPor.get(l.alumno_id)) : '');
+    const ibanL = (l) => l.iban ?? (alPor.get(l.alumno_id) ? ibanDe({ a: alPor.get(l.alumno_id) }) : '');
+    const orden = (l) => lista.find((r) => r.nombre === l.remesa_nombre)?.orden ?? 9999;
+    const rf = f.remesa && f.remesa !== '__sin' ? lista.find((r) => r.id === f.remesa)?.nombre : null;
+    const vis = lineasEnvioFull.filter((l) => (!rf || l.remesa_nombre === rf) && (!f.banco || bancoDeNombre(l.remesa_nombre) === f.banco)
+      && (!q || normalizar(`${l.alumno_num} ${nomDe(l)} ${respDe(l)} ${l.remesa_nombre} ${l.comentario || ''}`).includes(q)));
+    const cols = [{ t: 'ID', num: true, k: (l) => Number(l.alumno_num) }, { t: 'Alumno', k: (l) => nomDe(l) }, { t: 'Responsable', k: (l) => respDe(l) }, { t: 'IBAN', k: (l) => ibanL(l) }, { t: 'Importe', num: true, k: (l) => Number(l.importe) },
+      { t: 'Mandato', k: (l) => l.ref_mandato || String(l.alumno_num) }, { t: 'Remesa', k: (l) => orden(l) }, { t: 'Comentario', k: (l) => l.comentario || '' }, { t: '' }];
+    const refresca = async () => { await pintarResumen(); pintarVista(); };
+    const fila = (l) => {
+      const imp = h('input', { type: 'number', step: '0.01', class: 'cell', value: String(Number(l.importe)), disabled: !editor, style: 'width:80px;text-align:right', 'aria-label': 'Importe' });
+      imp.addEventListener('change', async () => { const v = Number(String(imp.value).replace(',', '.')); if (!Number.isFinite(v) || v < 0) { imp.value = String(Number(l.importe)); return; }
+        try { await guardarLinea(env, l, { importe: cmp2(v) }); await refresca(); toast('Guardado solo en este mes'); } catch (ex) { imp.value = String(Number(l.importe)); toast(ex.message, 'error'); } });
+      const rem = sel(lista.map((r) => [r.nombre, r.nombre]), l.remesa_nombre, { disabled: !editor, 'aria-label': 'Remesa' });
+      rem.addEventListener('change', async () => { try { await guardarLinea(env, l, { remesa_nombre: rem.value }); await refresca(); } catch (ex) { rem.value = l.remesa_nombre; toast(ex.message, 'error'); } });
+      const man = h('input', { type: 'text', class: 'cell', value: l.ref_mandato || '', placeholder: String(l.alumno_num), disabled: !editor, style: 'width:64px' });
+      man.addEventListener('change', async () => { try { await guardarLinea(env, l, { ref_mandato: man.value.trim() || null }); } catch (ex) { toast(ex.message, 'error'); } });
+      const com = h('input', { type: 'text', class: 'cell', value: l.comentario || '', placeholder: 'Comentario…', disabled: !editor, style: 'width:100%;min-width:140px' });
+      com.addEventListener('change', async () => { try { await guardarLinea(env, l, { comentario: com.value.trim() || null }); } catch (ex) { toast(ex.message, 'error'); } });
+      const del = h('button', { class: 'ac-rbtn', type: 'button', disabled: !editor, title: 'Quitar esta línea de este mes (no cambia nada más)', 'aria-label': 'Quitar línea', onclick: async () => {
+        if (!await confirmar({ titulo: `Quitar de ${capitalizar(env.mes)}`, texto: `Se quita a ${nomDe(l)} (ID ${l.alumno_num}, ${fmtEUR2(Number(l.importe))}) solo de este mes. Alumnos y las remesas actuales no cambian.`, ok: 'Quitar', peligro: true })) return;
+        try { await api.del('ac_remesa_envio_lineas', l.id); setLineas(lineasEnvioFull.filter((x) => x.id !== l.id)); await sincronizarResumen(env); await refresca(); toast('Línea quitada de este mes'); } catch (ex) { toast(ex.message, 'error'); } } }, '✕');
+      return h('tr', {}, h('td', { class: 'num' }, String(l.alumno_num ?? '')), h('td', {}, nomDe(l)), h('td', {}, respDe(l) || '—'), h('td', {}, ibanL(l) ? h('span', { class: 'mono' }, ibanL(l)) : h('span', { class: 'muted' }, 'sin IBAN')), h('td', { class: 'num' }, imp), h('td', {}, man), h('td', {}, rem), h('td', {}, com), h('td', {}, del));
+    };
+    return { vis, el: tablaOrd('envio', cols, vis, fila, { clase: 'ac-domi', vacio: 'Este mes no tiene líneas con esos filtros.' }) };
+  }
+  function anadirAEnvio(env) {
+    const fq = h('input', { type: 'search', placeholder: 'Buscar alumno por ID o nombre…', style: 'width:100%' });
+    const res = h('div', { style: 'max-height:40vh;overflow:auto;margin-top:6px' });
+    const pinta = () => {
+      const q = normalizar(fq.value.trim()); if (!q) { clear(res, h('div', { class: 'muted small' }, 'Escribe para buscar.')); return; }
+      const hits = alumnos.filter((a) => normalizar(`${a.num} ${nombreAlumno(a)}`).includes(q)).slice(0, 15);
+      clear(res, hits.map((a) => { const x = { a, dom: doms.find((d) => d.alumno_id === a.id && !d.archivado) || null, importe: Number(inscPor.get(a.id)?.cuota_mensual || 0) };
+        const rs = sel(lista.map((r) => [r.nombre, r.nombre]), lista.find((r) => r.id === x.dom?.remesa_id)?.nombre || '', { vacio: '— remesa —' });
+        const im = h('input', { type: 'number', step: '0.01', value: String(x.importe), style: 'width:80px' });
+        return h('div', { class: 'ac-fila', style: 'gap:6px;padding:3px 0;border-bottom:1px solid var(--line,#ddd)' }, h('span', { style: 'flex:1' }, `${a.num} · ${nombreAlumno(a)}`), im, rs,
+          h('button', { class: 'btn small primary', type: 'button', onclick: async () => {
+            if (!rs.value) { toast('Elige la remesa', 'error'); return; }
+            try { x.importe = cmp2(Number(String(im.value).replace(',', '.')) || 0); const nueva = await api.ins('ac_remesa_envio_lineas', { envio_id: env.id, ...datosLinea(x, rs.value), comentario: 'Añadido a mano' });
+              setLineas([...lineasEnvioFull, nueva]); await sincronizarResumen(env); v.cerrar(); await pintarResumen(); pintarVista(); toast('Añadido solo a este mes'); } catch (ex) { toast(ex.message, 'error'); } } }, 'Añadir'));
+      }));
+    };
+    fq.addEventListener('input', pinta); pinta();
+    const v = ventana(`Añadir a ${capitalizar(env.mes)}`, h('div', {}, h('div', { class: 'small muted', style: 'margin-bottom:6px' }, 'Solo se añade a este mes; la ficha del alumno y las remesas actuales no cambian.'), fq, res), { ancho: 560 });
+    setTimeout(() => fq.focus(), 60);
+  }
+  async function detallarEnvio(env) {
+    if (!await confirmar({ titulo: `Detallar ${capitalizar(env.mes)} por alumno`, texto: 'Este mes solo guardó totales por remesa. Se crea una lista por alumno copiando las remesas actuales y los totales pasan a calcularse con ella; después quitas o cambias lo que no estuviera. No se modifica nada más.', ok: 'Crear detalle' })) return;
+    const filas = main.filter((x) => x.rem && x.a.estado === 'inscrito' && x.importe > 0).map((x) => ({ envio_id: env.id, ...datosLinea(x, x.rem.nombre) }));
+    try { setLineas(filas.length ? [...await api.insMany('ac_remesa_envio_lineas', filas)] : []); await sincronizarResumen(env); await pintarResumen(); pintarVista(); toast(`Detalle creado (${filas.length} líneas)`); } catch (ex) { toast(ex.message, 'error'); }
   }
 
   // ---------- gestionar remesas (ventana emergente) ----------
@@ -445,7 +437,7 @@ export async function renderRemesas(view, ctx) {
     if (x.dom) { Object.assign(x.dom, await api.upd('ac_domiciliaciones', x.dom.id, parche)); }
     else { x.dom = await api.ins('ac_domiciliaciones', { alumno_id: x.a.id, ...parche }); doms.push(x.dom); }
   }
-  const opcionesRemesa = () => lista.map((r) => [r.id, `${r.nombre} (${cuentaRemesa(r).length}${r.capacidad ? '/' + r.capacidad : ''})`]);
+  const opcionesRemesa = () => lista.map((r) => [r.id, `${r.nombre} (${cuentaRemesa(r).length})`]);
   // pregunta si la remesa está llena; true = seguir
   async function cabeEn(r, excepto) {
     if (!r?.capacidad) return true;
@@ -454,11 +446,15 @@ export async function renderRemesas(view, ctx) {
   }
   const celdaImporte = (x) => {
     const camb = cambiosPor.get(x.a.id);
-    const enviado = x.dom ? lineasEnvio.get(x.dom.id) : undefined;
-    const distinto = enviado !== undefined && Math.abs(enviado - x.importe) >= 0.005;
-    return h('td', { class: `num ${camb ? 'ac-cuota-cambio' : ''}`, 'data-tip': camb ? 'Cuota cambiada este mes (entre el 5 y el 25): ' + camb.map((c) => `${fmtEUR2(c.anterior)} → ${fmtEUR2(c.nueva)} el ${fmtFecha(c.fecha)}`).join(' · ') : null },
-      fmtEUR2(x.importe), distinto ? h('div', { class: 'small ac-dif' }, `enviado ${fmtEUR2(enviado)}`) : null,
-      lineasEnvioFull.length && x.dom && x.rem && x.a.estado === 'inscrito' && !lineasEnvio.has(x.dom.id) ? h('div', { class: 'small ac-dif' }, 'no estaba en el envío') : null);
+    const ins = inscPor.get(x.a.id);
+    const inp = h('input', { type: 'number', step: '0.01', class: 'cell', value: String(x.importe), disabled: !editor || !ins, style: 'width:80px;text-align:right', 'aria-label': 'Importe (cuota mensual)' });
+    inp.addEventListener('change', async () => {
+      const v = Number(String(inp.value).replace(',', '.'));
+      if (!Number.isFinite(v) || v < 0) { inp.value = String(x.importe); return; }
+      if (!await confirmar({ titulo: 'Cambiar la cuota', texto: `${nombreAlumno(x.a)}: ${fmtEUR2(x.importe)} → ${fmtEUR2(v)}. Es la cuota mensual de su inscripción, así que también cambia en Alumnos.`, ok: 'Cambiar' })) { inp.value = String(x.importe); return; }
+      try { Object.assign(ins, await api.upd('ac_inscripciones', ins.id, { cuota_mensual: cmp2(v) })); calc(); pintarTodo(); toast('Cuota actualizada también en Alumnos'); } catch (ex) { inp.value = String(x.importe); toast(ex.message, 'error'); }
+    });
+    return h('td', { class: `num ${camb ? 'ac-cuota-cambio' : ''}`, 'data-tip': camb ? 'Cuota cambiada este mes (entre el 5 y el 25): ' + camb.map((c) => `${fmtEUR2(c.anterior)} → ${fmtEUR2(c.nueva)} el ${fmtFecha(c.fecha)}`).join(' · ') : null }, inp);
   };
   const celdaAlumno = (x, avisos) => h('td', {}, nombreAlumno(x.a), avisos?.length ? h('span', { class: 'pill warn', style: 'margin-left:6px;cursor:help', tabindex: '0', 'data-tip': avisos.join('\n'), 'aria-label': 'Aviso: ' + avisos.join('. ') }, '⚠') : null);
 
@@ -525,6 +521,24 @@ export async function renderRemesas(view, ctx) {
 
   const datosVista = () => (f.vista === 'pend' ? pend : f.vista === 'arch' ? arch : main).filter((x) => pasa(x, f.vista));
   function pintarVista() {
+    const env = ver();
+    avisoF.actualizar();
+    if (env) {
+      const q = normalizar(f.q.trim());
+      if (!lineasEnvioFull.length) {
+        clear(tabsEl); filtrosMain.style.display = 'none';
+        statsEl.textContent = `${capitalizar(env.mes)}: solo hay totales por remesa guardados`;
+        clear(listaEl, h('div', { class: 'card' }, h('p', {}, `El envío de ${capitalizar(env.mes)} solo guardó los totales de cada remesa, sin lista de alumnos.`),
+          h('button', { class: 'btn primary', type: 'button', disabled: !editor, onclick: () => detallarEnvio(env) }, 'Crear lista por alumno (copia de lo actual)')));
+        return;
+      }
+      const { vis, el } = vistaEnvio(env, q);
+      filtrosMain.style.display = '';
+      statsEl.textContent = `${capitalizar(env.mes)} · ${vis.length} líneas · ${fmtEUR2(cmp2(vis.reduce((s, l) => s + Number(l.importe), 0)))} · los cambios aquí solo afectan a este mes`;
+      clear(tabsEl, h('button', { class: 'btn small primary', type: 'button', disabled: !editor, onclick: () => anadirAEnvio(env) }, '＋ Añadir alumno a este mes'));
+      clear(listaEl, el);
+      return;
+    }
     const vis = datosVista();
     clear(listaEl, f.vista === 'pend' ? vistaPend(vis) : f.vista === 'arch' ? vistaArch(vis) : vistaMain(vis));
     const total = cmp2(vis.filter((x) => x.a.estado === 'inscrito').reduce((s, x) => s + x.importe, 0));
@@ -533,7 +547,6 @@ export async function renderRemesas(view, ctx) {
     clear(tabsEl, [['main', 'Remesas', main.length], ['pend', 'Pendientes de procesar', pend.length], ['arch', 'Archivados', arch.length]].map(([k, t, n]) =>
       h('button', { class: `btn small ${f.vista === k ? 'primary' : ''}`, type: 'button', 'aria-pressed': f.vista === k ? 'true' : 'false', onclick: () => { f.vista = k; pintarVista(); } }, `${t} (${n})`)));
     filtrosMain.style.display = f.vista === 'main' ? '' : 'none';
-    avisoF.actualizar();
   }
   const pintarTodo = () => { calc(); pintarResumen(); pintarGestion(); pintarVista(); };
 
@@ -541,21 +554,25 @@ export async function renderRemesas(view, ctx) {
   const mesSel = sel(MESES.map((m) => [m, capitalizar(m)]), mesSiguiente());
   const btnEnviadas = h('button', { class: 'btn primary', type: 'button', disabled: !editor }, '');
   const etiquetaBtn = () => { btnEnviadas.textContent = `REMESAS ENVIADAS - ${mesSel.value.toUpperCase()}`; };
-  etiquetaBtn(); mesSel.addEventListener('change', etiquetaBtn);
+  const marcarMeses = () => [...mesSel.options].forEach((o) => { o.textContent = capitalizar(o.value) + (envios.some((e) => e.mes === o.value) ? ' ✓ enviado' : ''); });
+  if (f.mes && MESES.includes(f.mes)) mesSel.value = f.mes;
+  marcarMeses(); etiquetaBtn();
+  mesSel.setAttribute('aria-label', 'Mes');
+  mesSel.addEventListener('change', async () => { f.mes = mesSel.value; etiquetaBtn(); await cargarLineas(); await pintarResumen(); pintarVista(); });
   btnEnviadas.addEventListener('click', async () => {
     const mes = mesSel.value; calc();
     const rems = lista.map((r) => ({ r, l: cuentaRemesa(r) })).filter((x) => x.l.length);
     const total = cmp2(rems.reduce((s, x) => s + x.l.reduce((t, y) => t + y.importe, 0), 0)); const n = rems.reduce((s, x) => s + x.l.length, 0);
     const previo = envios.find((e) => e.mes === mes);
-    if (!await confirmar({ titulo: `Remesas enviadas · ${capitalizar(mes)}`, texto: `Se guardará como lo enviado al banco para ${mes}: ${rems.length} remesas, ${n} cobros, ${fmtEUR2(total)}.${pend.length ? ` Ojo: hay ${pend.length} alumnos pendientes de procesar que no entran.` : ''}${previo ? ' Ya había un envío guardado de ese mes: se sustituye (se pierden sus OK y notas).' : ''}`, ok: 'Guardar envío' })) return;
+    if (!await confirmar({ titulo: `Remesas enviadas · ${capitalizar(mes)}`, texto: `Se guardará como lo enviado al banco para ${mes}: ${rems.length} remesas, ${n} cobros, ${fmtEUR2(total)}.${pend.length ? ` Ojo: hay ${pend.length} alumnos pendientes de procesar que no entran.` : ''}${previo ? ' Ya había un envío guardado de ese mes: se sustituye por una copia nueva de lo actual (se pierden sus ediciones a mano, OK y notas).' : ''}`, ok: 'Guardar envío' })) return;
     btnEnviadas.disabled = true;
     try {
       if (previo) await api.del('ac_remesa_envios', previo.id);
       const e = await api.ins('ac_remesa_envios', { curso_id: curso.id, mes });
       const res = await api.insMany('ac_remesa_envio_resumen', rems.map((x) => ({ envio_id: e.id, remesa_nombre: x.r.nombre, banco: x.r.banco, orden: x.r.orden, cobros: x.l.length, total: cmp2(x.l.reduce((s, y) => s + y.importe, 0)) })));
-      await api.insMany('ac_remesa_envio_lineas', rems.flatMap((x) => x.l.map((y) => ({ envio_id: e.id, domiciliacion_id: y.dom?.id || null, alumno_id: y.a.id, alumno_num: y.a.num, remesa_nombre: x.r.nombre, importe: y.importe }))));
-      envios = envios.filter((x) => x.id !== previo?.id); envios.push({ ...e, resumen: res }); f.envioId = e.id;
-      await cargarLineas(); pintarResumen(); pintarVista(); toast(`Envío de ${mes} guardado`);
+      await api.insMany('ac_remesa_envio_lineas', rems.flatMap((x) => x.l.map((y) => ({ envio_id: e.id, domiciliacion_id: y.dom?.id || null, alumno_id: y.a.id, ...datosLinea(y, x.r.nombre) }))));
+      envios = envios.filter((x) => x.id !== previo?.id); envios.push({ ...e, resumen: res });
+      marcarMeses(); await cargarLineas(); await pintarResumen(); pintarVista(); toast(`Envío de ${mes} guardado`);
     } catch (ex) { toast(ex.message, 'error'); } finally { btnEnviadas.disabled = !editor; }
   });
 
@@ -579,7 +596,7 @@ export async function renderRemesas(view, ctx) {
 
   await cargarLineas();
   clear(view,
-    cabecera(`Remesas · ${curso.nombre}`, 'Domiciliaciones por remesa: Sabadell (hasta 20 cobros) y BBVA', btnGestion, mesSel, btnEnviadas, csv, h('a', { class: 'btn ghost small', href: '#/ac_remesas_mensuales' }, 'Remesas mensuales (antiguo)')),
+    cabecera(`Remesas · ${curso.nombre}`, 'Domiciliaciones por remesa. El mes elegido arriba manda: los meses ya enviados se editan sin afectar al resto', btnGestion, mesSel, btnEnviadas, csv, h('a', { class: 'btn ghost small', href: '#/ac_remesas_mensuales' }, 'Remesas mensuales (antiguo)')),
     resumenEl, tabsEl,
     h('div', { class: 'filters filters-2', style: 'gap:8px;flex-wrap:wrap' }, busca, filtrosMain, chk('Solo cuota cambiada este mes (5–25)', 'soloCambios')),
     avisoF, statsEl, listaEl);
