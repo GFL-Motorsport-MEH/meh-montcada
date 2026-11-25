@@ -142,12 +142,12 @@ export async function renderRemesas(view, ctx) {
     if (!x.dom?.remesa_id) av.push('Sin remesa');
     if (x.a.estado !== 'inscrito') av.push('Alumno no inscrito: revisar');
     else if (!esDomi(x.a.metodo_pago)) av.push(`Método de pago: ${x.a.metodo_pago || 'vacío'} → conviene archivar`);
-    if (!x.a.responsable_id) av.push('Sin responsable: el IBAN se guarda en el responsable. Pulsa ✎ junto al IBAN para crearlo');
+    if (!x.a.responsable_id) av.push('Sin IBAN (ni responsable): pulsa ✎ junto al IBAN para ponerlo');
     else if (!priv.get(x.a.responsable_id)?.iban) av.push('Sin IBAN');
     if (!x.importe) av.push('Sin cuota');
     return av;
   };
-  const respTxt = (a) => (a.responsable ? `${a.responsable.apellidos}, ${a.responsable.nombre}` : '');
+  const respTxt = (a) => (a.responsable && (a.responsable.apellidos || a.responsable.nombre) ? [a.responsable.apellidos, a.responsable.nombre].filter(Boolean).join(', ') : '');
   const ibanDe = (x) => priv.get(x.a.responsable_id)?.iban || '';
 
   const resumenEl = h('div'); const gestionEl = h('div'); const listaEl = h('div'); const statsEl = h('div', { class: 'count' }); const tabsEl = h('div', { class: 'ac-fila', style: 'gap:6px;margin:8px 0' });
@@ -201,11 +201,11 @@ export async function renderRemesas(view, ctx) {
   // ---------- IBAN (se modifica aquí y también en la ficha del responsable) ----------
   function editarIban(x) {
     let rid = x.a.responsable_id; const actual = ibanDe(x);
-    const rApe = h('input', { type: 'text', placeholder: 'Apellidos del responsable', 'aria-label': 'Apellidos del responsable' }); const rNom = h('input', { type: 'text', placeholder: 'Nombre del responsable', 'aria-label': 'Nombre del responsable' });
+    const rApe = h('input', { type: 'text', placeholder: 'Apellidos del responsable (opcional)', 'aria-label': 'Apellidos del responsable' }); const rNom = h('input', { type: 'text', placeholder: 'Nombre del responsable (opcional)', 'aria-label': 'Nombre del responsable' });
     const otros = alumnos.filter((a) => a.responsable_id === rid && a.id !== x.a.id).length;
     const inp = h('input', { type: 'text', value: actual, class: 'mono', style: 'width:100%', placeholder: 'ES00 0000 0000 0000 0000 0000' });
     const cont = h('div', { style: 'display:flex;flex-direction:column;gap:10px' },
-      !rid ? h('div', { class: 'small ac-dif' }, 'Este alumno no tiene responsable, y el IBAN se guarda en el responsable. Escribe su nombre y apellidos: se creará y se enlazará al alumno (también en Alumnos).') : null,
+      !rid ? h('div', { class: 'small ac-dif' }, 'Este alumno no tiene responsable. El IBAN se guarda igualmente: se crea un responsable (con el nombre que escribas, o sin nombre) y se enlaza al alumno. Podrás completarlo después en Alumnos.') : null,
       !rid ? h('div', { class: 'ac-fila', style: 'gap:6px' }, rApe, rNom) : null,
       rid ? h('div', { class: 'small' }, `Responsable: ${respTxt(x.a) || '—'}. Al guardar, el IBAN también cambia en la ficha del responsable (base de datos de Alumnos)${otros ? ` y afecta a ${otros} alumno${otros > 1 ? 's' : ''} más con el mismo responsable` : ''}.`) : null, inp);
     const v = ventana(`IBAN · ${nombreAlumno(x.a)}`, cont, { ancho: 460 });
@@ -216,7 +216,6 @@ export async function renderRemesas(view, ctx) {
       if (!/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(nuevo) && !await confirmar({ titulo: 'IBAN dudoso', texto: 'No tiene el formato de un IBAN. ¿Guardarlo igualmente?', ok: 'Guardar igualmente' })) return;
       try {
         if (!rid) {
-          if (!rApe.value.trim() && !rNom.value.trim()) { toast('Escribe el nombre y apellidos del responsable', 'error'); return; }
           const r = await api.ins('ac_responsables', { apellidos: rApe.value.trim(), nombre: rNom.value.trim() });
           await api.upd('ac_alumnos', x.a.id, { responsable_id: r.id }); x.a.responsable_id = r.id; x.a.responsable = r; rid = r.id;
         }

@@ -218,10 +218,8 @@ export async function abrirFicha(alumno, ctx, onCambio, prefill = null) {
     try {
       let respId = a.responsable_id || null;
       const rd = { apellidos: F.rApe.value.trim(), nombre: F.rNom.value.trim(), email: F.rMail.value.trim() || null, telefono: F.rTel.value.trim() || null };
-      if (!(rd.apellidos || rd.nombre || rd.telefono || rd.email) && editaPagos && (F.rIban.value.trim() || F.rDni.value.trim())) {
-        toast('Para guardar el IBAN o el DNI escribe también el nombre y apellidos del responsable (el IBAN es del responsable, no del alumno).', 'error'); return false;
-      }
-      if (rd.apellidos || rd.nombre || rd.telefono || rd.email) {
+      // el IBAN y el DNI se guardan aunque falten los datos del responsable (se crea sin nombre; se completa cuando se sepa)
+      if (rd.apellidos || rd.nombre || rd.telefono || rd.email || (editaPagos && (F.rDni.value.trim() || F.rIban.value.trim()))) {
         respId = respId ? (await api.upd('ac_responsables', respId, rd)).id : (await api.ins('ac_responsables', rd)).id;
         if (editaPagos && (F.rDni.value.trim() || F.rIban.value.trim() || priv)) {
           await api.guardarPrivados(respId, { dni: F.rDni.value.trim() || null, iban: F.rIban.value.replace(/\s+/g, '').toUpperCase() || null });
