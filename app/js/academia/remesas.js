@@ -91,7 +91,7 @@ export async function renderRemesas(view, ctx) {
   if (!['main', 'pend', 'arch'].includes(f.vista)) f.vista = 'main';
   const envioOrden = () => [...envios].sort((a, b) => (b.enviado_el || '').localeCompare(a.enviado_el || ''));
   f.envioId = envioOrden()[0]?.id || '';
-  let lineasEnvio = new Map(); // domiciliacion_id → importe enviado (solo si el envío guardó líneas)
+  let lineasEnvio = new Map(); let lineasEnvioFull = []; // domiciliacion_id → importe enviado (solo si el envío guardó líneas)
 
   const remPor = () => new Map(lista.map((r) => [r.id, r]));
   // main: líneas ya procesadas · pend: alumnos nuevos / que pasan a domiciliación · arch: archivados
@@ -204,16 +204,40 @@ export async function renderRemesas(view, ctx) {
 
   // ---------- resumen de remesas ----------
   async function cargarLineas() {
-    lineasEnvio = new Map();
+    setLineas([]);
     if (!f.envioId) return;
-    try { const l = await api.remesaEnvioLineas(f.envioId); for (const x of l) if (x.domiciliacion_id) lineasEnvio.set(x.domiciliacion_id, Number(x.importe)); } catch { /* sin líneas */ }
+    try { setLineas([...await api.remesaEnvioLineas(f.envioId)]); } catch { /* sin líneas */ }
+  }
+  const setLineas = (arr) => { lineasEnvioFull = arr; lineasEnvio = new Map(arr.filter((x) => x.domiciliacion_id).map((x) => [x.domiciliacion_id, Number(x.importe)])); };
+  // Compara lo actual con lo registrado en el envío: por línea si el envío tiene detalle por alumno, y si no, por total de cada remesa
+  function diferenciasEnvio(env) {
+    const items = []; const actuales = main.filter((x) => x.rem && x.a.estado === 'inscrito');
+    if (!lineasEnvioFull.length) {
+      const nombres = new Set([...lista.map((r) => r.nombre), ...(env.resumen || []).map((r) => r.remesa_nombre)]);
+      for (const n of nombres) {
+        const act = cmp2(actuales.filter((x) => x.rem.nombre === n).reduce((a, x) => a + x.importe, 0)); const g = Number((env.resumen || []).find((r) => r.remesa_nombre === n)?.total || 0);
+        if (Math.abs(act - g) >= 0.005) items.push(`${n}: ahora ${fmtEUR2(act)}, enviado ${fmtEUR2(g)} (${fmtDif(cmp2(act - g))})`);
+      }
+      return { detalle: false, items };
+    }
+    const guardadas = new Map(lineasEnvioFull.filter((l) => l.domiciliacion_id).map((l) => [l.domiciliacion_id, l]));
+    const actualIds = new Set(actuales.filter((x) => x.dom).map((x) => x.dom.id));
+    const quien = (a, num) => `ID ${num ?? a?.num} ${a ? nombreAlumno(a) : ''}`.trim();
+    for (const x of actuales) {
+      const l = x.dom ? guardadas.get(x.dom.id) : null;
+      if (!l) { items.push(`${quien(x.a)}: no estaba en el envío (ahora ${fmtEUR2(x.importe)} en ${x.rem.nombre})`); continue; }
+      if (l.remesa_nombre !== x.rem.nombre) items.push(`${quien(x.a)}: enviado en ${l.remesa_nombre}, ahora en ${x.rem.nombre}`);
+      if (Math.abs(Number(l.importe) - x.importe) >= 0.005) items.push(`${quien(x.a)}: enviado ${fmtEUR2(Number(l.importe))}, ahora ${fmtEUR2(x.importe)}`);
+    }
+    for (const l of lineasEnvioFull) if (!l.domiciliacion_id || !actualIds.has(l.domiciliacion_id)) items.push(`${quien(alPor.get(l.alumno_id), l.alumno_num)}: estaba en el envío (${fmtEUR2(Number(l.importe))} en ${l.remesa_nombre}) y ya no está en las remesas actuales`);
+    return { detalle: true, items };
   }
   const resumenAbierto = () => { try { return localStorage.getItem('remesas_resumen') !== '0'; } catch { return true; } };
   function pintarResumen() {
     const env = envios.find((e) => e.id === f.envioId);
     const guardado = new Map((env?.resumen || []).map((r) => [r.remesa_nombre, r]));
     const envSel = sel(envioOrden().map((e) => [e.id, `${capitalizar(e.mes)} · enviado ${fmtFecha((e.enviado_el || '').slice(0, 10))}`]), f.envioId, { vacio: envios.length ? '— sin comparar —' : 'Aún no hay envíos guardados' });
-    envSel.addEventListener('change', async () => { f.envioId = envSel.value; await cargarLineas(); pintarResumen(); pintarVista(); });
+    envSel.addEventListener('change', async () => { f.envioId = envSel.value; await cargarLineas(); pintarResumen(); pintarVista(); const e2 = envios.find((e) => e.id === f.envioId); const d2 = e2 ? diferenciasEnvio(e2) : null; if (d2?.items.length) toast(`Hay ${d2.items.length} diferencias con lo registrado en el envío de ${e2.mes}`, 'error'); });
     let tActual = 0; let tGuardado = 0; let nActual = 0;
     const items = lista.map((r) => {
       const l = cuentaRemesa(r); const total = cmp2(l.reduce((s, x) => s + x.importe, 0)); const g = guardado.get(r.nombre);
@@ -238,10 +262,16 @@ export async function renderRemesas(view, ctx) {
     };
     const pendImp = cmp2(pend.reduce((s, x) => s + x.importe, 0));
     const pie = h('tfoot', {}, h('tr', {}, h('th', { colspan: 2 }, 'Total'), h('th', { class: 'num' }, String(nActual)), h('th', { class: 'num' }, fmtEUR2(tActual)), h('th', { class: 'num' }, env ? fmtEUR2(tGuardado) : ''), h('th', { class: 'num' }, env ? fmtDif(cmp2(tActual - tGuardado)) : ''), h('th', {}), h('th', {}, pend.length ? `${pend.length} pendientes de procesar (${fmtEUR2(pendImp)})` : '')));
+    const dif = env ? diferenciasEnvio(env) : null;
+    const aviso = !dif ? null : dif.items.length
+      ? h('div', { class: 'ac-dif small', style: 'margin:4px 0' }, h('strong', {}, `⚠ ${dif.items.length} diferencia${dif.items.length > 1 ? 's' : ''} entre lo actual y lo registrado en el envío de ${env.mes}`), dif.detalle ? '' : ' (este envío solo guardó totales por remesa)',
+        h('ul', { style: 'margin:2px 0 2px 18px;padding:0' }, dif.items.slice(0, 12).map((t) => h('li', {}, t)), dif.items.length > 12 ? h('li', {}, `…y ${dif.items.length - 12} más`) : null),
+        h('span', { class: 'muted' }, 'Si lo registrado está mal, corrígelo con «Editar este envío»; si lo actual es lo que cambió, no hace falta tocar nada.'))
+      : h('div', { class: 'small muted', style: 'margin:4px 0' }, `✓ Lo actual coincide con lo registrado en el envío de ${env.mes}.`);
     const det = h('details', { class: 'card ac-rresumen', open: resumenAbierto() },
-      h('summary', {}, h('strong', {}, 'Resumen de remesas'), h('span', { class: 'muted small' }, ` · ${nActual} cobros · ${fmtEUR2(tActual)}${env ? ` · comparando con ${capitalizar(env.mes)} (${fmtDif(cmp2(tActual - tGuardado))})` : ''}`)),
+      h('summary', {}, h('strong', {}, 'Resumen de remesas'), h('span', { class: 'muted small' }, ` · ${nActual} cobros · ${fmtEUR2(tActual)}${env ? ` · comparando con ${capitalizar(env.mes)} (${fmtDif(cmp2(tActual - tGuardado))})${dif?.items.length ? ` · ⚠ ${dif.items.length} diferencias` : ''}` : ''}`)),
       h('div', { class: 'ac-fila', style: 'margin:4px 0' }, h('label', { class: 'small muted' }, 'Comparar con el envío de ', envSel), env ? h('button', { class: 'btn small', type: 'button', disabled: !editor, title: 'Añadir, quitar o cambiar el importe de líneas de este envío ya guardado (para que cuadre con lo que entró en el banco)', onclick: () => editarEnvio() }, 'Editar este envío') : null),
-      tablaOrd('resumen', cols, items, fila, { pie, clase: 'ac-compacta' }));
+      aviso, tablaOrd('resumen', cols, items, fila, { pie, clase: 'ac-compacta' }));
     det.addEventListener('toggle', () => { try { localStorage.setItem('remesas_resumen', det.open ? '1' : '0'); } catch { /* sin almacenamiento */ } });
     clear(resumenEl, det);
   }
@@ -266,7 +296,7 @@ export async function renderRemesas(view, ctx) {
       }
       Object.assign(r, await api.upd('ac_remesa_envio_resumen', r.id, { cobros: Math.max(0, Number(r.cobros) + dCobros), total: Math.max(0, cmp2(Number(r.total) + dTotal)), nota: [r.nota, nota].filter(Boolean).join(' · ') || null, ok: false }));
     }
-    const refrescar = () => { lineasEnvio = new Map(lineas.filter((l) => l.domiciliacion_id).map((l) => [l.domiciliacion_id, Number(l.importe)])); pintarResumen(); pintarVista(); pintaLista(); };
+    const refrescar = () => { setLineas([...lineas]); pintarResumen(); pintarVista(); pintaLista(); };
     const opcionesR = () => lista.map((r) => [r.nombre, r.nombre]);
     const listaEl = h('div', { style: 'max-height:50vh;overflow:auto' }); const difEl = h('div', { class: 'small' }); const inicioEl = h('div', {}); const totEl = h('div', { class: 'small', role: 'status' });
     const nom = (l) => { const a = alPor.get(l.alumno_id); return a ? nombreAlumno(a) : `ID ${l.alumno_num ?? '?'}`; };
@@ -394,7 +424,8 @@ export async function renderRemesas(view, ctx) {
     const enviado = x.dom ? lineasEnvio.get(x.dom.id) : undefined;
     const distinto = enviado !== undefined && Math.abs(enviado - x.importe) >= 0.005;
     return h('td', { class: `num ${camb ? 'ac-cuota-cambio' : ''}`, title: camb ? 'Cuota cambiada este mes (entre el 5 y el 25): ' + camb.map((c) => `${fmtEUR2(c.anterior)} → ${fmtEUR2(c.nueva)} el ${fmtFecha(c.fecha)}`).join(' · ') : null },
-      fmtEUR2(x.importe), distinto ? h('div', { class: 'small ac-dif' }, `enviado ${fmtEUR2(enviado)}`) : null);
+      fmtEUR2(x.importe), distinto ? h('div', { class: 'small ac-dif' }, `enviado ${fmtEUR2(enviado)}`) : null,
+      lineasEnvioFull.length && x.dom && x.rem && x.a.estado === 'inscrito' && !lineasEnvio.has(x.dom.id) ? h('div', { class: 'small ac-dif' }, 'no estaba en el envío') : null);
   };
   const celdaAlumno = (x, avisos) => h('td', {}, nombreAlumno(x.a), avisos?.length ? h('span', { class: 'pill warn', style: 'margin-left:6px', title: avisos.join(' · ') }, '⚠') : null);
 

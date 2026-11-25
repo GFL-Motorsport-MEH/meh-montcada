@@ -334,6 +334,7 @@ try:
         rs = db(page, "ac_remesa_envio_resumen"); ln = db(page, "ac_remesa_envio_lineas")
         check(len(ln) == 0 and float(rs[0]["total"]) == 0 and int(rs[0]["cobros"]) == 0, "quitar una línea del envío resta su importe y su cobro del resumen")
         page.keyboard.press("Escape")
+        expect(page.locator(".ac-rresumen")).to_contain_text("diferencia")
         # archivar y restaurar
         page.locator("table.ac-domi tr", has_text="Foz, Anna").get_by_role("button", name="Archivar").click(); page.wait_for_timeout(200)
         page.locator(".dialog-actions .btn.primary").click(); page.wait_for_timeout(500)
