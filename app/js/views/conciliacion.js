@@ -3,7 +3,7 @@ import { h, clear, cargando, toast, confirmar, fmtEUR2, fmtFecha, num, normaliza
 import * as db from '../db.js';
 import { vista, filtroFecha, pasaFecha, describirFecha, crearAviso, vincular as vincularCampo, FECHA_VACIA } from '../vista.js';
 import { registrarSeccion } from './control.js';
-import { parsearExtracto, ponerClaves, cuentaDeArchivo, conciliar, conciliarDevoluciones, gastosParaMov, movsParaGasto, asignadoMov, asignadoGasto, restanteMov, restanteGasto, esAbono, esDevolucion, bancoDeCuenta, esperadoRemesas, devueltoRemesas, ingresadoRemesas, asignadoRemesasMov, sugerirRemesas } from '../banco.js';
+import { parsearExtracto, ponerClaves, cuentaDeArchivo, conciliar, conciliarDevoluciones, gastosParaMov, movsParaGasto, asignadoMov, asignadoGasto, restanteMov, restanteGasto, esAbono, esDevolucion, bancoDeCuenta, esperadoRemesas, ingresadoRemesas, asignadoRemesasMov, sugerirRemesas } from '../banco.js';
 import { abrirGastoForm } from './gasto-form.js';
 import { formatoIBAN, ibanValido } from './config.js';
 
@@ -13,8 +13,8 @@ async function renderConciliacion(cont, ctx) {
   clear(cont, cargando());
   const { state } = ctx;
   const admin = ctx.esAdmin();
-  const [cuentas, movs, enlaces, movRem, envios, devs] = await Promise.all([db.getCuentas(), state.movimientos ? Promise.resolve(state.movimientos) : db.getMovimientos(), state.movGastos ? Promise.resolve(state.movGastos) : db.getMovGastos(),
-    state.movRemesas ? Promise.resolve(state.movRemesas) : db.getMovRemesas().catch(() => []), db.getRemesaEnvios().catch(() => []), db.getRemesaDevoluciones().catch(() => [])]);
+  const [cuentas, movs, enlaces, movRem, envios] = await Promise.all([db.getCuentas(), state.movimientos ? Promise.resolve(state.movimientos) : db.getMovimientos(), state.movGastos ? Promise.resolve(state.movGastos) : db.getMovGastos(),
+    state.movRemesas ? Promise.resolve(state.movRemesas) : db.getMovRemesas().catch(() => []), db.getRemesaEnvios().catch(() => [])]);
   state.movRemesas = movRem;   // ingresos de remesas enlazados (se modifica en el sitio)
   state.movimientos = movs; state.movGastos = enlaces;   // `enlaces` se modifica siempre en el sitio: lo comparten Conciliación y Gestoría
   const gastosPorCurso = new Map();
@@ -149,7 +149,6 @@ async function renderConciliacion(cont, ctx) {
 
   // ---- ingresos de remesas: solo se comprueba que el total ingresado coincide con el total esperado (Sabadell no ingresa por remesas) ----
   const NOMBRE_BANCO = { SABADELL: 'Sabadell', BBVA: 'BBVA' };
-  const esperado = (e, b, r = null) => esperadoRemesas(e, b, r, devs);   // neto de recibos devueltos
   const cursoNombre = (id) => state.cursos.find((c) => c.id === id)?.nombre || '';
   const etiquetaEnvio = (e) => `${e.mes.charAt(0).toUpperCase() + e.mes.slice(1)} · ${cursoNombre(e.curso_id)}`;
   const enviosOrden = () => [...envios].sort((a, b) => (b.enviado_el || '').localeCompare(a.enviado_el || ''));
@@ -188,7 +187,7 @@ async function renderConciliacion(cont, ctx) {
       return l.sort((a, b) => Number(sel.has(b.id)) - Number(sel.has(a.id)) || a.fecha.localeCompare(b.fecha)).slice(0, 300);
     };
     function pintarTotal() {
-      const e = envActual(); const esp = esperado(e, grupo.banco);
+      const e = envActual(); const esp = esperadoRemesas(e, grupo.banco);
       const suma = r2c([...sel.keys()].reduce((s, id) => { const m = movs.find((x) => x.id === id); return s + (m ? disp(m) : 0); }, 0)); const dif = r2c(esp - suma);
       total.className = `small ${Math.abs(dif) <= 0.01 ? '' : dif < 0 ? 'critical' : 'muted'}`;
       total.textContent = esp <= 0 ? `Este envío no tiene remesas de ${NOMBRE_BANCO[grupo.banco]}.` : `Ingresos marcados ${fmtEUR2(suma)} de ${fmtEUR2(esp)} esperados` + (Math.abs(dif) <= 0.01 ? ' ✓ cuadra' : dif > 0 ? ` · faltan ${fmtEUR2(dif)}` : ` · sobran ${fmtEUR2(-dif)}`);
@@ -226,39 +225,14 @@ async function renderConciliacion(cont, ctx) {
       toast(filas.length ? 'Ingresos de remesas guardados' : 'Enlaces de remesas quitados'); pintarCuentas(); pintar();
     } catch (ex) { toast(ex.message, 'error'); }
   }
-
-  // Recibos devueltos / impagados de un mes y banco: se restan de lo esperado (el banco no los ingresa)
-  async function devolucionesRemesas({ env, banco }) {
-    const grupo = { curso_id: env.curso_id, mes: env.mes, banco };
-    let lineas = []; try { lineas = (await db.getEnvioLineas(env.id)).filter((l) => (env.resumen || []).some((r) => r.banco === banco && r.remesa_nombre === l.remesa_nombre)); } catch { /* sin detalle */ }
-    let filas = devs.filter((x) => x.curso_id === grupo.curso_id && x.mes === grupo.mes && x.banco === banco).map((x) => ({ ...x }));
-    const cont = h('div', {}); const lst = h('div', {});
-    const pinta = () => clear(lst, filas.length ? h('table', { class: 'data' }, h('tbody', {}, filas.map((x, i) => h('tr', {}, h('td', {}, x.alumno_num != null ? `ID ${x.alumno_num}` : '—'), h('td', {}, x.concepto || ''), h('td', {}, x.remesa_nombre || ''), h('td', { class: 'num' }, fmtEUR2(num(x.importe))),
-      h('td', {}, h('button', { class: 'btn small danger', type: 'button', 'aria-label': 'Quitar devolución', onclick: () => { filas.splice(i, 1); pinta(); } }, '✕')))))) : h('p', { class: 'muted small' }, 'Sin recibos devueltos en este mes.'),
-      h('div', { class: 'small', style: 'margin-top:4px' }, `Total devuelto: ${fmtEUR2(r2c(filas.reduce((s, x) => s + num(x.importe), 0)))} · esperado neto: ${fmtEUR2(r2c(esperadoRemesas(env, banco) - filas.reduce((s, x) => s + num(x.importe), 0)))}`));
-    const selAl = h('select', { 'aria-label': 'Alumno del recibo devuelto' }, h('option', { value: '' }, '— elegir alumno del envío —'), lineas.map((l) => h('option', { value: l.id }, `${l.alumno_num ?? '?'} · ${l.alumno_nombre || ''} · ${l.remesa_nombre} · ${fmtEUR2(num(l.importe))}`)));
-    const add1 = h('button', { class: 'btn small primary', type: 'button', onclick: () => { const l = lineas.find((x) => x.id === selAl.value); if (!l) return;
-      filas.push({ curso_id: grupo.curso_id, mes: grupo.mes, banco, remesa_nombre: l.remesa_nombre, alumno_id: l.alumno_id, alumno_num: l.alumno_num, concepto: l.alumno_nombre || null, importe: num(l.importe) }); selAl.value = ''; pinta(); } }, 'Añadir recibo devuelto');
-    const cm = h('input', { type: 'text', placeholder: 'Concepto (manual)', 'aria-label': 'Concepto de la devolución' }); const im = h('input', { type: 'number', step: '0.01', min: '0', placeholder: '€', style: 'width:90px', 'aria-label': 'Importe devuelto' });
-    const add2 = h('button', { class: 'btn small', type: 'button', onclick: () => { const v = num(im.value); if (!(v > 0)) { toast('Escribe el importe', 'error'); return; } filas.push({ curso_id: grupo.curso_id, mes: grupo.mes, banco, remesa_nombre: null, alumno_id: null, alumno_num: null, concepto: cm.value.trim() || null, importe: v }); cm.value = ''; im.value = ''; pinta(); } }, 'Añadir importe');
-    pinta();
-    cont.append(h('p', { class: 'muted small' }, `Recibos devueltos o impagados de ${etiquetaEnvio(env)} (${NOMBRE_BANCO[banco]}): el banco no los ingresa, así que se restan de lo esperado. Aunque el alumno cause baja, el recibo sigue contando como devuelto.`),
-      lst, h('div', { class: 'ac-fila', style: 'gap:6px;flex-wrap:wrap;margin-top:8px' }, selAl, add1), h('div', { class: 'ac-fila', style: 'gap:6px;flex-wrap:wrap;margin-top:6px' }, cm, im, add2));
-    if (!await confirmar({ titulo: 'Recibos devueltos', ok: 'Guardar', texto: cont })) return;
-    try {
-      const guardadas = await db.reemplazarRemesaDevoluciones(grupo, filas.map(({ id, ...r }) => ({ ...r, importe: num(r.importe) })));
-      for (let i = devs.length - 1; i >= 0; i--) if (devs[i].curso_id === grupo.curso_id && devs[i].mes === grupo.mes && devs[i].banco === banco) devs.splice(i, 1);
-      devs.push(...guardadas); toast('Devoluciones guardadas'); pintar();
-    } catch (ex) { toast(ex.message, 'error'); }
-  }
   // Desde un ingreso: abre la ventana con el envío y el banco que mejor encajan con su importe
   function remesasDeMov(m) {
     if (!envios.length) { toast('Todavía no hay remesas enviadas guardadas (pestaña Remesas → REMESAS ENVIADAS).', 'error'); return; }
     const bc = bancoDeCuenta(cuentas.find((c) => c.id === m.cuenta_id)); const imp = num(m.importe);
     let mejor = null;
     for (const e of enviosOrden()) for (const b of ['SABADELL', 'BBVA']) {
-      if (esperado(e, b) <= 0) continue;
-      const pts = (Math.abs(esperado(e, b) - imp) <= 0.01 ? 4 : 0) + (b === bc ? 2 : 0) + ((e.enviado_el || '').slice(0, 10) <= m.fecha ? 1 : 0);
+      if (esperadoRemesas(e, b) <= 0) continue;
+      const pts = (Math.abs(esperadoRemesas(e, b) - imp) <= 0.01 ? 4 : 0) + (b === bc ? 2 : 0) + ((e.enviado_el || '').slice(0, 10) <= m.fecha ? 1 : 0);
       if (!mejor || pts > mejor.pts) mejor = { e, b, pts };
     }
     vincularRemesas({ env: mejor?.e || enviosOrden()[0], banco: mejor?.b || bc || 'SABADELL', movPre: m });
@@ -270,16 +244,16 @@ async function renderConciliacion(cont, ctx) {
     const filas = [];
     let hayPend = false;
     for (const e of lista) for (const b of ['SABADELL', 'BBVA']) {
-      const esp = esperado(e, b); if (esperadoRemesas(e, b) <= 0) continue;
+      const esp = esperadoRemesas(e, b); if (esp <= 0) continue;
       const ing = ingresadoRemesas(movRem, e, b); const dif = r2c(esp - ing);
       const estado = ing === 0 ? ['warn', 'Sin ingreso'] : Math.abs(dif) <= 0.01 ? ['ok', 'Cuadra'] : dif > 0 ? ['warn', `Falta ${fmtEUR2(dif)}`] : ['warn', `Sobra ${fmtEUR2(-dif)}`];
       if (estado[1] !== 'Cuadra') hayPend = true;
-      filas.push(h('tr', {}, h('td', {}, etiquetaEnvio(e)), h('td', {}, NOMBRE_BANCO[b]), h('td', { class: 'num' }, fmtEUR2(esp), devueltoRemesas(devs, e, b) ? h('div', { class: 'muted small', title: 'Recibos devueltos / impagados ya restados' }, `(− ${fmtEUR2(devueltoRemesas(devs, e, b))} devueltos)`) : null), h('td', { class: 'num' }, fmtEUR2(ing)), h('td', { class: `num ${Math.abs(dif) > 0.01 ? 'critical' : ''}` }, fmtEUR2(dif)),
-        h('td', {}, h('span', { class: `pill ${estado[0]}` }, estado[1])), h('td', {}, h('button', { class: 'btn small', onclick: () => vincularRemesas({ env: e, banco: b }) }, ing ? 'Editar ingresos' : 'Vincular ingresos'), ' ', h('button', { class: 'btn small', title: 'Recibos devueltos o impagados: se restan de lo esperado', onclick: () => devolucionesRemesas({ env: e, banco: b }) }, devueltoRemesas(devs, e, b) ? 'Devoluciones ✎' : 'Devoluciones'))));
+      filas.push(h('tr', {}, h('td', {}, etiquetaEnvio(e)), h('td', {}, NOMBRE_BANCO[b]), h('td', { class: 'num' }, fmtEUR2(esp)), h('td', { class: 'num' }, fmtEUR2(ing)), h('td', { class: `num ${Math.abs(dif) > 0.01 ? 'critical' : ''}` }, fmtEUR2(dif)),
+        h('td', {}, h('span', { class: `pill ${estado[0]}` }, estado[1])), h('td', {}, h('button', { class: 'btn small', onclick: () => vincularRemesas({ env: e, banco: b }) }, ing ? 'Editar ingresos' : 'Vincular ingresos'))));
       if (b === 'BBVA' && movRem.some((x) => x.curso_id === e.curso_id && x.mes === e.mes && x.banco === 'BBVA' && x.remesa_nombre)) {
         for (const r of e.resumen.filter((x) => x.banco === 'BBVA').sort((x, y) => x.orden - y.orden)) {
-          const ri = ingresadoRemesas(movRem, e, 'BBVA', r.remesa_nombre); const rd = r2c(esperado(e, 'BBVA', r.remesa_nombre) - ri);
-          filas.push(h('tr', { class: 'muted small' }, h('td', {}, ''), h('td', {}, `· ${r.remesa_nombre}`), h('td', { class: 'num' }, fmtEUR2(esperado(e, 'BBVA', r.remesa_nombre))), h('td', { class: 'num' }, fmtEUR2(ri)), h('td', { class: 'num' }, fmtEUR2(rd)), h('td', {}, ''), h('td', {}, '')));
+          const ri = ingresadoRemesas(movRem, e, 'BBVA', r.remesa_nombre); const rd = r2c(num(r.total) - ri);
+          filas.push(h('tr', { class: 'muted small' }, h('td', {}, ''), h('td', {}, `· ${r.remesa_nombre}`), h('td', { class: 'num' }, fmtEUR2(num(r.total))), h('td', { class: 'num' }, fmtEUR2(ri)), h('td', { class: 'num' }, fmtEUR2(rd)), h('td', {}, ''), h('td', {}, '')));
         }
       }
     }
@@ -358,7 +332,7 @@ async function renderConciliacion(cont, ctx) {
     const pagos = conciliar(todosGastos(), movs, { enlaces });
     const devs = conciliarDevoluciones(todosGastos(), movs, { enlaces });
     const pares = [...pagos, ...devs];
-    const rems = sugerirRemesas(envios, movs, { movRemesas: movRem, enlaces, cuentas, devoluciones: devs });
+    const rems = sugerirRemesas(envios, movs, { movRemesas: movRem, enlaces, cuentas });
     if (!pares.length && !rems.length) { toast('No he encontrado nuevas coincidencias entre gastos y movimientos.'); return; }
     const masDeUno = pagos.filter((p) => p.movs.length > 1 || p.gastos.length > 1).length;
     const linea = (p) => `${fmtFecha(p.gasto.fecha_pago || p.gasto.fecha_factura)} · ${p.gastos.map((g) => `${g.empresa} ${fmtEUR2(g.cantidad)}`).join(' + ')} ↔ ${p.movs.map((m) => `${fmtFecha(m.fecha)} ${fmtEUR2(m.importe)}`).join(' + ')}`;

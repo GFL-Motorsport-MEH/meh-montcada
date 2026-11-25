@@ -211,14 +211,12 @@ export function bancoDeCuenta(c) {
   if (/sabadell/.test(t) || iban.slice(4, 8) === '0081') return 'SABADELL';
   return null;
 }
-export const devueltoRemesas = (devs, env, banco, remesa = null) => r2((devs || []).filter((x) => x.curso_id === env.curso_id && x.mes === env.mes && x.banco === banco && (!remesa || x.remesa_nombre === remesa)).reduce((s, x) => s + num(x.importe), 0));
-// esperado neto: lo enviado menos los recibos devueltos / impagados
-export const esperadoRemesas = (env, banco, remesa = null, devs = []) => r2((env?.resumen || []).filter((x) => x.banco === banco && (!remesa || x.remesa_nombre === remesa)).reduce((s, x) => s + num(x.total), 0) - (env ? devueltoRemesas(devs, env, banco, remesa) : 0));
+export const esperadoRemesas = (env, banco, remesa = null) => r2((env?.resumen || []).filter((x) => x.banco === banco && (!remesa || x.remesa_nombre === remesa)).reduce((s, x) => s + num(x.total), 0));
 export const ingresadoRemesas = (movRemesas, env, banco, remesa = null) => r2(movRemesas.filter((x) => x.curso_id === env.curso_id && x.mes === env.mes && x.banco === banco && (!remesa || x.remesa_nombre === remesa)).reduce((s, x) => s + num(x.importe), 0));
 export const asignadoRemesasMov = (m, movRemesas) => r2(movRemesas.filter((x) => x.movimiento_id === m.id).reduce((s, x) => s + num(x.importe), 0));
 // Propone enlazar ingresos con el total esperado de un envío (solo grupos sin ingresos aún y movimientos sin ningún enlace):
 // 1) un único ingreso con el mismo total (o el de una remesa de BBVA); 2) varios ingresos con «remesa/adeudos/recibos» en el concepto que suman el total.
-export function sugerirRemesas(envios, movimientos, { movRemesas = [], enlaces = [], cuentas = [], ventana = 75, devoluciones = [] } = {}) {
+export function sugerirRemesas(envios, movimientos, { movRemesas = [], enlaces = [], cuentas = [], ventana = 75 } = {}) {
   const cta = new Map(cuentas.map((c) => [c.id, c]));
   const libres = movimientos.filter((m) => m.estado === 'pendiente' && num(m.importe) > 0 && !esDevolucion(m)
     && !enlaces.some((e) => e.movimiento_id === m.id) && !movRemesas.some((x) => x.movimiento_id === m.id));
@@ -229,7 +227,7 @@ export function sugerirRemesas(envios, movimientos, { movRemesas = [], enlaces =
   const unico = (lista, esp) => { const e = lista.filter((m) => Math.abs(num(m.importe) - esp) <= 0.01); return e.length === 1 ? e[0] : null; };
   for (const env of [...envios].sort((a, b) => (a.enviado_el || '').localeCompare(b.enviado_el || ''))) {
     for (const banco of ['SABADELL', 'BBVA']) {
-      const esp = esperadoRemesas(env, banco, null, devoluciones);
+      const esp = esperadoRemesas(env, banco);
       if (esp <= 0 || ingresadoRemesas(movRemesas, env, banco) > 0) continue;
       const base = { curso_id: env.curso_id, mes: env.mes, banco };
       const lista = cands(env, banco);

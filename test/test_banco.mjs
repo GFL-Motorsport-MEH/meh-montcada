@@ -47,11 +47,3 @@ ok(sugerirRemesas([env], [mc('x', 'ABONO', 1000, '2027-03-05', 's')], { cuentas:
 const yaEnlazado = [{ movimiento_id: 'x', curso_id: 'c1', mes: 'noviembre', banco: 'SABADELL', importe: 1000 }];
 ok(sugerirRemesas([env], [mc('x', 'ABONO', 1000, '2026-11-05', 's')], { cuentas: ctas, movRemesas: yaEnlazado }).length === 0 && ingresadoRemesas(yaEnlazado, env, 'SABADELL') === 1000, 'lo ya enlazado no se vuelve a proponer');
 console.log(`test_banco: ${n} comprobaciones OK`);
-
-// devoluciones: lo esperado neto resta los recibos devueltos del mismo mes y banco
-{
-  const { esperadoRemesas: esp, devueltoRemesas: dev } = await import('../app/js/banco.js');
-  const env = { curso_id: 'c', mes: 'noviembre', resumen: [{ banco: 'SABADELL', remesa_nombre: '1', total: 1000 }, { banco: 'BBVA', remesa_nombre: 'B1', total: 500 }] };
-  const ds = [{ curso_id: 'c', mes: 'noviembre', banco: 'SABADELL', remesa_nombre: '1', importe: 70 }, { curso_id: 'c', mes: 'noviembre', banco: 'SABADELL', remesa_nombre: null, importe: 50 }, { curso_id: 'c', mes: 'octubre', banco: 'SABADELL', importe: 999 }];
-  console.log(esp(env, 'SABADELL', null, ds) === 880 && dev(ds, env, 'SABADELL') === 120 && esp(env, 'BBVA', null, ds) === 500 ? '  ok: el esperado neto resta los recibos devueltos (120 €)' : '  FALLO: esperado neto');
-}
