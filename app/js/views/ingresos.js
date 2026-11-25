@@ -1,6 +1,6 @@
 // Ingresos del curso: una cuadricula grupo/level/tipo x mes, como el resumen de las
 // hojas "20xx.xx Ing" del Excel. Cada celda se edita y se guarda al salir de ella.
-import { h, clear, ajustarAncho, fmtEUR, fmtEUR2, num, MESES, MESES_CORTO, capitalizar, cargando, toast, descargarCSV, grupoClase, normalizar } from '../ui.js';
+import { h, clear, ajustarAncho, fmtEUR, fmtEUR2, num, MESES, MESES_CORTO, capitalizar, cargando, toast, descargarCSV, grupoClase, normalizar, importeEscrito } from '../ui.js';
 import { crearIngreso, actualizarIngreso } from '../db.js';
 import { renderResumenIngresos } from './ingresos-resumen.js';
 import * as api from '../academia/api.js';
@@ -9,13 +9,8 @@ const ORDEN_GRUPOS = ['Babies', 'Kids', 'Teens', 'Adultos', '1 to 1', 'Empresas'
 const esWP = (tipo) => /welcome/i.test(tipo || '');
 const WP_TIPO = 'Welcome pack';
 
-// "1.234,50" | "1234,5" | "1234.5" -> 1234.5 ; "" -> 0 ; texto invalido -> NaN
-export function leerImporte(txt) {
-  let s = String(txt ?? '').trim().replace(/\s|€/g, '');
-  if (s === '') return 0;
-  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
-  return /^-?\d+(\.\d+)?$/.test(s) ? Math.round(Number(s) * 100) / 100 : NaN;
-}
+// «,» y «.» valen igual como decimal; "" -> 0 ; texto inválido -> NaN
+export const leerImporte = (txt) => importeEscrito(txt) ?? 0;
 const fmtCelda = (v) => (v ? new Intl.NumberFormat('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: 'always' }).format(v) : '');
 
 // Trimestre natural del mes dentro del curso: octubre del curso 2025.26 -> "4T 2025"

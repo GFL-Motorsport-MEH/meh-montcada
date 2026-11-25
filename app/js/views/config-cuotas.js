@@ -1,10 +1,10 @@
 // Configuración > Cuotas y descuentos: las cuotas mensuales y el welcome pack de cada modalidad, y los descuentos (en % o en €).
 // Al dar de alta la inscripción de un alumno, la ficha propone la cuota de su modalidad y ofrece estos descuentos.
-import { h, clear, cargando, toast, confirmar, fmtEUR2 } from '../ui.js';
+import { h, clear, cargando, toast, confirmar, fmtEUR2, importeEscrito } from '../ui.js';
 import * as api from '../academia/api.js';
 import { registrarSeccionConfig } from './config.js';
 
-const num = (v) => (v === '' || v === null || v === undefined ? 0 : Number(String(v).replace(',', '.')) || 0);
+const num = (v) => { const n = importeEscrito(v); return Number.isFinite(n) ? n : 0; };
 
 async function renderCuotas(cont, ctx) {
   clear(cont, cargando());

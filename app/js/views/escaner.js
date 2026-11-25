@@ -1,6 +1,6 @@
 // Escáner de facturas: lee un PDF o una foto, saca proveedor, NIF, fecha, nº e importe, y propone el gasto
 // completando la clasificación con la del último gasto de ese proveedor. Todo se hace en el navegador.
-import { h, clear, toast, fmtEUR2, fmtFecha, mesDeFecha, normalizar, num, tituloCategoria, capitalizar } from '../ui.js';
+import { h, clear, toast, fmtEUR2, fmtFecha, mesDeFecha, normalizar, num, tituloCategoria, capitalizar, importeEscrito } from '../ui.js';
 import { subirFactura, escanerProveedores, escanerEmpresas, escanerSugerencia, escanerDuplicado, gastosDeEmpresaMes, getPlantillas } from '../db.js';
 import { analizarFactura, rutaSugerida, idPedido, tipoAbono, mejorNombre } from '../escaner-parse.js';
 import { esNomina, analizarNomina } from '../escaner-nomina.js';
@@ -104,13 +104,7 @@ async function ocr(canvas, progreso) {
   } finally { await worker.terminate(); }
 }
 
-// importe escrito a mano: "44,20", "1.234,56" o "44.20" -> número (null si está vacío, NaN si no vale)
-const leerImporte = (t) => {
-  const x = String(t ?? '').replace(/\s|€/g, '');
-  if (!x) return null;
-  const n = Number(/,\d{1,2}$/.test(x) ? x.replace(/\./g, '').replace(',', '.') : x.replace(/,/g, ''));
-  return Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN;
-};
+const leerImporte = importeEscrito; // «,» y «.» valen igual como decimal
 // miniatura ligera (JPEG) de la primera página, para enseñarla en el paso siguiente
 function miniaturaDe(canvas, ancho = 420) {
   if (!canvas) return null;

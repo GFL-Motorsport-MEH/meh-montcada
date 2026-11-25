@@ -54,6 +54,22 @@ export function fmtFechaHora(ts) {
 }
 // día (yyyy-mm-dd) de un instante, en hora de Madrid
 export const diaDeInstante = (ts) => { if (!ts) return ''; const d = new Date(ts); return Number.isNaN(d.getTime()) ? '' : new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(d); };
+// Importe escrito a mano. «,» y «.» valen igual como decimal (los miles no se escriben): "44,20", "44.20", "1234,5".
+// Si vienen los dos («1.234,56» o «1,234.56») el último es el decimal; si un mismo signo se repite («1.234.567») son miles.
+// Devuelve null si está vacío, NaN si no vale y, si no, el número redondeado a 2 decimales.
+export function importeEscrito(txt) {
+  let s = String(txt ?? '').replace(/\s|€/g, '');
+  if (s === '') return null;
+  const ult = Math.max(s.lastIndexOf(','), s.lastIndexOf('.'));
+  if (ult >= 0) {
+    const dec = s[ult], otro = dec === ',' ? '.' : ',';
+    const unico = s.split(dec).length === 2;
+    s = s.split(otro).join('');
+    if (!unico && !/^-?\d{1,3}(?:[.,]\d{3})+$/.test(s)) return NaN; // un signo repetido solo vale como miles
+    s = unico ? s.replace(dec, '.') : s.split(dec).join('');
+  }
+  return /^-?\d*\.?\d+$|^-?\d+\.$/.test(s) ? Math.round(Number(s) * 100) / 100 : NaN;
+}
 export const num = (v) => (v === null || v === undefined || v === '' ? 0 : Number(v));
 
 // Curso escolar: septiembre -> agosto

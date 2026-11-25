@@ -1,18 +1,13 @@
 // Pestaña «Escáner»: escanear facturas y tickets y añadirlos como gasto.
 // Es la única pestaña que ve el usuario con rol «escaner»; sus gastos quedan pendientes de revisar (amarillo en Gastos).
-import { h, clear, toast, normalizar, fmtEUR2, fmtFecha, fmtFechaCorta, num, mesDeFecha, hoyISO, tituloCategoria, cargando } from '../ui.js';
+import { h, clear, toast, normalizar, fmtEUR2, fmtFecha, fmtFechaCorta, num, mesDeFecha, hoyISO, tituloCategoria, cargando, importeEscrito } from '../ui.js';
 import { crearGasto, crearGastos, getGastosPendientes, actualizarGasto, getListas, escanerEmpresas, agrupar } from '../db.js';
 import { montarEscaner } from './escaner.js';
 import { comboEmpresa } from '../combo-empresa.js';
 import { abrirGastoForm } from './gasto-form.js';
 import { abrirFactura, bloqueFactura } from '../factura-archivo.js';
 
-const leerImporte = (t) => {
-  const s = String(t ?? '').replace(/\s|€/g, '');
-  if (!s) return null;
-  const n = Number(/,\d{1,2}$/.test(s) ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, ''));
-  return Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN;
-};
+const leerImporte = importeEscrito;
 
 export async function renderEscanerVista(view, ctx) {
   const { state } = ctx;

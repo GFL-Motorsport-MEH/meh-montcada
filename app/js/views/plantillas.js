@@ -1,7 +1,7 @@
 // Plantillas de gastos que se repiten (gastos mensuales y nóminas):
 //  - Configuración > Plantillas de gastos: crear, editar, activar/desactivar, borrar y sugerir desde los gastos.
 //  - Gastos > "Generar gastos del mes": crea de una vez los gastos de un mes a partir de las plantillas.
-import { h, clear, cargando, toast, confirmar, fmtEUR2, num, MESES, capitalizar, tituloCategoria } from '../ui.js';
+import { h, clear, cargando, toast, confirmar, fmtEUR2, num, MESES, capitalizar, tituloCategoria, importeEscrito } from '../ui.js';
 import * as db from '../db.js';
 import { registrarSeccionConfig } from './config.js';
 import { propuestaDesdePlantillas, sugerirPlantillas } from '../gastos-ops.js';
@@ -9,7 +9,7 @@ import { propuestaDesdePlantillas, sugerirPlantillas } from '../gastos-ops.js';
 const GRUPOS = [['mensual', 'Gastos mensuales'], ['nomina', 'Nóminas']];
 // primero los gastos mensuales, luego las nóminas, y dentro de cada grupo el orden que haya puesto el usuario
 const porOrden = (a, b) => (a.grupo === b.grupo ? 0 : a.grupo === 'mensual' ? -1 : 1) || (a.orden ?? 0) - (b.orden ?? 0);
-const leerImporte = (s) => { let t = String(s ?? '').trim().replace(/\s|€/g, ''); if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.'); const n = Number(t); return t === '' ? null : Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN; };
+const leerImporte = importeEscrito;
 
 async function cargarPlantillas(ctx) {
   if (!ctx.state.plantillas) ctx.state.plantillas = await db.getPlantillas();

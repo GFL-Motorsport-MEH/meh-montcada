@@ -1,5 +1,5 @@
 // Formulario lateral para crear / editar un gasto.
-import { h, toast, confirmar, MESES, capitalizar, mesDeFecha, hoyISO, tituloCategoria, fmtEUR2, fmtFecha, fmtFechaHora } from '../ui.js';
+import { h, toast, confirmar, MESES, capitalizar, mesDeFecha, hoyISO, tituloCategoria, fmtEUR2, fmtFecha, fmtFechaHora, importeEscrito } from '../ui.js';
 import { crearGasto, crearGastos, actualizarGasto, borrarGasto } from '../db.js';
 import { dividirEnMeses, dividirEnCentros } from '../gastos-ops.js';
 import { botonSubirFactura, abrirFactura, esArchivoSubido, bloqueFactura } from '../factura-archivo.js';
@@ -48,7 +48,7 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado, onDividido, 
   const fEmpresa = txt('empresa', g.empresa, { list: 'dl-empresa', autocomplete: 'off' });
   const fFactura = txt('factura_nr', g.factura_nr);
   const fConcepto = txt('concepto', g.concepto);
-  const fCantidad = h('input', { type: 'number', name: 'cantidad', step: '0.01', inputmode: 'decimal', value: g.cantidad ?? '' });
+  const fCantidad = h('input', { type: 'text', name: 'cantidad', inputmode: 'decimal', autocomplete: 'off', placeholder: '0,00', value: g.cantidad == null ? '' : String(g.cantidad).replace('.', ',') });
   const fCategoria = h('select', { name: 'categoria_id' },
     h('option', { value: '' }, 'Elige categoría…'),
     state.taxonomia.map((c) => h('option', { value: c.id, selected: c.id === g.categoria_id }, tituloCategoria(c.nombre))));
@@ -177,8 +177,8 @@ export function abrirGastoForm({ gasto, ctx, onGuardado, onBorrado, onDividido, 
     if (!fFechaFactura.value) fallo(lFecha, 'Pon la fecha de la factura.');
     if (!limpio(fEmpresa.value)) fallo(lEmpresa, 'Indica la empresa o proveedor.');
     if (!limpio(fConcepto.value)) fallo(lConcepto, 'Describe el gasto.');
-    const cantidad = Number(String(fCantidad.value).replace(',', '.'));
-    if (fCantidad.value === '' || !Number.isFinite(cantidad)) fallo(lCantidad, 'Pon un importe válido.');
+    const cantidad = importeEscrito(fCantidad.value);
+    if (cantidad === null || !Number.isFinite(cantidad)) fallo(lCantidad, 'Pon un importe válido.');
     else if (Math.abs(cantidad) >= 1e10) fallo(lCantidad, 'Importe demasiado grande.');
     if (!fCategoria.value) fallo(lCategoria, 'Elige una categoría.');
     if (!fSub.value) fallo(lSub, 'Elige una subcategoría.');
