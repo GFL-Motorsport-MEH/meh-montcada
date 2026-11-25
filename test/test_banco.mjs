@@ -47,3 +47,11 @@ ok(sugerirRemesas([env], [mc('x', 'ABONO', 1000, '2027-03-05', 's')], { cuentas:
 const yaEnlazado = [{ movimiento_id: 'x', curso_id: 'c1', mes: 'noviembre', banco: 'SABADELL', importe: 1000 }];
 ok(sugerirRemesas([env], [mc('x', 'ABONO', 1000, '2026-11-05', 's')], { cuentas: ctas, movRemesas: yaEnlazado }).length === 0 && ingresadoRemesas(yaEnlazado, env, 'SABADELL') === 1000, 'lo ya enlazado no se vuelve a proponer');
 console.log(`test_banco: ${n} comprobaciones OK`);
+
+// devolución de recibos: un enlace negativo resta del ingresado y cuenta en valor absoluto para el movimiento
+{
+  const { ingresadoRemesas: ing, asignadoRemesasMov: asig } = await import('../app/js/banco.js');
+  const env = { curso_id: 'c', mes: 'noviembre' };
+  const mr = [{ movimiento_id: 'a', curso_id: 'c', mes: 'noviembre', banco: 'SABADELL', importe: 1000 }, { movimiento_id: 'b', curso_id: 'c', mes: 'noviembre', banco: 'SABADELL', importe: -120 }];
+  console.log(ing(mr, env, 'SABADELL') === 880 && asig({ id: 'b' }, mr) === 120 ? '  ok: la devolución del banco resta del ingresado' : '  FALLO: devolución');
+}

@@ -213,7 +213,8 @@ export function bancoDeCuenta(c) {
 }
 export const esperadoRemesas = (env, banco, remesa = null) => r2((env?.resumen || []).filter((x) => x.banco === banco && (!remesa || x.remesa_nombre === remesa)).reduce((s, x) => s + num(x.total), 0));
 export const ingresadoRemesas = (movRemesas, env, banco, remesa = null) => r2(movRemesas.filter((x) => x.curso_id === env.curso_id && x.mes === env.mes && x.banco === banco && (!remesa || x.remesa_nombre === remesa)).reduce((s, x) => s + num(x.importe), 0));
-export const asignadoRemesasMov = (m, movRemesas) => r2(movRemesas.filter((x) => x.movimiento_id === m.id).reduce((s, x) => s + num(x.importe), 0));
+// importe asignado en valor absoluto (un enlace negativo es una devolución de recibos: el movimiento del banco también es negativo)
+export const asignadoRemesasMov = (m, movRemesas) => r2(movRemesas.filter((x) => x.movimiento_id === m.id).reduce((s, x) => s + Math.abs(num(x.importe)), 0));
 // Propone enlazar ingresos con el total esperado de un envío (solo grupos sin ingresos aún y movimientos sin ningún enlace):
 // 1) un único ingreso con el mismo total (o el de una remesa de BBVA); 2) varios ingresos con «remesa/adeudos/recibos» en el concepto que suman el total.
 export function sugerirRemesas(envios, movimientos, { movRemesas = [], enlaces = [], cuentas = [], ventana = 75 } = {}) {
