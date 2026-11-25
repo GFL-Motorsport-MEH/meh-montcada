@@ -2,6 +2,7 @@
 // Se pueden seleccionar varias celdas (arrastrando, Ctrl/Cmd+clic o Mayús+clic) y cambiarlas de una vez desde la barra inferior.
 import { h, clear, cargando, toast, fmtEUR2, hoyISO, normalizar, MESES, MESES_CORTO, capitalizar, confirmar } from '../ui.js';
 import { ordenGuardado, guardarOrden } from '../orden-compartido.js';
+import * as om from '../orden-multi.js';
 import * as api from './api.js';
 import { cabecera, sel, nombreAlumno, refrescar, drawer, numero, guardarBoton } from './kit.js';
 import { abrirFicha } from './alumnos.js';
@@ -23,8 +24,9 @@ export async function renderPagos(view, ctx) {
   const cuotaPor = new Map(cuotas.map((c) => [`${c.alumno_id}|${c.concepto}|${c.mes}`, c]));
   const editor = ctx.edita('ac_pagos');
   const f = vistaEstado('pagos.f', { q: '', soloPend: false, modo: '', nivel: '', recibo: '' });
-  const orden = { k: 'nombre', dir: 1 };
-  { const g = ordenGuardado('pagos'); if (g && g.k) { orden.k = g.k; orden.dir = g.dir === -1 ? -1 : 1; } }
+  // orden por varias columnas: el último clic manda y los anteriores desempatan (p. ej. ID y luego Modo pago → por modo y, dentro, por ID)
+  let pila = [{ k: 'nombre', dir: 1 }];
+  { const g = ordenGuardado('pagos'); const l = g?.pila ? om.deGuardado(g.pila, (k) => (typeof k === 'string' ? k : null)) : (g && g.k ? [{ k: g.k, dir: g.dir === -1 ? -1 : 1 }] : []); if (l.length) pila = l; }
   const RANGO = { pendiente: 0, devuelto: 1, pagado: 2, exento: 3 };
   const esOtro = (a) => Number(a.num) > 0 && Number(a.num) < 1; // filas 0.x del Excel: Camps, Scape Room, Story Time, Other, Recogidas
   const NOMBRES_OTROS = { 0.1: 'Camp Easter', 0.2: 'Camp Summer', 0.3: 'Camp Xmass', 0.4: 'Scape Room', 0.5: 'Story Time', 0.6: 'Other Activities', 0.7: 'Recogidas Mas Rampinyo' };
@@ -181,20 +183,24 @@ export async function renderPagos(view, ctx) {
   const niveles = [...new Set(filasBase.map((a) => a.nivel).filter(Boolean))].sort((x, y) => x.localeCompare(y, 'es', { numeric: true }));
   const txt = (x, y) => String(x || '').localeCompare(String(y || ''), 'es', { numeric: true });
   const porNombre = (x, y) => txt(x.apellidos, y.apellidos) || txt(x.nombre, y.nombre);
+  function cmpCol(k, x, y) {
+    if (k === 'num') return Number(x.num || 1e9) - Number(y.num || 1e9);
+    if (k === 'nombre') return porNombre(x, y);
+    if (k === 'nivel') return txt(x.nivel, y.nivel);
+    if (k === 'modo') return txt(x.metodo_pago, y.metodo_pago);
+    if (k === 'cuota') return Number(inscPor.get(x.id)?.cuota_mensual || 0) - Number(inscPor.get(y.id)?.cuota_mensual || 0);
+    if (/^c\d+$/.test(k)) { const ci = Number(k.slice(1)); const rg = (a) => { const c = cuotaDe(a, ci); return c ? RANGO[c.estado] ?? 4 : 4; }; return rg(x) - rg(y) || (Number(cuotaDe(x, ci)?.importe || 0) - Number(cuotaDe(y, ci)?.importe || 0)); }
+    return 0;
+  }
+  let cmpPila = om.comparar(pila, cmpCol); // se reconstruye en ordenar()
   function comparar(x, y) {
-    const k = orden.k; let r = 0;
-    if (k === 'num') r = Number(x.num || 1e9) - Number(y.num || 1e9);
-    else if (k === 'nivel') r = txt(x.nivel, y.nivel);
-    else if (k === 'modo') r = txt(x.metodo_pago, y.metodo_pago);
-    else if (k === 'cuota') r = Number(inscPor.get(x.id)?.cuota_mensual || 0) - Number(inscPor.get(y.id)?.cuota_mensual || 0);
-    else if (k.startsWith('c')) { const ci = Number(k.slice(1)); const rg = (a) => { const c = cuotaDe(a, ci); return c ? RANGO[c.estado] ?? 4 : 4; }; r = rg(x) - rg(y) || (Number(cuotaDe(x, ci)?.importe || 0) - Number(cuotaDe(y, ci)?.importe || 0)); }
     const o = esOtro(y) - esOtro(x); if (o) return o; // las filas 0.x siempre arriba, ordenadas por su número
     if (esOtro(x)) return Number(x.num) - Number(y.num);
-    return (r || porNombre(x, y)) * (r ? orden.dir : 1);
+    return cmpPila(x, y) || porNombre(x, y);
   }
   const cabs = new Map();
-  function ordenar(k) { orden.dir = orden.k === k ? -orden.dir : 1; orden.k = k; guardarOrden('pagos', { k: orden.k, dir: orden.dir }); pintarFlechas(); pintar(); }
-  function pintarFlechas() { for (const [k, th] of cabs) { const fl = th.querySelector('.ac-fl'); fl.textContent = orden.k === k ? (orden.dir > 0 ? '▲' : '▼') : ''; th.setAttribute('aria-sort', orden.k === k ? (orden.dir > 0 ? 'ascending' : 'descending') : 'none'); } }
+  function ordenar(k) { pila = om.pulsar(pila, k, 1); cmpPila = om.comparar(pila, cmpCol); guardarOrden('pagos', { k: pila[0].k, dir: pila[0].dir, pila }); pintarFlechas(); pintar(); }
+  function pintarFlechas() { for (const [k, th] of cabs) { th.querySelector('.ac-fl').textContent = om.flecha(pila, k); th.setAttribute('aria-sort', om.ariaSort(pila, k)); } }
   function pintar() {
     const q = normalizar(f.q); const mi = MESES.indexOf(mesActual());
     rows = filasBase.filter((a) => (!q || normalizar(nombreAlumno(a)).includes(q) || String(a.num || '') === f.q.trim())

@@ -8,6 +8,7 @@ import { h, clear, cargando, toast, confirmar, fmtEUR2, fmtFecha, hoyISO, normal
 import * as api from './api.js';
 import { cabecera, pill, sel, nombreAlumno } from './kit.js';
 import { ordenGuardado, guardarOrden } from '../orden-compartido.js';
+import * as om from '../orden-multi.js';
 
 const esDomi = (m) => /domicil|sepa|recibo/i.test(m || '');
 const NOMBRES_MES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -39,23 +40,23 @@ const ORD = new Map();
 const cmpV = (a, b) => (typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), 'es', { numeric: true, sensitivity: 'base' }));
 function tablaOrd(clave, cols, items, filaFn, { pie = null, clase = '', vacio = 'Sin datos.' } = {}) {
   let est = ORD.get(clave);
-  if (!est) { const g = ordenGuardado('remesas:' + clave); const j = g?.t ? cols.findIndex((c) => c.t === g.t) : -1; est = { j, dir: j >= 0 && g.dir === -1 ? -1 : 1 }; ORD.set(clave, est); }
+  if (!est) { const g = ordenGuardado('remesas:' + clave); const porT = (t) => cols.findIndex((c) => c.t === t); const j = g?.t ? porT(g.t) : -1; est = { pila: g?.pila ? om.deGuardado(g.pila, porT) : (j >= 0 ? [{ k: j, dir: g.dir === -1 ? -1 : 1 }] : []) }; ORD.set(clave, est); }
   const tbody = h('tbody');
   const ths = cols.map((c, j) => {
     const th = h('th', { class: (c.num ? 'num ' : '') + (c.k ? 'sortable' : ''), title: c.k ? 'Clic para ordenar' : null }, c.t, ' ', h('span', { class: 'ac-orden' }));
-    if (c.k) th.addEventListener('click', () => {
-      if (est.j !== j) { est.j = j; est.dir = 1; } else if (est.dir === 1) est.dir = -1; else { est.j = -1; est.dir = 1; }
-      guardarOrden('remesas:' + clave, { t: est.j >= 0 ? cols[est.j].t : null, dir: est.dir }); pinta();
+    if (c.k) th.addEventListener('click', () => { // varias columnas: la última pulsada manda y las anteriores desempatan
+      est.pila = om.pulsar(est.pila, j, 1, true);
+      guardarOrden('remesas:' + clave, { t: est.pila.length ? cols[est.pila[0].k].t : null, dir: est.pila.length ? est.pila[0].dir : 1, pila: om.aGuardar(est.pila, (k) => cols[k].t) }); pinta();
     });
     return th;
   });
   function pinta() {
     let arr = items;
-    if (est.j >= 0) {
-      const k = cols[est.j].k; const vacios = (v) => v === '' || v === null || v === undefined;
-      arr = [...items].sort((x, y) => { const a = k(x); const b = k(y); if (vacios(a)) return vacios(b) ? 0 : 1; if (vacios(b)) return -1; return est.dir * cmpV(a, b); });
+    if (est.pila.length) {
+      const vacios = (v) => v === '' || v === null || v === undefined;
+      arr = [...items].sort((x, y) => { for (const { k: j, dir } of est.pila) { const a = cols[j].k(x); const b = cols[j].k(y); if (vacios(a) || vacios(b)) { if (vacios(a) && vacios(b)) continue; return vacios(a) ? 1 : -1; } const r = cmpV(a, b); if (r) return r * dir; } return 0; }); // los vacíos siempre al final
     }
-    ths.forEach((th, j) => { th.querySelector('.ac-orden').textContent = est.j === j ? (est.dir === 1 ? '▲' : '▼') : ''; });
+    ths.forEach((th, j) => { th.querySelector('.ac-orden').textContent = om.flecha(est.pila, j); });
     clear(tbody, arr.length ? arr.map(filaFn) : h('tr', {}, h('td', { colspan: cols.length, class: 'empty' }, vacio)));
   }
   pinta();

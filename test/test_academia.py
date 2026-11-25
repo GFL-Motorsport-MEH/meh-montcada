@@ -195,6 +195,9 @@ try:
 
         print("7. pagos: generar mensualidad y cobrar")
         ir(page, "ac_pagos")
+        # orden por varias columnas: ID y luego Modo pago → el último manda (nivel 1) y el anterior desempata (nivel 2)
+        page.locator("th.ac-ord", has_text=re.compile(r"^ID")).click(); page.locator("th.ac-ord", has_text="Modo pago").click()
+        check("2" in page.locator("th.ac-ord", has_text=re.compile(r"^ID")).inner_text() and "1" in page.locator("th.ac-ord", has_text="Modo pago").inner_text(), "Pagos: ordenar por ID y luego por Modo pago deja el ID como segundo nivel")
         page.locator(".section-actions select").first.select_option("noviembre")
         page.get_by_role("button", name="Generar mensualidad").click(); page.wait_for_timeout(500)
         check(len([c for c in db(page, "ac_cuotas") if c["mes"] == "noviembre"]) == 1, "mensualidad de noviembre creada (65 €)")

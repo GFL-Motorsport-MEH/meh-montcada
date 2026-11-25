@@ -83,6 +83,13 @@ try:
         check(t.locator("tbody tr").count() == 1, "los filtros se mantienen al volver a pintar la tabla")
         t.locator(".aviso-filtros button").click()
         check(t.locator("tbody tr").count() == 3 and t.locator(".aviso-filtros:visible").count() == 0, "«Quitar filtros» limpia todo")
+        # orden por varias columnas: el último clic manda y el anterior desempata
+        col = lambda: t.locator("tbody tr td:first-child").all_inner_texts()
+        t.locator("th.sortable", has_text="Alumno").click(); t.locator("th.sortable", has_text="Alumno").click()
+        check(col() == ["C", "B", "A"], f"Alumno ↓ → {col()}")
+        t.locator("th.sortable", has_text="Estado").click()
+        check(col() == ["C", "A", "B"], f"Alumno ↓ y luego Estado ↑: por estado y, dentro, por alumno ↓ → {col()}")
+        check("1" in t.locator("th.sortable", has_text="Estado").inner_text() and "2" in t.locator("th.sortable", has_text="Alumno").inner_text(), "las flechas muestran el nivel de cada columna")
 
         print("4. pantallas: el filtro sobrevive a refrescar la página y avisa")
         page.reload(); expect(page.locator("main")).to_be_visible(timeout=10000)  # vuelve el usuario real de la sesión

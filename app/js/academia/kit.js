@@ -3,6 +3,7 @@ import { h, clear, normalizar } from '../ui.js';
 import { colorPersona } from '../personas.js';
 import { leerV, guardarV, filtroFecha, pasaFecha, aISO, fechaActiva, describirFecha, crearAviso, FECHA_VACIA } from '../vista.js';
 import { ordenGuardado, guardarOrden } from '../orden-compartido.js';
+import * as om from '../orden-multi.js';
 
 export const DIAS = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 export const DIAS_CORTO = ['', 'L', 'M', 'X', 'J', 'V', 'S', 'D'];
@@ -128,9 +129,11 @@ export function tabla(cols, filas, { onClick, vacio = 'Sin datos todavía.', cla
   let est = ESTADO_TABLAS.get(clave);
   if (!est) { // orden: la última elegida por cualquiera del equipo (servidor); filtros: los de este usuario (se mantienen al refrescar)
     const g = ordenGuardado('tabla:' + clave);
-    const col = g && g.t ? cols.findIndex((c) => c.t === g.t) : -1;
+    const porT = (t) => cols.findIndex((c) => c.t === t);
+    const col = g && g.t ? porT(g.t) : -1;
+    const pila = g?.pila ? om.deGuardado(g.pila, porT) : (col >= 0 ? [{ k: col, dir: g.dir === -1 ? -1 : 1 }] : []); // varias columnas: la última pulsada manda y las anteriores desempatan
     const f = leerV(claveLS, null)?.filtros;
-    est = { col, dir: col >= 0 && g.dir === -1 ? -1 : 1, filtros: f && typeof f === 'object' ? f : {} };
+    est = { pila, filtros: f && typeof f === 'object' ? f : {} };
   }
   ESTADO_TABLAS.set(clave, est);
   const guardaFiltros = () => guardarV(claveLS, { filtros: est.filtros });
@@ -150,7 +153,7 @@ export function tabla(cols, filas, { onClick, vacio = 'Sin datos todavía.', cla
   const tbody = h('tbody');
   const ths = cols.map((c, j) => {
     const th = h('th', { class: (c.num ? 'num ' : '') + (filtrable[j] ? 'sortable' : ''), title: filtrable[j] ? 'Pulsa para ordenar' : null }, c.t, ' ', h('span', { class: 'ac-orden' }));
-    if (filtrable[j]) th.addEventListener('click', () => { if (est.col !== j) { est.col = j; est.dir = 1; } else if (est.dir === 1) est.dir = -1; else { est.col = -1; est.dir = 1; } guardarOrden('tabla:' + clave, { t: est.col >= 0 ? cols[est.col].t : null, dir: est.dir }); pinta(); });
+    if (filtrable[j]) th.addEventListener('click', () => { est.pila = om.pulsar(est.pila, j, 1, true); guardarOrden('tabla:' + clave, { t: est.pila.length ? cols[est.pila[0].k].t : null, dir: est.pila.length ? est.pila[0].dir : 1, pila: om.aGuardar(est.pila, (k) => cols[k].t) }); pinta(); });
     return th;
   });
   const ctrls = [];
@@ -181,9 +184,9 @@ export function tabla(cols, filas, { onClick, vacio = 'Sin datos todavía.', cla
       const q = normalizar(v);
       idx = idx.filter((i) => (esLista[j] ? textos[i][j] === v : normalizar(textos[i][j]).includes(q)));
     }
-    if (est.col >= 0) idx.sort((x, y) => est.dir * comparar(textos[x][est.col], textos[y][est.col]));
-    ths.forEach((th, j) => { th.querySelector('.ac-orden').textContent = est.col === j ? (est.dir === 1 ? '▲' : '▼') : ''; });
-    nota.textContent = util && (activos.length || est.col >= 0) ? `${idx.length} de ${filas.length} filas${activos.length ? ' · filtradas' : ''}` : '';
+    if (est.pila.length) idx.sort(om.comparar(est.pila, (j, x, y) => comparar(textos[x][j], textos[y][j])));
+    ths.forEach((th, j) => { th.querySelector('.ac-orden').textContent = om.flecha(est.pila, j); });
+    nota.textContent = util && (activos.length || est.pila.length) ? `${idx.length} de ${filas.length} filas${activos.length ? ' · filtradas' : ''}` : '';
     aviso.actualizar();
     clear(tbody, idx.length ? idx.map((i) => { const f = filas[i]; return h('tr', { class: onClick ? 'clickable' : '', onclick: onClick ? () => onClick(f) : null }, cols.map((c) => h('td', { class: c.num ? 'num' : '' }, c.v(f)))); })
       : h('tr', {}, h('td', { colspan: cols.length, class: 'empty' }, 'Ningún dato coincide con los filtros de la tabla.')));

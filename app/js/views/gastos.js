@@ -2,6 +2,7 @@
 // (desplegables para las listas, casillas para Pago / Banco / Gestoría). La ficha completa sigue en el botón ⋯.
 import { h, clear, fmtEUR2, fmtFecha, fmtFechaCorta, num, MESES, MESES_CORTO, capitalizar, tituloCategoria, normalizar, cargando, descargarCSV, mesDeFecha, hoyISO, toast, confirmar, fmtFechaHora, diaDeInstante, importeEscrito } from '../ui.js';
 import { ordenGuardado, guardarOrden } from '../orden-compartido.js';
+import * as om from '../orden-multi.js';
 import { abrirGastoForm } from './gasto-form.js';
 import { vista, leerV, guardarV, filtroFecha, pasaFecha, fechaActiva, describirFecha, crearAviso, FECHA_VACIA } from '../vista.js';
 import { crearGastos, moverGastosACentro, actualizarGasto, getListas, agrupar, getGastosPendientes } from '../db.js';
@@ -58,7 +59,7 @@ export async function renderGastos(view, ctx) {
   ctx.cargarSugerencias(); // empresas y valores más usados, en segundo plano
 
   const f = vista('gastos.f', { q: '', estado: '' }); // la búsqueda y el estado se mantienen al refrescar
-  let orden = { campo: 'fecha_factura', asc: false };
+  let pila = []; // orden por varias columnas: la primera manda y las siguientes desempatan; vacía = por último movimiento
   let limite = POR_PAGINA;
   const varios = state.centros.length > 1;
   const conCentro = varios && !state.centroId;
@@ -149,7 +150,7 @@ export async function renderGastos(view, ctx) {
 
   const titulo = h('div', { class: 'count' });
   const pendPago = h('div', { class: 'count pend-pago', role: 'status' });
-  const btnUltimo = h('button', { class: 'link-btn small', type: 'button', hidden: true, onclick: () => { orden = { campo: -1, asc: false }; guardarOrden('gastos', { cls: null, asc: false }); pintar(); } }, 'Volver al orden por último movimiento');
+  const btnUltimo = h('button', { class: 'link-btn small', type: 'button', hidden: true, onclick: () => { pila = []; guardaOrdenG(); pintar(); } }, 'Volver al orden por último movimiento');
   const tbody = h('tbody');
   const pie = h('div', { class: 'table-foot' });
 
@@ -195,13 +196,19 @@ export async function renderGastos(view, ctx) {
     const contenido = c.icono ? svg(c.icono) : c.label || '';
     const t = h('th', { scope: 'col', class: `${c.cls} ${c.clsTh || ''} ${c.orden ? 'sortable' : ''}`, title: c.title ? `${c.title}${c.orden ? ' · clic para ordenar' : ''}` : (c.orden ? 'Clic para ordenar' : null), tabindex: c.orden ? '0' : null, 'aria-sort': c.orden ? 'none' : null }, contenido, flecha);
     if (c.orden) {
-      t.addEventListener('click', () => { orden = { campo: i, asc: orden.campo === i ? !orden.asc : !['c-fecha', 'c-imp', 'c-cont'].some((k) => c.cls.includes(k)) }; guardarOrden('gastos', { cls: c.cls, col: c.label || c.title || '', asc: orden.asc }); pintar(); });
+      t.addEventListener('click', () => { pila = om.pulsar(pila, i, ['c-fecha', 'c-imp', 'c-cont'].some((k) => c.cls.includes(k)) ? -1 : 1); guardaOrdenG(); pintar(); });
       t.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); t.click(); } });
       t._col = i; t._flecha = flecha;
     }
     return t;
   });
-  { const g = ordenGuardado('gastos'); const i = g && g.cls ? COLDEF.findIndex((c) => c.cls === g.cls && c.orden && (g.col === undefined || (c.label || c.title || '') === g.col)) : -1; orden = { campo: i, asc: i >= 0 ? !!g.asc : false }; } // por defecto: último movimiento (lo último añadido arriba) hasta que se ordene por una columna
+  function guardaOrdenG() {
+    const l = om.aGuardar(pila, (i) => kCol(COLDEF[i]));
+    guardarOrden('gastos', { cls: pila.length ? COLDEF[pila[0].k].cls : null, col: pila.length ? (COLDEF[pila[0].k].label || COLDEF[pila[0].k].title || '') : '', asc: pila.length ? pila[0].dir > 0 : false, pila: l });
+  }
+  { const g = ordenGuardado('gastos') || {}; // por defecto: último movimiento (lo último añadido arriba) hasta que se ordene por una columna
+    const porK = (k) => COLDEF.findIndex((c) => c.orden && kCol(c) === k);
+    pila = g.pila ? om.deGuardado(g.pila, porK) : (() => { const i = g.cls ? COLDEF.findIndex((c) => c.cls === g.cls && c.orden && (g.col === undefined || (c.label || c.title || '') === g.col)) : -1; return i >= 0 ? [{ k: i, dir: g.asc ? 1 : -1 }] : []; })(); }
 
   // Ancho de columnas ajustable arrastrando el borde de la cabecera. Solo vive mientras dura esta pantalla:
   // al refrescar o cambiar de pestaña se vuelve a construir la vista y recupera el ancho original.
@@ -316,8 +323,8 @@ export async function renderGastos(view, ctx) {
     const q = normalizar(f.q.trim());
     const enCentro = new Set(ctx.filtrarCentro(gastos));
     const activos = [...cf.entries()].map(([i, v]) => [COLDEF[i].filtro, v, typeof v === 'string' ? normalizar(v) : '']);
-    const c = orden.campo >= 0 ? COLDEF[orden.campo] : null;
-    const dir = orden.asc ? 1 : -1;
+    const cmpCol = (k, a, b) => { const o = COLDEF[k].orden; const va = o(a), vb = o(b); return typeof va === 'string' ? va.localeCompare(vb, 'es', { sensitivity: 'base', numeric: true }) : va - vb; };
+    const porPila = om.comparar(pila, cmpCol);
     return gastos.filter((g) => {
       if (!enCentro.has(g)) return false;
       if (f.estado === 'revisar' && g.revisado !== false) return false;
@@ -337,10 +344,8 @@ export async function renderGastos(view, ctx) {
       }
       return true;
     }).sort((a, b) => {
-      if (!c) return (b.created_at || '').localeCompare(a.created_at || '') || desempate(a, b);
-      let va = c.orden(a), vb = c.orden(b);
-      if (typeof va === 'string') return dir * va.localeCompare(vb, 'es', { sensitivity: 'base', numeric: true }) || desempate(a, b);
-      return dir * (va - vb) || desempate(a, b);
+      if (!pila.length) return (b.created_at || '').localeCompare(a.created_at || '') || desempate(a, b);
+      return porPila(a, b) || desempate(a, b);
     });
   }
 
@@ -536,11 +541,10 @@ export async function renderGastos(view, ctx) {
     const lista = filtrados();
     listaActual = lista;
     actualizarTotales();
-    btnUltimo.hidden = orden.campo < 0;
+    btnUltimo.hidden = !pila.length;
     for (const t of ths) if (t._col !== undefined) {
-      const activo = t._col === orden.campo;
-      t.setAttribute('aria-sort', activo ? (orden.asc ? 'ascending' : 'descending') : 'none');
-      t._flecha.textContent = activo ? (orden.asc ? ' ▲' : ' ▼') : '';
+      t.setAttribute('aria-sort', om.ariaSort(pila, t._col));
+      const fl = om.flecha(pila, t._col); t._flecha.textContent = fl ? ' ' + fl : '';
     }
     if (!lista.length) {
       clear(tbody, h('tr', {}, h('td', { colspan: String(COLS.length), class: 'empty' }, gastos.length ? 'Ningún gasto coincide con los filtros.' : `Todavía no hay gastos en ${curso.nombre}.`)));

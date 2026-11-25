@@ -3,6 +3,7 @@ import { h, clear, fmtEUR2, fmtFecha, num, normalizar, cargando, descargarCSV, t
 import * as db from '../db.js';
 import { agrupar } from '../deshacer.js';
 import { ordenGuardado, guardarOrden } from '../orden-compartido.js';
+import * as om from '../orden-multi.js';
 import { botonSubirFactura } from '../factura-archivo.js';
 import { vista, filtroFecha, pasaFecha, describirFecha, crearAviso, vincular, FECHA_VACIA } from '../vista.js';
 
@@ -31,7 +32,8 @@ async function renderFaltaFact(cont, ctx) {
   for (const c of cursos) porCurso.set(c.id, await ctx.gastos(c.id));
   const todos = cursos.flatMap((c) => porCurso.get(c.id).map((g) => ({ g, curso: c })));
   const f = vista('control.faltafact.f', { curso: '', metodo: '', q: '', fecha: { ...FECHA_VACIA } });
-  let orden = ordenGuardado('control.faltafact') || { campo: 'fecha', asc: false };
+  let pila = (() => { const g = ordenGuardado('control.faltafact'); const l = g?.pila ? om.deGuardado(g.pila, (k) => (typeof k === 'string' ? k : null)) : (g?.campo ? [{ k: g.campo, dir: g.asc ? 1 : -1 }] : []); return l.length ? l : [{ k: 'fecha', dir: -1 }]; })();
+  const guardaOrdenC = () => guardarOrden('control.faltafact', { campo: pila[0].k, asc: pila[0].dir > 0, pila }); // varias columnas: la última pulsada manda
   const sel = new Set(); // ids de gastos seleccionados
   const metodos = [...new Set(todos.map((x) => x.g.metodo_pago).filter(Boolean))].sort();
   const fCurso = h('select', { 'aria-label': 'Curso', onchange: () => { f.curso = fCurso.value; pintar(); } },
@@ -60,7 +62,7 @@ async function renderFaltaFact(cont, ctx) {
   const ths = [...COLS.map(([campo, label, cls]) => {
     const flecha = h('span', { 'aria-hidden': 'true', class: 'flecha' });
     const t = h('th', { scope: 'col', class: `sortable ${cls}`.trim(), title: 'Clic para ordenar', tabindex: '0', 'aria-sort': 'none' }, label, flecha);
-    t.addEventListener('click', () => { orden = { campo, asc: orden.campo === campo ? !orden.asc : !['fecha', 'importe'].includes(campo) }; guardarOrden('control.faltafact', orden); pintar(); });
+    t.addEventListener('click', () => { pila = om.pulsar(pila, campo, ['fecha', 'importe'].includes(campo) ? -1 : 1); guardaOrdenC(); pintar(); });
     t.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); t.click(); } });
     t._campo = campo; t._flecha = flecha;
     return t;
@@ -70,12 +72,11 @@ async function renderFaltaFact(cont, ctx) {
     const q = normalizar(f.q.trim());
     return todos.filter(({ g, curso }) => faltaFactura(g) && (!f.curso || curso.id === f.curso) && (!f.metodo || g.metodo_pago === f.metodo) && pasaFecha(g.fecha_factura, f.fecha)
       && (!q || normalizar(`${g.empresa} ${g.concepto} ${g.factura_nr}`).includes(q)))
-      .sort((a, b) => {
-        const k = CLAVES[orden.campo];
-        const va = k(a), vb = k(b);
-        const c = typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb), 'es', { numeric: true, sensitivity: 'base' });
-        return (orden.asc ? c : -c) || (b.g.fecha_factura || '').localeCompare(a.g.fecha_factura || '');
-      });
+      .sort((a, b) => om.comparar(pila, (campo, x, y) => {
+        const k = CLAVES[campo]; if (!k) return 0;
+        const va = k(x), vb = k(y);
+        return typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb), 'es', { numeric: true, sensitivity: 'base' });
+      })(a, b) || (b.g.fecha_factura || '').localeCompare(a.g.fecha_factura || ''));
   };
 
   async function guardar(x, cambios, tr) {
@@ -144,9 +145,8 @@ async function renderFaltaFact(cont, ctx) {
     const visibles = new Set(lista.map((x) => x.g.id));
     for (const id of [...sel]) if (!visibles.has(id)) sel.delete(id); // la selección solo vale para lo que se ve
     for (const t of ths.filter((x) => x._flecha)) {
-      const activo = t._campo === orden.campo;
-      t.setAttribute('aria-sort', activo ? (orden.asc ? 'ascending' : 'descending') : 'none');
-      t._flecha.textContent = activo ? (orden.asc ? ' ▲' : ' ▼') : '';
+      t.setAttribute('aria-sort', om.ariaSort(pila, t._campo));
+      const fl = om.flecha(pila, t._campo); t._flecha.textContent = fl ? ' ' + fl : '';
     }
     clear(tbody, lista.length ? lista.slice(0, 300).map(fila) : h('tr', {}, h('td', { colspan: 7, class: 'empty' }, 'No falta ninguna factura con estos filtros.')));
     actualizarSeleccion();
