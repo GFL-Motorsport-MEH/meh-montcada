@@ -375,6 +375,26 @@ export async function insertarEnlaces(filas) {
 export async function quitarEnlacesMov(ids) {
   for (let i = 0; i < ids.length; i += 100) check(await supabase.from('movimiento_gastos').delete().in('movimiento_id', ids.slice(i, i + 100)).select('id'));
 }
+// Ingresos de remesas: un movimiento del banco corresponde a las remesas de un mes y banco (por curso + mes + banco, no por el envío)
+const MR_COLS = 'id,movimiento_id,curso_id,mes,banco,remesa_nombre,importe';
+export async function getMovRemesas() {
+  return selectAll('movimiento_remesas', MR_COLS, (q) => q.order('id', { ascending: true }));
+}
+// Envíos guardados en Remesas (Academia) con su resumen por remesa: lo que se esperaba cobrar
+export async function getRemesaEnvios() {
+  return check(await supabase.from('ac_remesa_envios').select('id,curso_id,mes,enviado_el,resumen:ac_remesa_envio_resumen(remesa_nombre,banco,orden,cobros,total)').order('enviado_el', { ascending: false }));
+}
+// Sustituye los enlaces de un grupo (curso + mes + banco) por el conjunto indicado
+export async function reemplazarMovRemesas({ curso_id, mes, banco }, filas) {
+  check(await supabase.from('movimiento_remesas').delete().eq('curso_id', curso_id).eq('mes', mes).eq('banco', banco).select('id'));
+  return filas.length ? check(await supabase.from('movimiento_remesas').insert(filas).select(MR_COLS)) : [];
+}
+export async function insertarMovRemesas(filas) {
+  return filas.length ? check(await supabase.from('movimiento_remesas').insert(filas).select(MR_COLS)) : [];
+}
+export async function quitarMovRemesasMov(ids) {
+  for (let i = 0; i < ids.length; i += 100) check(await supabase.from('movimiento_remesas').delete().in('movimiento_id', ids.slice(i, i + 100)).select('id'));
+}
 export async function marcarGastosBanca(ids, valor = true) {
   const prev = [];
   for (let i = 0; i < ids.length; i += 100) prev.push(...check(await supabase.from('gastos').select('id,check_banca').in('id', ids.slice(i, i + 100))));

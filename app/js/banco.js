@@ -202,3 +202,50 @@ export function candidatosGasto(mov, gastos, { ventana = 45 } = {}) {
     .sort((a, b) => Math.abs(num(a.cantidad) - imp) - Math.abs(num(b.cantidad) - imp) || dias(fechaGasto(a), mov.fecha) - dias(fechaGasto(b), mov.fecha))
     .slice(0, 8);
 }
+
+// ---------- ingresos de remesas (solo totales) ----------
+// Banco de una cuenta: por el texto «banco»/nombre o por el código de entidad del IBAN (0182 BBVA, 0081 Sabadell)
+export function bancoDeCuenta(c) {
+  const iban = (c?.iban || '').replace(/\s/g, '').toUpperCase(); const t = normalizar(`${c?.banco || ''} ${c?.nombre || ''}`);
+  if (/bbva/.test(t) || iban.slice(4, 8) === '0182') return 'BBVA';
+  if (/sabadell/.test(t) || iban.slice(4, 8) === '0081') return 'SABADELL';
+  return null;
+}
+export const esperadoRemesas = (env, banco, remesa = null) => r2((env?.resumen || []).filter((x) => x.banco === banco && (!remesa || x.remesa_nombre === remesa)).reduce((s, x) => s + num(x.total), 0));
+export const ingresadoRemesas = (movRemesas, env, banco, remesa = null) => r2(movRemesas.filter((x) => x.curso_id === env.curso_id && x.mes === env.mes && x.banco === banco && (!remesa || x.remesa_nombre === remesa)).reduce((s, x) => s + num(x.importe), 0));
+export const asignadoRemesasMov = (m, movRemesas) => r2(movRemesas.filter((x) => x.movimiento_id === m.id).reduce((s, x) => s + num(x.importe), 0));
+// Propone enlazar ingresos con el total esperado de un envío (solo grupos sin ingresos aún y movimientos sin ningún enlace):
+// 1) un único ingreso con el mismo total (o el de una remesa de BBVA); 2) varios ingresos con «remesa/adeudos/recibos» en el concepto que suman el total.
+export function sugerirRemesas(envios, movimientos, { movRemesas = [], enlaces = [], cuentas = [], ventana = 75 } = {}) {
+  const cta = new Map(cuentas.map((c) => [c.id, c]));
+  const libres = movimientos.filter((m) => m.estado === 'pendiente' && num(m.importe) > 0 && !esDevolucion(m)
+    && !enlaces.some((e) => e.movimiento_id === m.id) && !movRemesas.some((x) => x.movimiento_id === m.id));
+  const usados = new Set(); const out = [];
+  const cands = (env, banco) => { const f0 = Date.parse((env.enviado_el || '').slice(0, 10));
+    return libres.filter((m) => !usados.has(m.id) && (() => { const d = (Date.parse(m.fecha) - f0) / 86400000; return d >= -7 && d <= ventana; })()
+      && [null, banco].includes(bancoDeCuenta(cta.get(m.cuenta_id)))); };
+  const unico = (lista, esp) => { const e = lista.filter((m) => Math.abs(num(m.importe) - esp) <= 0.01); return e.length === 1 ? e[0] : null; };
+  for (const env of [...envios].sort((a, b) => (a.enviado_el || '').localeCompare(b.enviado_el || ''))) {
+    for (const banco of ['SABADELL', 'BBVA']) {
+      const esp = esperadoRemesas(env, banco);
+      if (esp <= 0 || ingresadoRemesas(movRemesas, env, banco) > 0) continue;
+      const base = { curso_id: env.curso_id, mes: env.mes, banco };
+      const lista = cands(env, banco);
+      const uno = unico(lista, esp);
+      if (uno) { usados.add(uno.id); out.push({ ...base, total: esp, movs: [uno], asignaciones: [{ mov: uno, importe: num(uno.importe), remesa_nombre: null }] }); continue; }
+      const kw = lista.filter((m) => /remesa|adeudo|recibo|sepa|domicili/.test(normalizar(m.concepto || '')));
+      if (kw.length > 1 && Math.abs(r2(kw.reduce((s, m) => s + num(m.importe), 0)) - esp) <= 0.01) {
+        kw.forEach((m) => usados.add(m.id)); out.push({ ...base, total: esp, movs: kw, asignaciones: kw.map((m) => ({ mov: m, importe: num(m.importe), remesa_nombre: null })) }); continue;
+      }
+      if (banco === 'BBVA') { // BBVA ingresa cada remesa por separado
+        const asig = [];
+        for (const r of env.resumen.filter((x) => x.banco === 'BBVA' && num(x.total) > 0)) {
+          const m = unico(cands(env, 'BBVA').filter((x) => bancoDeCuenta(cta.get(x.cuenta_id)) === 'BBVA'), num(r.total));
+          if (m) { usados.add(m.id); asig.push({ mov: m, importe: num(m.importe), remesa_nombre: r.remesa_nombre }); }
+        }
+        if (asig.length) out.push({ ...base, total: r2(asig.reduce((s, x) => s + x.importe, 0)), movs: asig.map((x) => x.mov), asignaciones: asig });
+      }
+    }
+  }
+  return out;
+}

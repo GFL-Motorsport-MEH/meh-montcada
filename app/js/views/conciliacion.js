@@ -3,7 +3,7 @@ import { h, clear, cargando, toast, confirmar, fmtEUR2, fmtFecha, num, normaliza
 import * as db from '../db.js';
 import { vista, filtroFecha, pasaFecha, describirFecha, crearAviso, vincular as vincularCampo, FECHA_VACIA } from '../vista.js';
 import { registrarSeccion } from './control.js';
-import { parsearExtracto, ponerClaves, cuentaDeArchivo, conciliar, conciliarDevoluciones, gastosParaMov, movsParaGasto, asignadoMov, asignadoGasto, restanteMov, restanteGasto, esAbono, esDevolucion } from '../banco.js';
+import { parsearExtracto, ponerClaves, cuentaDeArchivo, conciliar, conciliarDevoluciones, gastosParaMov, movsParaGasto, asignadoMov, asignadoGasto, restanteMov, restanteGasto, esAbono, esDevolucion, bancoDeCuenta, esperadoRemesas, ingresadoRemesas, asignadoRemesasMov, sugerirRemesas } from '../banco.js';
 import { abrirGastoForm } from './gasto-form.js';
 import { formatoIBAN, ibanValido } from './config.js';
 
@@ -13,12 +13,17 @@ async function renderConciliacion(cont, ctx) {
   clear(cont, cargando());
   const { state } = ctx;
   const admin = ctx.esAdmin();
-  const [cuentas, movs, enlaces] = await Promise.all([db.getCuentas(), state.movimientos ? Promise.resolve(state.movimientos) : db.getMovimientos(), state.movGastos ? Promise.resolve(state.movGastos) : db.getMovGastos()]);
+  const [cuentas, movs, enlaces, movRem, envios] = await Promise.all([db.getCuentas(), state.movimientos ? Promise.resolve(state.movimientos) : db.getMovimientos(), state.movGastos ? Promise.resolve(state.movGastos) : db.getMovGastos(),
+    state.movRemesas ? Promise.resolve(state.movRemesas) : db.getMovRemesas().catch(() => []), db.getRemesaEnvios().catch(() => [])]);
+  state.movRemesas = movRem;   // ingresos de remesas enlazados (se modifica en el sitio)
   state.movimientos = movs; state.movGastos = enlaces;   // `enlaces` se modifica siempre en el sitio: lo comparten Conciliación y Gestoría
   const gastosPorCurso = new Map();
   for (const c of state.cursosVisibles) gastosPorCurso.set(c.id, await ctx.gastos(c.id));
   const todosGastos = () => [...gastosPorCurso.values()].flat();
   const gastoPorId = () => new Map(todosGastos().map((g) => [g.id, g]));
+  const r2c = (n) => Math.round(n * 100) / 100;
+  const asigRem = (m) => asignadoRemesasMov(m, movRem);
+  const restTotal = (m) => r2c(restanteMov(m, enlaces) - asigRem(m));   // lo que falta por cubrir de un movimiento (facturas/abonos + remesas)
   const nombreCentro = (id) => ctx.tituloCentro(state.centros.find((c) => c.id === id)?.nombre || '');
   const nombreCuenta = (id) => cuentas.find((c) => c.id === id)?.nombre || '—';
   const f = vista('conciliacion.f', { cuenta: '', estado: 'pendiente', tipo: 'pagos', q: '', fecha: { ...FECHA_VACIA } });
@@ -64,8 +69,9 @@ async function renderConciliacion(cont, ctx) {
     for (const id of movIds) {
       const m = movs.find((x) => x.id === id); if (!m) continue;
       const mis = enlaces.filter((e) => e.movimiento_id === id);
-      const completo = mis.length > 0 && Math.abs(restanteMov(m, enlaces)) <= 0.01;
-      const estado = completo ? 'conciliado' : (m.estado === 'ignorado' && !mis.length ? 'ignorado' : 'pendiente');
+      const conRem = movRem.some((x) => x.movimiento_id === id);
+      const completo = (mis.length > 0 || conRem) && Math.abs(restTotal(m)) <= 0.01;
+      const estado = completo ? 'conciliado' : (m.estado === 'ignorado' && !mis.length && !conRem ? 'ignorado' : 'pendiente');
       const gasto_id = mis[0]?.gasto_id || null;
       if (m.estado !== estado || (m.gasto_id || null) !== gasto_id) { const k = `${estado}|${gasto_id || ''}`; if (!porEstado.has(k)) porEstado.set(k, { estado, gasto_id, ids: [] }); porEstado.get(k).ids.push(id); }
     }
@@ -90,6 +96,7 @@ async function renderConciliacion(cont, ctx) {
   }
   async function quitarEnlacesDe(movId) {
     await db.quitarEnlacesMov([movId]);
+    if (movRem.some((x) => x.movimiento_id === movId)) { await db.quitarMovRemesasMov([movId]); for (let i = movRem.length - 1; i >= 0; i--) if (movRem[i].movimiento_id === movId) movRem.splice(i, 1); }
     return recalcular(aplicarLocal({ quitarMovs: [movId] }));
   }
 
@@ -138,6 +145,121 @@ async function renderConciliacion(cont, ctx) {
       if (suma > ancla + 0.01) { toast(`Lo asignado (${fmtEUR2(suma)}) supera el importe a cubrir (${fmtEUR2(ancla)}).`, 'error'); continue; }
       return filas;
     }
+  }
+
+  // ---- ingresos de remesas: solo se comprueba que el total ingresado coincide con el total esperado (Sabadell no ingresa por remesas) ----
+  const NOMBRE_BANCO = { SABADELL: 'Sabadell', BBVA: 'BBVA' };
+  const cursoNombre = (id) => state.cursos.find((c) => c.id === id)?.nombre || '';
+  const etiquetaEnvio = (e) => `${e.mes.charAt(0).toUpperCase() + e.mes.slice(1)} · ${cursoNombre(e.curso_id)}`;
+  const enviosOrden = () => [...envios].sort((a, b) => (b.enviado_el || '').localeCompare(a.enviado_el || ''));
+  const enGrupo = (k) => movRem.filter((x) => x.curso_id === k.curso_id && x.mes === k.mes && x.banco === k.banco);
+  const sumaDias = (iso, d) => { const t = new Date(iso + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + d); return t.toISOString().slice(0, 10); };
+  // Ventana para elegir los ingresos del banco que corresponden a las remesas de un mes y banco. Permite cambiar de envío y banco.
+  async function vincularRemesas({ env, banco, movPre = null }) {
+    let grupo = { curso_id: env.curso_id, mes: env.mes, banco };
+    const sel = new Map();   // movimiento_id -> remesa_nombre ('' = total del banco)
+    const prevMap = new Map();
+    const cargarGrupo = () => {
+      sel.clear(); prevMap.clear();
+      for (const x of enGrupo(grupo)) { sel.set(x.movimiento_id, x.remesa_nombre || ''); prevMap.set(x.movimiento_id, num(x.importe)); }
+      if (movPre && !sel.has(movPre.id)) sel.set(movPre.id, '');
+    };
+    cargarGrupo();
+    const envActual = () => envios.find((e) => e.curso_id === grupo.curso_id && e.mes === grupo.mes) || env;
+    const disp = (m) => r2c(restTotal(m) + (prevMap.get(m.id) || 0));
+    const selEnv = h('select', { 'aria-label': 'Remesas de' }, enviosOrden().map((e) => h('option', { value: `${e.curso_id}|${e.mes}`, selected: e.curso_id === grupo.curso_id && e.mes === grupo.mes }, etiquetaEnvio(e))));
+    const selBanco = h('select', { 'aria-label': 'Banco de las remesas' }, [['SABADELL', 'Sabadell'], ['BBVA', 'BBVA']].map(([v, t]) => h('option', { value: v, selected: v === banco }, t)));
+    const desde = h('input', { type: 'date', 'aria-label': 'Ingresos desde' }), hasta = h('input', { type: 'date', 'aria-label': 'Ingresos hasta' });
+    const selCuenta = h('select', { 'aria-label': 'Cuenta' }, h('option', { value: '' }, 'Todas las cuentas'), cuentas.map((c) => h('option', { value: c.id }, c.nombre)));
+    const q = h('input', { type: 'search', placeholder: 'Buscar concepto o importe…', 'aria-label': 'Buscar ingreso' });
+    const lista = h('div', { class: 'candidatos' }); const total = h('div', { class: 'small', role: 'status' });
+    const ponerFiltros = () => {
+      const e = envActual(); const f0 = (e.enviado_el || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
+      desde.value = sumaDias(f0, -7); hasta.value = sumaDias(f0, 75);
+      selCuenta.value = cuentas.find((c) => bancoDeCuenta(c) === grupo.banco)?.id || '';
+    };
+    ponerFiltros();
+    const visibles = () => {
+      const nq = normalizar(q.value.trim());
+      const l = movs.filter((m) => num(m.importe) > 0 && (sel.has(m.id) || (m.estado !== 'ignorado' && disp(m) > 0.009))
+        && (sel.has(m.id) || ((!selCuenta.value || m.cuenta_id === selCuenta.value) && (!desde.value || m.fecha >= desde.value) && (!hasta.value || m.fecha <= hasta.value)))
+        && (!nq || sel.has(m.id) || normalizar(`${m.concepto} ${num(m.importe).toFixed(2).replace('.', ',')} ${m.importe}`).includes(nq)));
+      return l.sort((a, b) => Number(sel.has(b.id)) - Number(sel.has(a.id)) || a.fecha.localeCompare(b.fecha)).slice(0, 300);
+    };
+    function pintarTotal() {
+      const e = envActual(); const esp = esperadoRemesas(e, grupo.banco);
+      const suma = r2c([...sel.keys()].reduce((s, id) => { const m = movs.find((x) => x.id === id); return s + (m ? disp(m) : 0); }, 0)); const dif = r2c(esp - suma);
+      total.className = `small ${Math.abs(dif) <= 0.01 ? '' : dif < 0 ? 'critical' : 'muted'}`;
+      total.textContent = esp <= 0 ? `Este envío no tiene remesas de ${NOMBRE_BANCO[grupo.banco]}.` : `Ingresos marcados ${fmtEUR2(suma)} de ${fmtEUR2(esp)} esperados` + (Math.abs(dif) <= 0.01 ? ' ✓ cuadra' : dif > 0 ? ` · faltan ${fmtEUR2(dif)}` : ` · sobran ${fmtEUR2(-dif)}`);
+    }
+    function pintarLista() {
+      const e = envActual(); const nombres = (e.resumen || []).filter((x) => x.banco === 'BBVA').map((x) => x.remesa_nombre);
+      const vis = visibles();
+      clear(lista, vis.length ? vis.map((m) => {
+        const chk = h('input', { type: 'checkbox', checked: sel.has(m.id), onchange: () => { if (chk.checked) sel.set(m.id, ''); else sel.delete(m.id); pintarTotal(); pintarLista(); } });
+        const rem = grupo.banco === 'BBVA' && sel.has(m.id) ? h('select', { class: 'select-celda', 'aria-label': 'Remesa de este ingreso', onchange: (ev) => sel.set(m.id, ev.target.value) },
+          h('option', { value: '' }, 'Total BBVA'), nombres.map((n) => h('option', { value: n, selected: n === sel.get(m.id) }, n))) : null;
+        return h('label', { class: 'check small cand' }, chk, h('span', {}, `${fmtFecha(m.fecha)} · ${m.concepto || '—'} · ${nombreCuenta(m.cuenta_id)} · `, h('strong', {}, fmtEUR2(disp(m)))), rem);
+      }) : h('p', { class: 'muted small' }, 'No hay ingresos con estos filtros. Amplía las fechas o cambia de cuenta.'));
+      pintarTotal();
+    }
+    const cambiarGrupo = () => { const [c, mes] = selEnv.value.split('|'); grupo = { curso_id: c, mes, banco: selBanco.value }; cargarGrupo(); ponerFiltros(); pintarLista(); };
+    selEnv.addEventListener('change', cambiarGrupo); selBanco.addEventListener('change', cambiarGrupo);
+    for (const el of [desde, hasta, selCuenta]) el.addEventListener('change', pintarLista);
+    q.addEventListener('input', pintarLista);
+    const marcar = (v) => h('button', { class: 'btn small', type: 'button', onclick: () => { for (const m of visibles()) { if (v) sel.set(m.id, sel.get(m.id) || ''); else sel.delete(m.id); } pintarLista(); } }, v ? 'Marcar todos los visibles' : 'Desmarcar');
+    pintarLista();
+    const cont = h('div', { class: 'enlazar' },
+      h('div', { class: 'filters', style: 'display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px' }, h('label', { class: 'small' }, 'Remesas de ', selEnv), selBanco),
+      h('p', { class: 'muted small' }, 'Marca los ingresos del banco que corresponden a estas remesas. Solo se compara el total: no hace falta emparejar cada recibo.'),
+      h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px' }, selCuenta, h('label', { class: 'small' }, 'Del ', desde), h('label', { class: 'small' }, 'al ', hasta), q, marcar(true), marcar(false)), lista, total);
+    const ok = await confirmar({ titulo: 'Ingresos de remesas', ok: 'Guardar', texto: cont });
+    if (!ok) return;
+    try {
+      const filas = [...sel].map(([id, remesa]) => { const m = movs.find((x) => x.id === id); return { movimiento_id: id, ...grupo, remesa_nombre: remesa || null, importe: disp(m) }; }).filter((f) => f.importe > 0);
+      const antes = enGrupo(grupo).map((x) => x.movimiento_id);
+      const guardados = await db.reemplazarMovRemesas(grupo, filas);
+      for (let i = movRem.length - 1; i >= 0; i--) if (movRem[i].curso_id === grupo.curso_id && movRem[i].mes === grupo.mes && movRem[i].banco === grupo.banco) movRem.splice(i, 1);
+      movRem.push(...guardados);
+      await recalcular({ movIds: [...new Set([...antes, ...guardados.map((x) => x.movimiento_id)])], gastoIds: [] });
+      toast(filas.length ? 'Ingresos de remesas guardados' : 'Enlaces de remesas quitados'); pintarCuentas(); pintar();
+    } catch (ex) { toast(ex.message, 'error'); }
+  }
+  // Desde un ingreso: abre la ventana con el envío y el banco que mejor encajan con su importe
+  function remesasDeMov(m) {
+    if (!envios.length) { toast('Todavía no hay remesas enviadas guardadas (pestaña Remesas → REMESAS ENVIADAS).', 'error'); return; }
+    const bc = bancoDeCuenta(cuentas.find((c) => c.id === m.cuenta_id)); const imp = num(m.importe);
+    let mejor = null;
+    for (const e of enviosOrden()) for (const b of ['SABADELL', 'BBVA']) {
+      if (esperadoRemesas(e, b) <= 0) continue;
+      const pts = (Math.abs(esperadoRemesas(e, b) - imp) <= 0.01 ? 4 : 0) + (b === bc ? 2 : 0) + ((e.enviado_el || '').slice(0, 10) <= m.fecha ? 1 : 0);
+      if (!mejor || pts > mejor.pts) mejor = { e, b, pts };
+    }
+    vincularRemesas({ env: mejor?.e || enviosOrden()[0], banco: mejor?.b || bc || 'SABADELL', movPre: m });
+  }
+  const remesasEl = h('div', {});
+  function pintarRemesas() {
+    const lista = enviosOrden().slice(0, 8);
+    if (!lista.length) { clear(remesasEl); return; }
+    const filas = [];
+    let hayPend = false;
+    for (const e of lista) for (const b of ['SABADELL', 'BBVA']) {
+      const esp = esperadoRemesas(e, b); if (esp <= 0) continue;
+      const ing = ingresadoRemesas(movRem, e, b); const dif = r2c(esp - ing);
+      const estado = ing === 0 ? ['warn', 'Sin ingreso'] : Math.abs(dif) <= 0.01 ? ['ok', 'Cuadra'] : dif > 0 ? ['warn', `Falta ${fmtEUR2(dif)}`] : ['warn', `Sobra ${fmtEUR2(-dif)}`];
+      if (estado[1] !== 'Cuadra') hayPend = true;
+      filas.push(h('tr', {}, h('td', {}, etiquetaEnvio(e)), h('td', {}, NOMBRE_BANCO[b]), h('td', { class: 'num' }, fmtEUR2(esp)), h('td', { class: 'num' }, fmtEUR2(ing)), h('td', { class: `num ${Math.abs(dif) > 0.01 ? 'critical' : ''}` }, fmtEUR2(dif)),
+        h('td', {}, h('span', { class: `pill ${estado[0]}` }, estado[1])), h('td', {}, h('button', { class: 'btn small', onclick: () => vincularRemesas({ env: e, banco: b }) }, ing ? 'Editar ingresos' : 'Vincular ingresos'))));
+      if (b === 'BBVA' && movRem.some((x) => x.curso_id === e.curso_id && x.mes === e.mes && x.banco === 'BBVA' && x.remesa_nombre)) {
+        for (const r of e.resumen.filter((x) => x.banco === 'BBVA').sort((x, y) => x.orden - y.orden)) {
+          const ri = ingresadoRemesas(movRem, e, 'BBVA', r.remesa_nombre); const rd = r2c(num(r.total) - ri);
+          filas.push(h('tr', { class: 'muted small' }, h('td', {}, ''), h('td', {}, `· ${r.remesa_nombre}`), h('td', { class: 'num' }, fmtEUR2(num(r.total))), h('td', { class: 'num' }, fmtEUR2(ri)), h('td', { class: 'num' }, fmtEUR2(rd)), h('td', {}, ''), h('td', {}, '')));
+        }
+      }
+    }
+    clear(remesasEl, h('details', { class: 'card abonos-pend', open: hayPend }, h('summary', {}, `Remesas: esperado frente a ingresado en el banco${hayPend ? ' (hay diferencias o sin ingreso)' : ' ✓'}`),
+      h('p', { class: 'muted small' }, 'Lo esperado es lo guardado con «REMESAS ENVIADAS» en la pestaña Remesas. Se comparan solo los totales por mes y banco.'),
+      h('div', { class: 'table-wrap' }, h('table', { class: 'data' }, h('thead', {}, h('tr', {}, ['Remesas de', 'Banco', 'Esperado', 'Ingresado', 'Diferencia', 'Estado', ''].map((t, i) => h('th', { scope: 'col', class: [2, 3, 4].includes(i) ? 'num' : '' }, t)))), h('tbody', {}, filas)))));
   }
 
   // ---- cuentas ----
@@ -210,19 +332,25 @@ async function renderConciliacion(cont, ctx) {
     const pagos = conciliar(todosGastos(), movs, { enlaces });
     const devs = conciliarDevoluciones(todosGastos(), movs, { enlaces });
     const pares = [...pagos, ...devs];
-    if (!pares.length) { toast('No he encontrado nuevas coincidencias entre gastos y movimientos.'); return; }
+    const rems = sugerirRemesas(envios, movs, { movRemesas: movRem, enlaces, cuentas });
+    if (!pares.length && !rems.length) { toast('No he encontrado nuevas coincidencias entre gastos y movimientos.'); return; }
     const masDeUno = pagos.filter((p) => p.movs.length > 1 || p.gastos.length > 1).length;
     const linea = (p) => `${fmtFecha(p.gasto.fecha_pago || p.gasto.fecha_factura)} · ${p.gastos.map((g) => `${g.empresa} ${fmtEUR2(g.cantidad)}`).join(' + ')} ↔ ${p.movs.map((m) => `${fmtFecha(m.fecha)} ${fmtEUR2(m.importe)}`).join(' + ')}`;
-    const ok = await confirmar({ titulo: 'Conciliar automáticamente', ok: `Conciliar ${pares.length}`,
-      texto: h('div', {}, h('p', {}, `He encontrado ${pagos.length} pagos con su movimiento en el banco (mismo importe, ±20 días)${masDeUno ? `; ${masDeUno} con varios pagos o varias facturas` : ''}${devs.length ? ` y ${devs.length} devoluciones (concepto «DEVOLUCIÓN») que cuadran con un abono` : ''}.`),
+    const ok = await confirmar({ titulo: 'Conciliar automáticamente', ok: `Conciliar ${pares.length + rems.length}`,
+      texto: h('div', {}, pares.length ? h('p', {}, `He encontrado ${pagos.length} pagos con su movimiento en el banco (mismo importe, ±20 días)${masDeUno ? `; ${masDeUno} con varios pagos o varias facturas` : ''}${devs.length ? ` y ${devs.length} devoluciones (concepto «DEVOLUCIÓN») que cuadran con un abono` : ''}.`) : null,
+        rems.length ? h('div', {}, h('p', {}, `Ingresos de remesas (${rems.length}):`), h('ul', { class: 'lista-pares' }, rems.map((r) => h('li', {}, `${r.mes} · ${NOMBRE_BANCO[r.banco]} · ${fmtEUR2(r.total)} ← ${r.movs.map((x) => `${fmtFecha(x.fecha)} ${fmtEUR2(x.importe)}`).join(' + ')}`)))) : null,
         h('ul', { class: 'lista-pares' }, pares.slice(0, 14).map((p) => h('li', {}, p.movs[0] && num(p.movs[0].importe) > 0 ? h('strong', {}, 'Devolución · ') : null, linea(p)))),
         pares.length > 14 ? h('p', { class: 'muted small' }, `…y ${pares.length - 14} más.`) : null,
         h('p', { class: 'muted small' }, 'Se marcará "Comprobado en el banco" en los gastos que queden cubiertos del todo.')) });
     if (!ok) return;
     try {
       const filas = pares.flatMap((p) => p.asignaciones.map((x) => ({ movimiento_id: x.mov.id, gasto_id: (x.gasto || p.gasto).id, importe: x.importe })));
-      await guardarEnlaces({}, filas);
-      toast(`${pares.length} conciliaciones guardadas`);
+      if (filas.length) await guardarEnlaces({}, filas);
+      if (rems.length) {
+        const nuevas = await db.insertarMovRemesas(rems.flatMap((r) => r.asignaciones.map((x) => ({ movimiento_id: x.mov.id, curso_id: r.curso_id, mes: r.mes, banco: r.banco, remesa_nombre: x.remesa_nombre, importe: x.importe }))));
+        movRem.push(...nuevas); await recalcular({ movIds: [...new Set(nuevas.map((x) => x.movimiento_id))], gastoIds: [] });
+      }
+      toast(`${pares.length + rems.length} conciliaciones guardadas`);
       pintarCuentas(); pintar();
     } catch (ex) { toast('Error al conciliar: ' + ex.message, 'error'); }
   }
@@ -235,7 +363,7 @@ async function renderConciliacion(cont, ctx) {
     const previoDe = (g) => previos.get(g.id) || 0;
     const info = (g) => ({ id: g.id, texto: textoGasto(g), restante: Math.round((restanteGasto(g, enlaces) + previoDe(g)) * 100) / 100, parcial: asignadoGasto(g, enlaces) - previoDe(g) > 0.009 });
     const elegidos = await elegirEnlaces({
-      titulo: pago ? 'Enlazar pago con facturas' : 'Enlazar ingreso con abonos / notas de crédito', ancla: Math.abs(num(m.importe)), previos,
+      titulo: pago ? 'Enlazar pago con facturas' : 'Enlazar ingreso con abonos / notas de crédito', ancla: Math.abs(num(m.importe)) - asigRem(m), previos,
       cabecera: textoMov(m),
       ayuda: pago ? 'Marca todas las facturas que paga este movimiento (puede ser 1 o varias). Si una factura se paga en 2 o más pagos, enlaza cada pago por separado con el importe que cubre.'
         : 'Marca el abono o nota de crédito que devuelve este ingreso. Busca por empresa o importe.',
@@ -264,7 +392,7 @@ async function renderConciliacion(cont, ctx) {
   }
   async function cambiarEstado(m, estado) {
     try {
-      if (enlaces.some((e) => e.movimiento_id === m.id)) await quitarEnlacesDe(m.id);   // quita los enlaces y recalcula las facturas afectadas
+      if (enlaces.some((e) => e.movimiento_id === m.id) || movRem.some((x) => x.movimiento_id === m.id)) await quitarEnlacesDe(m.id);   // quita los enlaces y recalcula las facturas afectadas
       const mm = movs.find((x) => x.id === m.id) || m;
       if (mm.estado !== estado || mm.gasto_id) refrescarMovs(await db.actualizarMovimientos([m.id], { estado, gasto_id: null }));
       pintarCuentas(); pintar();
@@ -318,6 +446,7 @@ async function renderConciliacion(cont, ctx) {
   }
   function pintar() {
     aviso.actualizar();
+    pintarRemesas();
     const lista = filtrados();
     const porId = gastoPorId();
     contador.textContent = `${lista.length} movimientos · ${fmtEUR2(lista.reduce((s, m) => s + num(m.importe), 0))}`;
@@ -334,13 +463,17 @@ async function renderConciliacion(cont, ctx) {
     clear(tbody, lista.length ? lista.slice(0, limite).map((m) => {
       const mis = enlaces.filter((e) => e.movimiento_id === m.id);
       const pago = num(m.importe) < 0;
-      const parcial = m.estado === 'pendiente' && mis.length > 0;
+      const misRem = movRem.filter((x) => x.movimiento_id === m.id);
+      const parcial = m.estado === 'pendiente' && (mis.length > 0 || misRem.length > 0);
       const acciones = m.estado === 'pendiente'
-        ? [h('button', { class: 'btn small', onclick: () => vincular(m) }, pago ? (parcial ? 'Editar enlaces' : 'Vincular') : 'Vincular abono'),
+        ? [misRem.length ? h('button', { class: 'btn small', onclick: () => remesasDeMov(m) }, 'Editar remesas') : null,
+          !misRem.length || mis.length ? h('button', { class: 'btn small', onclick: () => vincular(m) }, pago ? (parcial ? 'Editar enlaces' : 'Vincular') : (mis.length ? 'Editar abono' : 'Vincular abono')) : null,
+          !pago && !misRem.length ? h('button', { class: 'btn small', onclick: () => remesasDeMov(m) }, 'Remesas') : null,
           pago && !parcial ? h('button', { class: 'btn small', onclick: () => crearGasto(m) }, 'Crear gasto') : null,
           parcial ? h('button', { class: 'btn small ghost', onclick: () => cambiarEstado(m, 'pendiente') }, 'Quitar enlaces') : h('button', { class: 'btn small ghost', onclick: () => cambiarEstado(m, 'ignorado') }, 'Ignorar')]
-        : [m.estado === 'conciliado' ? h('button', { class: 'btn small', onclick: () => vincular(m) }, 'Editar') : null, h('button', { class: 'btn small ghost', onclick: () => cambiarEstado(m, 'pendiente') }, 'Deshacer')];
+        : [m.estado === 'conciliado' ? h('button', { class: 'btn small', onclick: () => (misRem.length ? remesasDeMov(m) : vincular(m)) }, 'Editar') : null, h('button', { class: 'btn small ghost', onclick: () => cambiarEstado(m, 'pendiente') }, 'Deshacer')];
       const enlacesTxt = mis.map((e) => { const g = porId.get(e.gasto_id); return g ? `↔ ${g.empresa}${g.factura_nr ? ' ' + g.factura_nr : ''} · ${g.concepto || ''} (${fmtEUR2(num(e.importe))}${Math.abs(num(g.cantidad)) - num(e.importe) > 0.01 ? ` de ${fmtEUR2(Math.abs(num(g.cantidad)))}` : ''})` : null; }).filter(Boolean);
+      for (const x of misRem) enlacesTxt.push(`↔ Remesas ${x.mes} ${NOMBRE_BANCO[x.banco]}${x.remesa_nombre ? ' ' + x.remesa_nombre : ''} (${fmtEUR2(num(x.importe))})`);
       const cen = state.centros.length > 1 ? h('select', { class: 'select-celda', 'aria-label': `Centro del movimiento ${m.concepto || ''}`, onchange: (e) => moverCentro(m, e.target.value) },
         h('option', { value: '' }, ctx.tituloCentro(ctx.centroPrincipal()?.nombre)), state.centros.filter((c) => !c.principal).map((c) => h('option', { value: c.id, selected: c.id === m.centro_id }, ctx.tituloCentro(c.nombre)))) : null;
       return h('tr', { class: `mov-${m.estado}` },
@@ -348,7 +481,7 @@ async function renderConciliacion(cont, ctx) {
         h('td', {}, m.concepto || '—', !pago && esDevolucion(m) ? h('span', { class: 'pill ok' }, 'Devolución') : null, h('span', { class: 'line2' }, [nombreCuenta(m.cuenta_id), ...enlacesTxt].filter(Boolean).join(' · '))),
         h('td', { class: `num ${pago ? '' : 'pos'}` }, fmtEUR2(num(m.importe))),
         cen ? h('td', {}, cen) : null,
-        h('td', {}, h('span', { class: `pill ${m.estado === 'conciliado' ? 'ok' : m.estado === 'ignorado' ? 'off' : 'warn'}` }, parcial ? `parcial ${fmtEUR2(asignadoMov(m, enlaces))} de ${fmtEUR2(Math.abs(num(m.importe)))}` : m.estado)),
+        h('td', {}, h('span', { class: `pill ${m.estado === 'conciliado' ? 'ok' : m.estado === 'ignorado' ? 'off' : 'warn'}` }, parcial ? `parcial ${fmtEUR2(asignadoMov(m, enlaces) + asigRem(m))} de ${fmtEUR2(Math.abs(num(m.importe)))}` : m.estado)),
         h('td', { class: 'acciones-mov' }, acciones));
     }) : h('tr', {}, h('td', { colspan: 6, class: 'empty' }, movs.length ? 'Ningún movimiento con estos filtros.' : 'Aún no hay extractos importados. Añade la cuenta e importa un CSV o Excel del banco.')));
     clear(pie, h('span', {}, lista.length > limite ? `Mostrando ${limite} de ${lista.length}` : ''), lista.length > limite ? h('button', { class: 'btn', onclick: () => { limite += 300; pintar(); } }, 'Mostrar más') : null);
@@ -364,7 +497,7 @@ async function renderConciliacion(cont, ctx) {
         h('button', { class: 'btn', onclick: exportar }, 'Exportar CSV'),
         h('button', { class: 'btn', onclick: () => archivo.click() }, 'Importar extracto'),
         h('button', { class: 'btn primary', onclick: autoConciliar }, 'Conciliar automáticamente'))),
-    cuentasEl, resumenGastos, abonosEl, filtrosEl, aviso,
+    cuentasEl, resumenGastos, abonosEl, remesasEl, filtrosEl, aviso,
     h('div', { class: 'table-wrap' }, h('table', { class: 'data tabla-movs' },
       h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'Fecha'), h('th', { scope: 'col' }, 'Concepto'), h('th', { scope: 'col', class: 'num' }, 'Importe'),
         state.centros.length > 1 ? h('th', { scope: 'col' }, 'Centro') : null, h('th', { scope: 'col' }, 'Estado'), h('th', { scope: 'col' }, ''))),
