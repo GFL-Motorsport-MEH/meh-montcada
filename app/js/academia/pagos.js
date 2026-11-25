@@ -17,10 +17,14 @@ const SIMBOLO = { pagado: '✓', devuelto: '↩', exento: '–', pendiente: '' }
 export async function renderPagos(view, ctx) {
   clear(view, cargando());
   const curso = ctx.cursoActual();
-  const [alumnos, insc, cuotas, precios, remesas, listas, bajasCurso] = await Promise.all([api.alumnos(), api.inscripciones(curso.id), api.cuotas(curso.id), api.wpPrecios(curso.id), api.remesas(curso.id), api.listas(), api.bajas()]);
+  const [alumnos, insc, cuotas, precios, remesas, listas, bajasCurso, gruposCurso] = await Promise.all([api.alumnos(), api.inscripciones(curso.id), api.cuotas(curso.id), api.wpPrecios(curso.id), api.remesas(curso.id), api.listas(), api.bajas(), api.grupos(curso.id)]);
   const conBaja = new Set(bajasCurso.filter((b) => !b.curso_id || b.curso_id === curso.id).map((b) => b.alumno_id)); // las bajas siguen visibles: el resumen de meses ya cobrados no debe variar
   const remPor = new Map(remesas.map((r) => [r.id, r]));
   const dondeCargo = (c) => { const r = remPor.get(c.remesa_id); return r ? ` · en ${r.nombre || capitalizar(r.mes)}${r.banco ? ' (' + r.banco + ')' : ''}` : (c.concepto === 'mensualidad' ? ' · sin remesa' : ''); };
+  // Curso(s) del alumno: modalidad de los grupos en los que está (así se ve quién hace 1 to 1 y quién grupo); si no tiene grupo, su modalidad
+  const cursosPor = new Map();
+  for (const g of gruposCurso) for (const m of g.miembros || []) if (!m.fecha_baja && g.modalidad) { const l = cursosPor.get(m.alumno_id) || []; if (!l.includes(g.modalidad)) l.push(g.modalidad); cursosPor.set(m.alumno_id, l); }
+  const cursoTxt = (a) => (cursosPor.get(a.id) || (a.modalidad ? [a.modalidad] : [])).join(' + ');
   const inscPor = new Map(insc.map((i) => [i.alumno_id, i]));
   const cuotaPor = new Map(cuotas.map((c) => [`${c.alumno_id}|${c.concepto}|${c.mes}`, c]));
   const editor = ctx.edita('ac_pagos');
@@ -54,7 +58,7 @@ export async function renderPagos(view, ctx) {
   const resumen = h('tr', { class: 'ac-resumen' });
   function pintarPie() {
     const col = (c) => { const t = totales(c); return h('th', { class: 'num', title: `Cobrado ${fmtEUR2(t.pagado)} de ${fmtEUR2(t.total)} · pendiente ${fmtEUR2(t.total - t.pagado)}` }, h('b', {}, fmtN(t.pagado)), h('span', { class: 'ac-de' }, `/${fmtN(t.total)}`)); };
-    clear(resumen, h('th', { colspan: 5, class: 'l' }, 'Cobrado / total (€)'), COLS.map((k) => col(cuotas.filter((c) => (c.concepto === k.c || (k.c === 'mensualidad' && c.concepto === 'otro')) && c.mes === k.m))));
+    clear(resumen, h('th', { colspan: 6, class: 'l' }, 'Cobrado / total (€)'), COLS.map((k) => col(cuotas.filter((c) => (c.concepto === k.c || (k.c === 'mensualidad' && c.concepto === 'otro')) && c.mes === k.m))));
   }
 
   // ---------- celdas ----------
@@ -188,6 +192,7 @@ export async function renderPagos(view, ctx) {
     if (k === 'num') return Number(x.num || 1e9) - Number(y.num || 1e9);
     if (k === 'nombre') return porNombre(x, y);
     if (k === 'nivel') return txt(x.nivel, y.nivel);
+    if (k === 'curso') return txt(cursoTxt(x), cursoTxt(y));
     if (k === 'modo') return txt(x.metodo_pago, y.metodo_pago);
     if (k === 'cuota') return Number(inscPor.get(x.id)?.cuota_mensual || 0) - Number(inscPor.get(y.id)?.cuota_mensual || 0);
     if (/^c\d+$/.test(k)) { const ci = Number(k.slice(1)); const rg = (a) => { const c = cuotaDe(a, ci); return c ? RANGO[c.estado] ?? 4 : 4; }; return rg(x) - rg(y) || (Number(cuotaDe(x, ci)?.importe || 0) - Number(cuotaDe(y, ci)?.importe || 0)); }
@@ -210,10 +215,11 @@ export async function renderPagos(view, ctx) {
       && (!f.recibo || cuotas.some((c) => c.alumno_id === a.id && c.estado === 'pagado' && !c.recibo_hecho)))
       .sort(comparar);
     celdas.clear(); seleccion.clear(); ancla = null; pintarBarra();
-    clear(cuerpo, rows.map((a, r) => h('tr', {},
+    clear(cuerpo, rows.map((a, r) => h('tr', { class: a.estado === 'baja' ? 'ac-baja' : '', title: a.estado === 'baja' ? 'Baja' : null },
       h('td', { class: 'ac-id muted' }, a.num ? (esOtro(a) ? String(Number(a.num)) : String(Math.round(a.num))) : ''),
       h('td', { class: 'ac-nom', title: nombreFila(a) }, h('a', { href: '#', onclick: (e) => { e.preventDefault(); abrirFicha(a, ctx, refrescar); } }, nombreFila(a))),
       h('td', { class: 'ac-niv', title: [a.modalidad, a.nivel].filter(Boolean).join(' · ') }, a.nivel || ''),
+      h('td', { class: 'ac-niv' + (/1\s*to\s*1/i.test(cursoTxt(a)) ? ' ac-1to1' : ''), title: cursoTxt(a) }, cursoTxt(a)),
       modoPago(a),
       cuotaMensual(a),
       COLS.map((_, ci) => { const td = h('td', { class: 'ac-cel', 'data-r': String(r), 'data-c': String(ci) }); celdas.set(claveSel(a, ci), td); return td; }))));
@@ -301,8 +307,8 @@ export async function renderPagos(view, ctx) {
 
   const th = (k, t, cls, extra) => { const el = h('th', { class: 'ac-ord ' + (cls || ''), title: 'Clic para ordenar', onclick: () => ordenar(k) }, t, h('span', { class: 'ac-fl' }), extra || null); cabs.set(k, el); return el; };
   const tb = h('table', { class: 'data ac-pg' },
-    h('colgroup', {}, ['38px', '210px', '60px', '96px', '54px'].map((w) => h('col', { style: `width:${w}` })), COLS.map(() => h('col'))),
-    h('thead', {}, resumen, h('tr', {}, th('num', 'ID'), th('nombre', 'Alumno', 'l'), th('nivel', 'Nivel'), th('modo', 'Modo pago'), th('cuota', 'Cuota'),
+    h('colgroup', {}, ['38px', '210px', '60px', '64px', '96px', '54px'].map((w) => h('col', { style: `width:${w}` })), COLS.map(() => h('col'))),
+    h('thead', {}, resumen, h('tr', {}, th('num', 'ID'), th('nombre', 'Alumno', 'l'), th('nivel', 'Nivel'), th('curso', 'Curso'), th('modo', 'Modo pago'), th('cuota', 'Cuota'),
       COLS.map((k, ci) => th('c' + ci, k.t, 'ac-mes', h('div', { class: 'ac-sub' }, '€ · P · R'))))), cuerpo);
   pintarFlechas();
   if (f.modo && !modos.includes(f.modo)) f.modo = '';

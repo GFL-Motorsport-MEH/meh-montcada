@@ -34,6 +34,9 @@ tr.ac-resumen .ac-de { font-size: 9px; color: var(--text-muted); display: block;
 table.ac-pg td.ac-nom a { color: inherit; text-decoration: none; }
 table.ac-pg td.ac-nom a:hover { text-decoration: underline; }
 table.ac-pg td.ac-niv, table.ac-pg td.ac-modo { font-size: 10px; color: var(--text-secondary); }
+table.ac-pg tr.ac-baja td { background: rgba(128, 128, 128, .28); color: var(--text-muted); }
+table.ac-pg tr.ac-baja td.ac-nom a { color: var(--text-muted); }
+table.ac-pg td.ac-1to1 { font-weight: 700; color: var(--text); }
 table.ac-pg .ac-sub { font-weight: 400; font-size: 9.5px; color: var(--text-muted); letter-spacing: .02em; }
 .ac-imp { width: 100%; min-width: 0; height: 16px; min-height: 0; text-align: right; padding: 0 2px; font-size: 10.5px; line-height: 1; box-sizing: border-box; }
 table.ac-pg td.ac-cel { display: table-cell; cursor: cell; user-select: none; border-left: 1px solid var(--border); border-bottom: 1px solid var(--border); }
