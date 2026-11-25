@@ -196,6 +196,7 @@ function pintarShell() {
       ctx.soloEscaner() ? null : modulosEl,
       h('div', { class: 'header-controls' }, ctx.soloEscaner() ? null : centroSelect(), ctx.soloEscaner() ? null : cursoSel,
         ctx.puedeEditar() ? botonDeshacer() : null,
+        h('button', { class: 'btn ghost', type: 'button', id: 'btn-nueva-ventana', title: 'Abrir esta misma pantalla en otra ventana', 'aria-label': 'Abrir en una ventana nueva', onclick: () => window.open(location.href, '_blank', 'noopener') }, '⧉ Nueva ventana'),
         h('div', { class: 'user-chip' }, h('span', { class: 'dot', 'aria-hidden': 'true' }, inicial),
           h('span', { title: nombreRol(p.rol) }, `${p.nombre || p.email}${p.rol !== 'admin' ? ' · ' + nombreRol(p.rol).toLowerCase() : ''}`),
           h('button', { class: 'btn ghost', onclick: () => renderNuevaPassword(root, { titulo: 'Cambiar contraseña', onDone: async () => { toast('Contraseña cambiada'); await arrancar(); }, onCancel: () => { pintarShell(); pintarVista(); } }) }, 'Contraseña'),
