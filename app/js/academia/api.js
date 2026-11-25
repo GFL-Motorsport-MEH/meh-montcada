@@ -205,6 +205,8 @@ export const usuarios = () => memo('usuarios', async () => {
   return out;
 });
 // DNI / IBAN: solo los devuelve la base de datos a quien tiene el permiso de Pagos
+export const privadosDomi = (ids) => (ids?.length ? supabase.from('ac_domiciliaciones_priv').select('*').in('domiciliacion_id', ids).then(chk) : Promise.resolve([]));
+export async function guardarIbanDomi(domiciliacion_id, iban) { chk(await supabase.from('ac_domiciliaciones_priv').upsert({ domiciliacion_id, iban }, { onConflict: 'domiciliacion_id' })); }
 export const privados = (ids) => (ids?.length ? supabase.from('ac_responsables_priv').select('*').in('responsable_id', ids).then(chk) : Promise.resolve([]));
 
 // ---------- escrituras ----------

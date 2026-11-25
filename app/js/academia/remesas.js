@@ -93,6 +93,8 @@ export async function renderRemesas(view, ctx) {
   const respIds = [...new Set(alumnos.filter((a) => a.responsable_id && (esDomi(a.metodo_pago) || doms.some((d) => d.alumno_id === a.id))).map((a) => a.responsable_id))];
   const priv = new Map();
   try { for (let i = 0; i < respIds.length; i += 100) for (const p of await api.privados(respIds.slice(i, i + 100))) priv.set(p.responsable_id, p); } catch { /* sin permiso de IBAN: se ven vacíos */ }
+  const privDomi = new Map(); // IBAN propio de cada domiciliación: manda sobre el del responsable (un responsable puede tener IBAN distintos según el alumno)
+  try { const ids = doms.map((d) => d.id); for (let i = 0; i < ids.length; i += 100) for (const p of await api.privadosDomi(ids.slice(i, i + 100))) privDomi.set(p.domiciliacion_id, p); } catch { /* sin permiso */ }
 
   // cambios de cuota del mes en curso entre el día 5 y el 25
   const hoy = hoyISO(); const mesHoy = hoy.slice(0, 7);
@@ -148,13 +150,12 @@ export async function renderRemesas(view, ctx) {
     if (!x.dom?.remesa_id) av.push('Sin remesa');
     if (x.a.estado !== 'inscrito') av.push('Alumno no inscrito: revisar');
     else if (!esDomi(x.a.metodo_pago)) av.push(`Método de pago: ${x.a.metodo_pago || 'vacío'} → conviene archivar`);
-    if (!x.a.responsable_id) av.push('Sin IBAN (ni responsable): pulsa ✎ junto al IBAN para ponerlo');
-    else if (!priv.get(x.a.responsable_id)?.iban) av.push('Sin IBAN');
+    if (!ibanDe(x)) av.push('Sin IBAN: pulsa ✎ junto al IBAN para ponerlo');
     if (!x.importe) av.push('Sin cuota');
     return av;
   };
   const respTxt = (a) => (a.responsable && (a.responsable.apellidos || a.responsable.nombre) ? [a.responsable.apellidos, a.responsable.nombre].filter(Boolean).join(', ') : '');
-  const ibanDe = (x) => priv.get(x.a.responsable_id)?.iban || '';
+  const ibanDe = (x) => privDomi.get(x.dom?.id)?.iban || priv.get(x.a.responsable_id)?.iban || '';
 
   const resumenEl = h('div'); const gestionEl = h('div'); const listaEl = h('div'); const statsEl = h('div', { class: 'count' }); const tabsEl = h('div', { class: 'ac-fila', style: 'gap:6px;margin:8px 0' });
   calc();
@@ -206,14 +207,10 @@ export async function renderRemesas(view, ctx) {
 
   // ---------- IBAN (se modifica aquí y también en la ficha del responsable) ----------
   function editarIban(x) {
-    let rid = x.a.responsable_id; const actual = ibanDe(x);
-    const rApe = h('input', { type: 'text', placeholder: 'Apellidos del responsable (opcional)', 'aria-label': 'Apellidos del responsable' }); const rNom = h('input', { type: 'text', placeholder: 'Nombre del responsable (opcional)', 'aria-label': 'Nombre del responsable' });
-    const otros = alumnos.filter((a) => a.responsable_id === rid && a.id !== x.a.id).length;
+    const actual = ibanDe(x);
     const inp = h('input', { type: 'text', value: actual, class: 'mono', style: 'width:100%', placeholder: 'ES00 0000 0000 0000 0000 0000' });
     const cont = h('div', { style: 'display:flex;flex-direction:column;gap:10px' },
-      !rid ? h('div', { class: 'small ac-dif' }, 'Este alumno no tiene responsable. El IBAN se guarda igualmente: se crea un responsable (con el nombre que escribas, o sin nombre) y se enlaza al alumno. Podrás completarlo después en Alumnos.') : null,
-      !rid ? h('div', { class: 'ac-fila', style: 'gap:6px' }, rApe, rNom) : null,
-      rid ? h('div', { class: 'small' }, `Responsable: ${respTxt(x.a) || '—'}. Al guardar, el IBAN también cambia en la ficha del responsable (base de datos de Alumnos)${otros ? ` y afecta a ${otros} alumno${otros > 1 ? 's' : ''} más con el mismo responsable` : ''}.`) : null, inp);
+      h('div', { class: 'small' }, `Este IBAN es el de la domiciliación de ${nombreAlumno(x.a)}: no cambia el de su responsable ni el de sus hermanos.`), inp);
     const v = ventana(`IBAN · ${nombreAlumno(x.a)}`, cont, { ancho: 460 });
     const guardar = h('button', { class: 'btn primary', type: 'button', onclick: async () => {
       const nuevo = inp.value.replace(/\s+/g, '').toUpperCase();
@@ -221,11 +218,9 @@ export async function renderRemesas(view, ctx) {
       if (nuevo === actual.replace(/\s+/g, '').toUpperCase()) { v.cerrar(); return; }
       if (!/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(nuevo) && !await confirmar({ titulo: 'IBAN dudoso', texto: 'No tiene el formato de un IBAN. ¿Guardarlo igualmente?', ok: 'Guardar igualmente' })) return;
       try {
-        if (!rid) {
-          const r = await api.ins('ac_responsables', { apellidos: rApe.value.trim(), nombre: rNom.value.trim() });
-          await api.upd('ac_alumnos', x.a.id, { responsable_id: r.id }); x.a.responsable_id = r.id; x.a.responsable = r; rid = r.id;
-        }
-        await api.guardarPrivados(rid, { iban: nuevo }); priv.set(rid, { ...(priv.get(rid) || { responsable_id: rid }), iban: nuevo }); toast('IBAN actualizado también en Alumnos'); v.cerrar(); pintarTodo(); } catch (ex) { toast(ex.message, 'error'); }
+        let dom = x.dom;
+        if (!dom) { dom = await api.ins('ac_domiciliaciones', { alumno_id: x.a.id }); doms.push(dom); x.dom = dom; }
+        await api.guardarIbanDomi(dom.id, nuevo); privDomi.set(dom.id, { domiciliacion_id: dom.id, iban: nuevo }); toast('IBAN de la domiciliación actualizado'); v.cerrar(); pintarTodo(); } catch (ex) { toast(ex.message, 'error'); }
     } }, 'Guardar');
     cont.append(h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: v.cerrar }, 'Cancelar'), guardar));
     setTimeout(() => inp.focus(), 60);
@@ -233,7 +228,7 @@ export async function renderRemesas(view, ctx) {
   const celdaIban = (x) => {
     const iban = ibanDe(x);
     return h('span', { class: 'ac-fila', style: 'gap:4px;flex-wrap:nowrap' }, iban ? h('span', { class: 'mono' }, iban) : h('span', { class: 'muted' }, 'sin IBAN'),
-      h('button', { class: 'ac-rbtn', type: 'button', disabled: !editor, title: x.a.responsable_id ? 'Modificar IBAN (también en Alumnos)' : 'Sin responsable: pulsa para crearlo y poner el IBAN', 'aria-label': 'Modificar IBAN', onclick: () => editarIban(x) }, '✎'));
+      h('button', { class: 'ac-rbtn', type: 'button', disabled: !editor, title: 'Modificar el IBAN de esta domiciliación', 'aria-label': 'Modificar IBAN', onclick: () => editarIban(x) }, '✎'));
   };
 
   // ---------- mes seleccionado: «actual» (en curso) o un envío guardado (copia propia, editable sin afectar al resto) ----------
@@ -343,7 +338,7 @@ export async function renderRemesas(view, ctx) {
   function vistaEnvio(env, q) {
     const nomDe = (l) => l.alumno_nombre || (alPor.get(l.alumno_id) ? nombreAlumno(alPor.get(l.alumno_id)) : `ID ${l.alumno_num ?? '?'}`);
     const respDe = (l) => l.responsable_nombre ?? (alPor.get(l.alumno_id) ? respTxt(alPor.get(l.alumno_id)) : '');
-    const ibanL = (l) => l.iban ?? (alPor.get(l.alumno_id) ? ibanDe({ a: alPor.get(l.alumno_id) }) : '');
+    const ibanL = (l) => l.iban ?? (alPor.get(l.alumno_id) ? ibanDe({ a: alPor.get(l.alumno_id), dom: doms.find((d) => d.alumno_id === l.alumno_id && !d.archivado) }) : '');
     const orden = (l) => lista.find((r) => r.nombre === l.remesa_nombre)?.orden ?? 9999;
     const rf = f.remesa && f.remesa !== '__sin' ? lista.find((r) => r.id === f.remesa)?.nombre : null;
     const vis = lineasEnvioFull.filter((l) => (!rf || l.remesa_nombre === rf) && (!f.banco || bancoDeNombre(l.remesa_nombre) === f.banco)
