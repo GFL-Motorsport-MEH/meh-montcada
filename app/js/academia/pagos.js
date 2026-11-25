@@ -33,6 +33,7 @@ export async function renderPagos(view, ctx) {
   let pila = [{ k: 'nombre', dir: 1 }];
   { const g = ordenGuardado('pagos'); const l = g?.pila ? om.deGuardado(g.pila, (k) => (typeof k === 'string' ? k : null)) : (g && g.k ? [{ k: g.k, dir: g.dir === -1 ? -1 : 1 }] : []); if (l.length) pila = l; }
   const RANGO = { pendiente: 0, devuelto: 1, pagado: 2, exento: 3 };
+  const esBaja = (a) => a.estado === 'baja' || a.estado === 'antiguo' || /baja/i.test(a.metodo_pago || ''); // en gris, como en el Excel
   const esOtro = (a) => Number(a.num) > 0 && Number(a.num) < 1; // filas 0.x del Excel: Camps, Scape Room, Story Time, Other, Recogidas
   const NOMBRES_OTROS = { 0.1: 'Camp Easter', 0.2: 'Camp Summer', 0.3: 'Camp Xmass', 0.4: 'Scape Room', 0.5: 'Story Time', 0.6: 'Other Activities', 0.7: 'Recogidas Mas Rampinyo' };
   const nombreFila = (a) => (esOtro(a) ? NOMBRES_OTROS[Number(a.num)] || nombreAlumno(a) : nombreAlumno(a));
@@ -215,7 +216,7 @@ export async function renderPagos(view, ctx) {
       && (!f.recibo || cuotas.some((c) => c.alumno_id === a.id && c.estado === 'pagado' && !c.recibo_hecho)))
       .sort(comparar);
     celdas.clear(); seleccion.clear(); ancla = null; pintarBarra();
-    clear(cuerpo, rows.map((a, r) => h('tr', { class: a.estado === 'baja' ? 'ac-baja' : '', title: a.estado === 'baja' ? 'Baja' : null },
+    clear(cuerpo, rows.map((a, r) => h('tr', { class: esBaja(a) ? 'ac-baja' : '', title: esBaja(a) ? 'Baja' : null },
       h('td', { class: 'ac-id muted' }, a.num ? (esOtro(a) ? String(Number(a.num)) : String(Math.round(a.num))) : ''),
       h('td', { class: 'ac-nom', title: nombreFila(a) }, h('a', { href: '#', onclick: (e) => { e.preventDefault(); abrirFicha(a, ctx, refrescar); } }, nombreFila(a))),
       h('td', { class: 'ac-niv', title: [a.modalidad, a.nivel].filter(Boolean).join(' · ') }, a.nivel || ''),
