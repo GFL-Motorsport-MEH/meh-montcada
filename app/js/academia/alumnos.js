@@ -13,6 +13,9 @@ const ESTADOS = [['inscrito', 'Inscrito'], ['prematricula', 'Pre-matrícula'], [
 const pillEstado = (e) => pill((ESTADOS.find((x) => x[0] === e) || [0, e])[1], e === 'inscrito' ? 'ok' : e === 'prematricula' ? 'warn' : 'off');
 export const resumenSesiones = (g) => (g?.sesiones || []).slice().sort((a, b) => a.dia - b.dia).map((s) => `${DIAS_CORTO[s.dia]} ${hhmm(s.hora_inicio)}`).join(' · ');
 
+// «No tienen» es el valor de «sin alergias»: se ve en la ficha, pero en la tabla se deja en blanco para distinguir quién sí tiene.
+const sinAlergia = (a) => /^no tienen?$/i.test(String(a.intolerancias || '').trim());
+
 // Datos obligatorios de todo alumno. priv = { dni } solo si el usuario puede ver la tabla privada (si no, el DNI no se evalúa).
 export function faltantesAlumno(a, priv = null) {
   const v = (x) => !!String(x ?? '').trim(); const m = []; const r = a.responsable;
@@ -133,7 +136,7 @@ export async function renderAlumnos(view, ctx) {
       { t: 'Teléfono', v: (a) => a.responsable?.telefono || '' },
       { t: 'Modalidad · nivel', s: (a) => [a.modalidad, a.nivel].filter(Boolean).join(' · '), v: (a) => (e ? h('div', { class: 'ac-nombre-edit' }, selc(a, 'modalidad', ls.modalidad || []), inp(a, 'nivel', { list: 'dl-nivel-lista', placeholder: 'Nivel' })) : h('span', {}, a.modalidad || '', a.modalidad && a.nivel ? ' · ' : '', pillNivel(a.nivel))) },
       { t: 'Grupos', s: (a) => (gruposAl.get(a.id) || []).map((g) => g.nombre).join(', '), v: celdaGrupos },
-      { t: 'Alergias', s: (a) => a.intolerancias || '', v: (a) => (e ? inp(a, 'intolerancias', { placeholder: 'Alergias / intolerancias' }) : a.intolerancias ? h('span', { class: 'ac-alergia', title: a.intolerancias }, '⚠ ' + a.intolerancias) : '') },
+      { t: 'Alergias', s: (a) => (sinAlergia(a) ? '' : a.intolerancias || ''), v: (a) => (e ? inp(a, 'intolerancias', { placeholder: 'Alergias / intolerancias', ...(sinAlergia(a) ? { value: '' } : {}) }) : a.intolerancias && !sinAlergia(a) ? h('span', { class: 'ac-alergia', title: a.intolerancias }, '⚠ ' + a.intolerancias) : '') },
       { t: 'RRSS', s: (a) => (a.autoriza_rrss ? 'Sí' : 'No'), v: (a) => { if (!e) return pill(a.autoriza_rrss ? 'Sí' : 'No', a.autoriza_rrss ? 'ok' : 'off'); const c = h('input', { type: 'checkbox', checked: !!a.autoriza_rrss, 'aria-label': 'Autoriza redes sociales' }); c.addEventListener('change', () => guardarCampo(a, 'autoriza_rrss', c.checked)); return c; } },
       ...(verPagos ? [{ t: 'Pago', s: (a) => a.metodo_pago || '', v: (a) => (e && editaPagos ? selc(a, 'metodo_pago', ls.metodo_pago || []) : a.metodo_pago || '') }] : []),
       ...(verPagos ? [{ t: 'Descuento', s: (a) => inscPor.get(a.id)?.descuento || '', v: (a) => { if (!(e && editaPagos)) return inscPor.get(a.id)?.descuento || ''; const c = sel(ls.descuento || [], inscPor.get(a.id)?.descuento, { vacio: '—', class: 'ac-celda' }); c.addEventListener('change', () => guardarInscripcion(a, { descuento: c.value || null })); return c; } }] : []),
