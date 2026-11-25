@@ -6,6 +6,7 @@ import { campo, txt, area, fecha, numero, sel, drawer, cabecera, tabla, pill, ed
 
 import { calcularFamilias, esActivo, esDescHermanos } from './familias.js';
 import { abrirEscaneo } from './escanear.js';
+import { esDomi, ofrecerRemesas } from './alta_remesas.js';
 import { vista as vistaEstado, vincular, avisoFiltros, busqueda } from '../vista.js';
 import { pillMotivo, permanencia, colorMotivo as colorMotivoFicha } from './bajas.js';
 
@@ -62,7 +63,7 @@ export async function renderAlumnos(view, ctx) {
   async function guardarCampo(a, campo, valor) {
     const v = typeof valor === 'string' ? valor.trim() || null : valor;
     if ((a[campo] ?? null) === v) return;
-    try { await api.upd('ac_alumnos', a.id, { [campo]: v }); a[campo] = v; toast('Guardado'); } catch (ex) { toast('No se ha guardado: ' + ex.message, 'error'); }
+    try { const antes = a[campo]; await api.upd('ac_alumnos', a.id, { [campo]: v }); a[campo] = v; toast('Guardado'); if ((campo === 'metodo_pago' && esDomi(v) && !esDomi(antes) && a.estado === 'inscrito') || (campo === 'estado' && v === 'inscrito' && antes !== 'inscrito' && esDomi(a.metodo_pago))) await ofrecerRemesas(a, ctx); } catch (ex) { toast('No se ha guardado: ' + ex.message, 'error'); }
   }
   async function guardarInscripcion(a, parche) {
     try {
@@ -241,6 +242,7 @@ export async function abrirFicha(alumno, ctx, onCambio, prefill = null) {
         const dup = todos.find((x) => normalizar(`${x.apellidos} ${x.nombre}`) === normalizar(`${fila.apellidos} ${fila.nombre}`) && (x.fecha_nacimiento || '') === (fila.fecha_nacimiento || ''));
         if (dup && !(await confirmar({ titulo: 'Posible alumno repetido', texto: `Ya existe ${nombreAlumno(dup)} con la misma fecha de nacimiento. ¿Crear otro igualmente?`, ok: 'Crear igualmente' }))) return false;
       }
+      const antesDomi = alumno ? esDomi(alumno.metodo_pago) && alumno.estado === 'inscrito' : false;
       const guardado = alumno ? await api.upd('ac_alumnos', alumno.id, fila) : await api.ins('ac_alumnos', fila);
       const cuota = Number(F.cuota.value || 0), wp = Number(F.wp.value || 0);
       if (editaPagos && (miInsc || cuota || wp)) {
@@ -249,6 +251,7 @@ export async function abrirFicha(alumno, ctx, onCambio, prefill = null) {
       }
       toast('Alumno guardado');
       cambio();
+      if (esDomi(fila.metodo_pago) && fila.estado === 'inscrito' && !antesDomi) await ofrecerRemesas({ ...guardado, id: guardado.id }, ctx); // alta o paso a domiciliación: preguntar por las remesas
       return guardado;
     } catch (ex) { toast('No se ha guardado: ' + ex.message, 'error'); return false; }
   }

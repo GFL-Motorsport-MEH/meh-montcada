@@ -5,6 +5,7 @@ import { ordenGuardado, guardarOrden } from '../orden-compartido.js';
 import * as om from '../orden-multi.js';
 import * as api from './api.js';
 import { cabecera, sel, nombreAlumno, refrescar, drawer, numero, guardarBoton } from './kit.js';
+import { ofrecerRemesaGrupo } from './alta_remesas.js';
 import { abrirFicha } from './alumnos.js';
 import { vista as vistaEstado, vincular, avisoFiltros, busqueda } from '../vista.js';
 
@@ -241,7 +242,7 @@ export async function renderPagos(view, ctx) {
       try {
         Object.assign(a, await api.upd('ac_alumnos', a.id, { metodo_pago: nuevo })); td.title = nuevo || '';
         toast('Modo de pago actualizado también en Alumnos.');
-        if (esDomi(nuevo) && !esDomi(antes)) await ofrecerRemesas(a);
+        if (esDomi(nuevo) && !esDomi(antes)) { await ofrecerRemesaGrupo(a, ctx); await ofrecerRemesas(a); }
       } catch (ex) { s.value = antes || ''; toast(ex.message, 'error'); }
     });
     td.append(s); return td;
