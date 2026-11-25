@@ -1,6 +1,6 @@
 // Pestaña Gastos: tabla tipo hoja de cálculo, una línea por gasto y editable en la propia fila
 // (desplegables para las listas, casillas para Pago / Banco / Gestoría). La ficha completa sigue en el botón ⋯.
-import { h, clear, fmtEUR2, fmtFecha, fmtFechaCorta, num, MESES, MESES_CORTO, capitalizar, tituloCategoria, normalizar, cargando, descargarCSV, mesDeFecha, hoyISO, toast, confirmar, fmtFechaHora, diaDeInstante } from '../ui.js';
+import { h, clear, fmtEUR2, fmtFecha, fmtFechaCorta, num, MESES, MESES_CORTO, capitalizar, tituloCategoria, normalizar, cargando, descargarCSV, mesDeFecha, hoyISO, toast, confirmar, fmtFechaHora, diaDeInstante, importeEscrito } from '../ui.js';
 import { ordenGuardado, guardarOrden } from '../orden-compartido.js';
 import { abrirGastoForm } from './gasto-form.js';
 import { vista, leerV, guardarV, filtroFecha, pasaFecha, fechaActiva, describirFecha, crearAviso, FECHA_VACIA } from '../vista.js';
@@ -297,7 +297,7 @@ export async function renderGastos(view, ctx) {
   });
 
   function pasaImporte(v, expr) {
-    const n = (t) => Number(String(t).replace(/\s|€/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'));
+    const n = (t) => importeEscrito(t) ?? NaN;
     let m;
     if ((m = expr.match(/^([<>]=?)\s*(.+)$/))) { const x = n(m[2]); return m[1] === '>' ? v > x : m[1] === '>=' ? v >= x : m[1] === '<' ? v < x : v <= x; }
     if ((m = expr.match(/^(.+?)\s*-\s*(.+)$/)) && Number.isFinite(n(m[1])) && Number.isFinite(n(m[2]))) return v >= n(m[1]) && v <= n(m[2]);
@@ -484,7 +484,7 @@ export async function renderGastos(view, ctx) {
       onclick: () => editarComentario(g) }, svg(tieneCom ? ICO.comentLleno : ICO.coment));
 
     const importe = celdaTexto(g, 'cantidad', { cls: 'gc-num', label: 'Importe', formato: (v) => fmtEUR2(num(v)).replace(/\s?€/, ''),
-      leer: (t) => { const n = Number(t.replace(/\s|€/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')); if (!t.trim() || !Number.isFinite(n)) { toast('Importe no válido.', 'error'); return undefined; } return Math.round(n * 100) / 100; } });
+      leer: (t) => { const n = importeEscrito(t); if (n === null || !Number.isFinite(n)) { toast('Importe no válido.', 'error'); return undefined; } return n; } });
 
     const tr = h('tr', { class: ['clickable', ...clasesColor(g)].join(' '), dataset: { id: g.id }, title: tituloColor(g) },
       h('td', { class: 'col-check' }, chk),

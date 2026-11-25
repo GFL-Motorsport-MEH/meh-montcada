@@ -70,6 +70,18 @@ export function importeEscrito(txt) {
   }
   return /^-?\d*\.?\d+$|^-?\d+\.$/.test(s) ? Math.round(Number(s) * 100) / 100 : NaN;
 }
+// Casillas de importe marcadas con data-punto: «,» y «.» valen igual (se guarda siempre como punto) y no deja escribir otra cosa
+if (typeof document !== 'undefined') {
+  document.addEventListener('input', (e) => {
+    const el = e.target;
+    if (!(el instanceof HTMLInputElement) || !el.hasAttribute('data-punto')) return;
+    const pos = el.selectionStart ?? el.value.length;
+    let v = el.value.replace(/,/g, '.').replace(/[^\d.\-]/g, '');
+    const i = v.indexOf('.'); if (i >= 0) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/\./g, '');
+    v = v.charAt(0) + v.slice(1).replace(/-/g, '');
+    if (v !== el.value) { const quitados = el.value.length - v.length; el.value = v; try { el.setSelectionRange(Math.max(0, pos - quitados), Math.max(0, pos - quitados)); } catch { /* */ } }
+  }, true);
+}
 export const num = (v) => (v === null || v === undefined || v === '' ? 0 : Number(v));
 
 // Curso escolar: septiembre -> agosto

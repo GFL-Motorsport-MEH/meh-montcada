@@ -282,7 +282,7 @@ function abrirPago(p, { recs, alumnos, curso, recargar }) {
   const bloqueado = !!p?.traspasado_at;
   const d = drawer({ titulo: p ? `Pago · ${nombreAlumno(p.alumno)}` : 'Nuevo pago de recogida', ancho: 480 });
   const conRec = new Map(recs.filter((r) => r.activa).map((r) => [r.alumno_id, r]));
-  const F = { al: buscadorAlumno(alumnos.filter((a) => conRec.has(a.id)), { valorId: p?.alumno_id }), fecha: fecha(p?.fecha || hoyISO()), importe: h('input', { type: 'number', step: '0.01', min: '0', value: p ? p.importe : PRECIO }), metodo: txt('efectivo', { disabled: true }), notas: area(p?.notas) };
+  const F = { al: buscadorAlumno(alumnos.filter((a) => conRec.has(a.id)), { valorId: p?.alumno_id }), fecha: fecha(p?.fecha || hoyISO()), importe: h('input', { type: 'text', inputmode: 'decimal', 'data-punto': '1', autocomplete: 'off', step: '0.01', min: '0', value: p ? p.importe : PRECIO }), metodo: txt('efectivo', { disabled: true }), notas: area(p?.notas) };
   [F.fecha, F.importe, F.notas].forEach((i) => { i.disabled = bloqueado; });
   d.cuerpo.append(bloqueado ? h('div', { class: 'banner' }, 'Este pago ya está en Ingresos: no se puede modificar desde aquí.') : null,
     h('div', { class: 'form-section' }, campo('Alumno (con recogida activa)', F.al, { full: true, req: true }), campo('Fecha', F.fecha), campo('Importe (€)', F.importe), campo('Método', F.metodo), campo('Notas', F.notas, { full: true })));

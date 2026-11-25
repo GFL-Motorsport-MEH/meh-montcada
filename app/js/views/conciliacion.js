@@ -114,7 +114,7 @@ async function renderConciliacion(cont, ctx) {
       const pendiente = () => r2(ancla - [...sel.values()].reduce((a, b) => a + (Number(b) || 0), 0));
       clear(lista, items.size ? [...items.values()].map((c) => {
         const activo = sel.has(c.id);
-        const imp = h('input', { type: 'number', step: '0.01', min: '0.01', class: 'input-corto', 'aria-label': `Importe de ${c.texto}`, value: activo ? sel.get(c.id) : '', disabled: !activo,
+        const imp = h('input', { type: 'text', inputmode: 'decimal', 'data-punto': '1', autocomplete: 'off', step: '0.01', min: '0.01', class: 'input-corto', 'aria-label': `Importe de ${c.texto}`, value: activo ? sel.get(c.id) : '', disabled: !activo,
           oninput: () => { sel.set(c.id, imp.value === '' ? '' : Number(imp.value)); pintarTotal(); } });
         const chk = h('input', { type: 'checkbox', checked: activo, onchange: () => {
           if (chk.checked) { const v = r2(Math.min(c.restante, Math.max(pendiente(), 0)) || c.restante); sel.set(c.id, v); imp.value = v; imp.disabled = false; } else { sel.delete(c.id); imp.value = ''; imp.disabled = true; }

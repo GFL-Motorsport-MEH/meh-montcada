@@ -93,7 +93,7 @@ try:
         d.get_by_role("button", name="Cerrar").click()
         pg.get_by_role("button", name="Notas de un grupo").click(); pg.wait_for_timeout(300)
         d = pg.locator(".drawer"); d.locator("select").first.select_option(label="KIDS 2 L-X"); pg.wait_for_timeout(300)
-        d.locator(".al-bulk input[type=number]").nth(0).fill("7"); d.locator(".al-bulk input[type=number]").nth(1).fill("9")
+        d.locator(".al-bulk input[data-punto]").nth(0).fill("7"); d.locator(".al-bulk input[data-punto]").nth(1).fill("9")
         d.get_by_role("button", name="Guardar notas").click(); pg.wait_for_timeout(600)
         check(len(db(pg, "al_evaluaciones")) == 3, "las notas de los 2 alumnos del grupo se guardan de una vez")
 

@@ -110,7 +110,7 @@ export async function renderPagos(view, ctx) {
   }
   function editarInline(a, ci, span) {
     const c = cuotaDe(a, ci); if (!c) return;
-    const inp = h('input', { type: 'number', step: '0.01', class: 'pc-edit', value: c.importe, 'aria-label': 'Importe' });
+    const inp = h('input', { type: 'text', inputmode: 'decimal', 'data-punto': '1', autocomplete: 'off', step: '0.01', class: 'pc-edit', value: c.importe, 'aria-label': 'Importe' });
     let hecho = false;
     const fin = async (guardar) => {
       if (hecho) return; hecho = true;
@@ -246,7 +246,7 @@ export async function renderPagos(view, ctx) {
   }
   function cuotaMensual(a) {
     const i = inscPor.get(a.id);
-    const inp = h('input', { type: 'number', step: '0.01', class: 'cell ac-imp', value: i?.cuota_mensual || '', disabled: !editor, title: 'Cuota mensual pactada (las cuotas ya generadas no cambian: selecciónalas y usa «Importe…»)', 'aria-label': `Cuota de ${nombreAlumno(a)}` });
+    const inp = h('input', { type: 'text', inputmode: 'decimal', 'data-punto': '1', autocomplete: 'off', step: '0.01', class: 'cell ac-imp', value: i?.cuota_mensual || '', disabled: !editor, title: 'Cuota mensual pactada (las cuotas ya generadas no cambian: selecciónalas y usa «Importe…»)', 'aria-label': `Cuota de ${nombreAlumno(a)}` });
     inp.addEventListener('change', async () => {
       const v = Number(inp.value || 0);
       try {

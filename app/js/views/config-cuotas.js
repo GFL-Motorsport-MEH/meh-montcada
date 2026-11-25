@@ -23,15 +23,15 @@ async function renderCuotas(cont, ctx) {
     h('td', {}, input(c.nombre, { 'aria-label': 'Nombre de la cuota', onchange: (e) => guardar('ac_cuotas_tarifa', c.id, { nombre: e.target.value.trim() || c.nombre }) })),
     h('td', {}, h('select', { disabled: !editor, 'aria-label': 'Modalidad', onchange: (e) => guardar('ac_cuotas_tarifa', c.id, { modalidad: e.target.value || null }) },
       h('option', { value: '' }, '—'), [...new Set([...modalidades, c.modalidad].filter(Boolean))].map((m) => h('option', { value: m, selected: m === c.modalidad }, m)))),
-    h('td', { class: 'num' }, input(c.cuota_mensual, { type: 'number', step: '0.01', 'aria-label': 'Cuota mensual', onchange: (e) => guardar('ac_cuotas_tarifa', c.id, { cuota_mensual: num(e.target.value) }) })),
-    h('td', { class: 'num' }, input(c.welcome_pack, { type: 'number', step: '0.01', 'aria-label': 'Welcome pack', onchange: (e) => guardar('ac_cuotas_tarifa', c.id, { welcome_pack: num(e.target.value) }) })),
+    h('td', { class: 'num' }, input(c.cuota_mensual, { type: 'text', inputmode: 'decimal', 'data-punto': '1', autocomplete: 'off', step: '0.01', 'aria-label': 'Cuota mensual', onchange: (e) => guardar('ac_cuotas_tarifa', c.id, { cuota_mensual: num(e.target.value) }) })),
+    h('td', { class: 'num' }, input(c.welcome_pack, { type: 'text', inputmode: 'decimal', 'data-punto': '1', autocomplete: 'off', step: '0.01', 'aria-label': 'Welcome pack', onchange: (e) => guardar('ac_cuotas_tarifa', c.id, { welcome_pack: num(e.target.value) }) })),
     h('td', {}, h('input', { type: 'checkbox', checked: c.activa, disabled: !editor, 'aria-label': 'Activa', onchange: (e) => guardar('ac_cuotas_tarifa', c.id, { activa: e.target.checked }) })),
     h('td', {}, editor ? h('button', { class: 'btn small ghost', type: 'button', onclick: () => quitar('ac_cuotas_tarifa', c, 'cuota') }, 'Quitar') : null));
   const filaDesc = (d) => h('tr', { 'data-id': d.id },
     h('td', {}, input(d.nombre, { 'aria-label': 'Nombre del descuento', onchange: (e) => guardar('ac_descuentos', d.id, { nombre: e.target.value.trim() || d.nombre }) })),
     h('td', {}, h('select', { disabled: !editor, 'aria-label': 'Tipo', onchange: (e) => guardar('ac_descuentos', d.id, { tipo: e.target.value }) },
       h('option', { value: 'porcentaje', selected: d.tipo === 'porcentaje' }, '% de la cuota'), h('option', { value: 'importe', selected: d.tipo === 'importe' }, '€ al mes'))),
-    h('td', { class: 'num' }, input(d.valor, { type: 'number', step: '0.01', 'aria-label': 'Valor', onchange: (e) => guardar('ac_descuentos', d.id, { valor: num(e.target.value) }) })),
+    h('td', { class: 'num' }, input(d.valor, { type: 'text', inputmode: 'decimal', 'data-punto': '1', autocomplete: 'off', step: '0.01', 'aria-label': 'Valor', onchange: (e) => guardar('ac_descuentos', d.id, { valor: num(e.target.value) }) })),
     h('td', {}, h('input', { type: 'checkbox', checked: d.activo, disabled: !editor, 'aria-label': 'Activo', onchange: (e) => guardar('ac_descuentos', d.id, { activo: e.target.checked }) })),
     h('td', {}, editor ? h('button', { class: 'btn small ghost', type: 'button', onclick: () => quitar('ac_descuentos', d, 'descuento') }, 'Quitar') : null));
 

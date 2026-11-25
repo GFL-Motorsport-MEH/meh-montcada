@@ -2,7 +2,7 @@
 //  - cobros por modalidad de pago y mes (domiciliacion, transferencia, TPV, efectivo, varios)
 //  - numero de alumnos por grupo y mes
 // Las dos tablas son editables (se guarda al salir de la celda), igual que la cuadricula.
-import { h, clear, ajustarAncho, fmtEUR, fmtPct, num, MESES, MESES_CORTO, capitalizar, toast, descargarCSV, grupoClase } from '../ui.js';
+import { h, clear, ajustarAncho, fmtEUR, fmtPct, num, MESES, MESES_CORTO, capitalizar, toast, descargarCSV, grupoClase, importeEscrito } from '../ui.js';
 import * as db from '../db.js';
 
 export const METODOS = ['DOMICILIACION', 'TRANSFERENCIA', 'TPV / TARJETA', 'EFECTIVO', 'VARIOS'];
@@ -17,8 +17,7 @@ export function leerValor(txt, entero = false) {
   let s = String(txt ?? '').trim().replace(/\s|€/g, '');
   if (s === '') return 0;
   if (entero) return /^\d+$/.test(s) ? Number(s) : NaN;
-  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
-  return /^-?\d+(\.\d+)?$/.test(s) ? Math.round(Number(s) * 100) / 100 : NaN;
+  return importeEscrito(s) ?? 0;
 }
 
 // Tabla editable fila x mes. registros: array de la BD (se modifica al guardar).

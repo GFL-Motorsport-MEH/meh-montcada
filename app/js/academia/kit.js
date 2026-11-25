@@ -44,7 +44,10 @@ export function campo(label, input, { full = false, req = false } = {}) {
 export const txt = (value, extra = {}) => h('input', { type: 'text', value: value ?? '', ...extra });
 export const area = (value, extra = {}) => h('textarea', { rows: 3, ...extra }, value ?? '');
 export const fecha = (value, extra = {}) => h('input', { type: 'date', value: value || '', ...extra });
-export const numero = (value, extra = {}) => h('input', { type: 'number', step: '0.01', inputmode: 'decimal', value: value ?? '', ...extra });
+// enteros (step 1) como número del navegador; con decimales, texto donde «,» y «.» valen igual (ver data-punto en ui.js)
+export const numero = (value, extra = {}) => (extra.step === '1'
+  ? h('input', { type: 'number', step: '1', inputmode: 'numeric', value: value ?? '', ...extra })
+  : h('input', { type: 'text', inputmode: 'decimal', 'data-punto': '1', autocomplete: 'off', step: '0.01', value: value ?? '', ...extra }));
 export function sel(opciones, valor, { vacio, ...extra } = {}) {
   const ops = opciones.map((o) => (Array.isArray(o) ? o : [o, o]));
   if (valor && !ops.some(([v]) => v === valor)) ops.push([valor, valor]);
