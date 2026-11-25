@@ -182,11 +182,12 @@ export async function renderGastos(view, ctx) {
     { cls: 'c-ico', limpiar: true },
   ].filter(Boolean);
   const COLS = COLDEF.map((c) => [c.cls]);
+  const kCol = (c) => `${c.cls}|${c.label || c.title || ''}`; // varias columnas comparten clase CSS (c-tick, c-ico): la clave incluye el nombre
   const cf = new Map(); // filtros por columna: índice -> valor
   const controlesFiltro = [];
   const ctlPorIdx = new Map();
   let aviso = null;
-  const guardaCf = () => { guardarV('gastos.cf', Object.fromEntries([...cf].map(([i, v]) => [COLDEF[i].cls, v]))); aviso?.actualizar(); };
+  const guardaCf = () => { guardarV('gastos.cf', Object.fromEntries([...cf].map(([i, v]) => [kCol(COLDEF[i]), v]))); aviso?.actualizar(); };
 
   const ths = COLDEF.map((c, i) => {
     if (c.th) { const t = c.th(); t.classList.add(...c.cls.split(' ')); return t; }
@@ -194,13 +195,13 @@ export async function renderGastos(view, ctx) {
     const contenido = c.icono ? svg(c.icono) : c.label || '';
     const t = h('th', { scope: 'col', class: `${c.cls} ${c.clsTh || ''} ${c.orden ? 'sortable' : ''}`, title: c.title ? `${c.title}${c.orden ? ' · clic para ordenar' : ''}` : (c.orden ? 'Clic para ordenar' : null), tabindex: c.orden ? '0' : null, 'aria-sort': c.orden ? 'none' : null }, contenido, flecha);
     if (c.orden) {
-      t.addEventListener('click', () => { orden = { campo: i, asc: orden.campo === i ? !orden.asc : !['c-fecha', 'c-imp', 'c-cont'].some((k) => c.cls.includes(k)) }; guardarOrden('gastos', { cls: c.cls, asc: orden.asc }); pintar(); });
+      t.addEventListener('click', () => { orden = { campo: i, asc: orden.campo === i ? !orden.asc : !['c-fecha', 'c-imp', 'c-cont'].some((k) => c.cls.includes(k)) }; guardarOrden('gastos', { cls: c.cls, col: c.label || c.title || '', asc: orden.asc }); pintar(); });
       t.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); t.click(); } });
       t._col = i; t._flecha = flecha;
     }
     return t;
   });
-  { const g = ordenGuardado('gastos'); const i = g && g.cls ? COLDEF.findIndex((c) => c.cls === g.cls && c.orden) : -1; orden = { campo: i, asc: i >= 0 ? !!g.asc : false }; } // por defecto: último movimiento (lo último añadido arriba) hasta que se ordene por una columna
+  { const g = ordenGuardado('gastos'); const i = g && g.cls ? COLDEF.findIndex((c) => c.cls === g.cls && c.orden && (g.col === undefined || (c.label || c.title || '') === g.col)) : -1; orden = { campo: i, asc: i >= 0 ? !!g.asc : false }; } // por defecto: último movimiento (lo último añadido arriba) hasta que se ordene por una columna
 
   // Ancho de columnas ajustable arrastrando el borde de la cabecera. Solo vive mientras dura esta pantalla:
   // al refrescar o cambiar de pestaña se vuelve a construir la vista y recupera el ancho original.
@@ -263,7 +264,7 @@ export async function renderGastos(view, ctx) {
   }
   // restaurar los filtros de columna guardados (los que ya no existen se descartan)
   { const g = leerV('gastos.cf', {});
-    for (const [cls, v] of Object.entries(g || {})) { const i = COLDEF.findIndex((c) => c.cls === cls && c.filtro); if (i >= 0 && v) cf.set(i, v); }
+    for (const [k, v] of Object.entries(g || {})) { const i = COLDEF.findIndex((c) => c.filtro && (kCol(c) === k || (!k.includes('|') && c.cls === k))); if (i >= 0 && v) cf.set(i, v); }
     for (const [i, v] of [...cf]) {
       const ctl = ctlPorIdx.get(i); const fl = COLDEF[i].filtro;
       if (!ctl) { cf.delete(i); continue; }
