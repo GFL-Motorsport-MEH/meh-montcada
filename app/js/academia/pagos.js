@@ -17,7 +17,8 @@ const SIMBOLO = { pagado: '✓', devuelto: '↩', exento: '–', pendiente: '' }
 export async function renderPagos(view, ctx) {
   clear(view, cargando());
   const curso = ctx.cursoActual();
-  const [alumnos, insc, cuotas, precios, remesas, listas] = await Promise.all([api.alumnos(), api.inscripciones(curso.id), api.cuotas(curso.id), api.wpPrecios(curso.id), api.remesas(curso.id), api.listas()]);
+  const [alumnos, insc, cuotas, precios, remesas, listas, bajasCurso] = await Promise.all([api.alumnos(), api.inscripciones(curso.id), api.cuotas(curso.id), api.wpPrecios(curso.id), api.remesas(curso.id), api.listas(), api.bajas()]);
+  const conBaja = new Set(bajasCurso.filter((b) => !b.curso_id || b.curso_id === curso.id).map((b) => b.alumno_id)); // las bajas siguen visibles: el resumen de meses ya cobrados no debe variar
   const remPor = new Map(remesas.map((r) => [r.id, r]));
   const dondeCargo = (c) => { const r = remPor.get(c.remesa_id); return r ? ` · en ${r.nombre || capitalizar(r.mes)}${r.banco ? ' (' + r.banco + ')' : ''}` : (c.concepto === 'mensualidad' ? ' · sin remesa' : ''); };
   const inscPor = new Map(insc.map((i) => [i.alumno_id, i]));
@@ -31,7 +32,7 @@ export async function renderPagos(view, ctx) {
   const esOtro = (a) => Number(a.num) > 0 && Number(a.num) < 1; // filas 0.x del Excel: Camps, Scape Room, Story Time, Other, Recogidas
   const NOMBRES_OTROS = { 0.1: 'Camp Easter', 0.2: 'Camp Summer', 0.3: 'Camp Xmass', 0.4: 'Scape Room', 0.5: 'Story Time', 0.6: 'Other Activities', 0.7: 'Recogidas Mas Rampinyo' };
   const nombreFila = (a) => (esOtro(a) ? NOMBRES_OTROS[Number(a.num)] || nombreAlumno(a) : nombreAlumno(a));
-  const filasBase = alumnos.filter((a) => esOtro(a) || (inscPor.get(a.id)?.activa && a.estado !== 'baja') || (a.estado === 'inscrito' && inscPor.has(a.id)) || cuotas.some((c) => c.alumno_id === a.id));
+  const filasBase = alumnos.filter((a) => esOtro(a) || (inscPor.get(a.id)?.activa && a.estado !== 'baja') || (a.estado === 'inscrito' && inscPor.has(a.id)) || (a.estado === 'baja' && conBaja.has(a.id)) || cuotas.some((c) => c.alumno_id === a.id));
   const sinInsc = alumnos.filter((a) => a.estado === 'inscrito' && !inscPor.has(a.id)).length;
   const precioWp = (a) => { const p = precios.find((x) => norm(x.nivel) === norm(a.nivel) && norm(a.nivel)); return p ? Number(p.importe) : null; };
   const importeDefecto = (a, col) => (col.c === 'welcome_pack' ? precioWp(a) ?? Number(inscPor.get(a.id)?.welcome_pack || 0) : Number(inscPor.get(a.id)?.cuota_mensual || 0));
@@ -53,7 +54,7 @@ export async function renderPagos(view, ctx) {
   const resumen = h('tr', { class: 'ac-resumen' });
   function pintarPie() {
     const col = (c) => { const t = totales(c); return h('th', { class: 'num', title: `Cobrado ${fmtEUR2(t.pagado)} de ${fmtEUR2(t.total)} · pendiente ${fmtEUR2(t.total - t.pagado)}` }, h('b', {}, fmtN(t.pagado)), h('span', { class: 'ac-de' }, `/${fmtN(t.total)}`)); };
-    clear(resumen, h('th', { colspan: 5, class: 'l' }, 'Cobrado / total (€)'), COLS.map((k) => col(cuotas.filter((c) => c.concepto === k.c && c.mes === k.m))));
+    clear(resumen, h('th', { colspan: 5, class: 'l' }, 'Cobrado / total (€)'), COLS.map((k) => col(cuotas.filter((c) => (c.concepto === k.c || (k.c === 'mensualidad' && c.concepto === 'otro')) && c.mes === k.m))));
   }
 
   // ---------- celdas ----------
