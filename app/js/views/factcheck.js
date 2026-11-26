@@ -19,9 +19,9 @@ async function renderFactcheck(cont, ctx) {
   clear(cont, cargando());
   const { state } = ctx;
   const curso = ctx.cursoActual();
-  const [ingresos, metodosIng, manual] = await Promise.all([ctx.ingresosPagos(curso.id, curso.nombre), db.getIngresosMetodo(curso.id), db.getFactcheckManual()]);
-  if (!state.facturacion) state.facturacion = await db.getFacturacion();
-  if (!state.movimientos) state.movimientos = await db.getMovimientos().catch(() => []);
+  const [ingresos, metodosIng, manual, fact, movs] = await Promise.all([ctx.ingresosPagos(curso.id, curso.nombre), db.getIngresosMetodo(curso.id), db.getFactcheckManual(),
+    state.facturacion ? Promise.resolve(state.facturacion) : db.getFacturacion(), state.movimientos ? Promise.resolve(state.movimientos) : db.getMovimientos().catch(() => [])]);
+  state.facturacion = fact; state.movimientos = movs;
   const ingCentro = ctx.ingresosDelCentro(ingresos);
   const periodos = MESES.map((m) => ({ mes: m, periodo: fechaEnMes(curso, m).slice(0, 7) }));
   const delPeriodo = new Set(periodos.map((p) => p.periodo));

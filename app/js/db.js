@@ -27,14 +27,19 @@ export function traducirError(error) {
 }
 
 async function selectAll(table, columns, build) {
-  const out = [];
-  for (let from = 0; ; from += PAGE) {
-    let q = supabase.from(table).select(columns);
-    if (build) q = build(q);
-    const rows = check(await q.range(from, from + PAGE - 1));
-    out.push(...rows);
-    if (rows.length < PAGE) break;
+  // primera página con el total de filas; el resto de páginas se piden a la vez (antes, una tras otra)
+  const pagina = (from, opts) => { let q = supabase.from(table).select(columns, opts); if (build) q = build(q); return q.range(from, from + PAGE - 1); };
+  const r0 = await pagina(0, { count: 'exact' });
+  const out = check(r0);
+  const total = r0.count;
+  if (out.length < PAGE) return out;
+  if (!Number.isFinite(total)) { // sin total disponible: páginas una tras otra, como antes
+    for (let from = PAGE; ; from += PAGE) { const rows = check(await pagina(from)); out.push(...rows); if (rows.length < PAGE) break; }
+    return out;
   }
+  if (total <= PAGE) return out;
+  const resto = await Promise.all(Array.from({ length: Math.ceil((total - PAGE) / PAGE) }, (_, k) => pagina(PAGE * (k + 1)).then(check)));
+  for (const rows of resto) out.push(...rows);
   return out;
 }
 
