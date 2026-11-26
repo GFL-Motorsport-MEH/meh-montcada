@@ -25,7 +25,7 @@ export async function renderPagos(view, ctx) {
   // Curso(s) del alumno: modalidad de los grupos en los que está (así se ve quién hace 1 to 1 y quién grupo); si no tiene grupo, su modalidad
   const cursosPor = new Map();
   for (const g of gruposCurso) for (const m of g.miembros || []) if (!m.fecha_baja && g.modalidad) { const l = cursosPor.get(m.alumno_id) || []; if (!l.includes(g.modalidad)) l.push(g.modalidad); cursosPor.set(m.alumno_id, l); }
-  const cursoTxt = (a) => (cursosPor.get(a.id) || (a.modalidad ? [a.modalidad] : [])).join(' + ');
+  const cursoTxt = (a) => a.modalidad || ''; // tal como el Excel (columna Curso = MODALIDAD del alumno)
   const inscPor = new Map(insc.map((i) => [i.alumno_id, i]));
   const cuotaPor = new Map(cuotas.map((c) => [`${c.alumno_id}|${c.concepto}|${c.mes}`, c]));
   const editor = ctx.edita('ac_pagos');
@@ -51,11 +51,30 @@ export async function renderPagos(view, ctx) {
   const totales = (c) => ({ pagado: c.filter((x) => x.estado === 'pagado').reduce((s, x) => s + Number(x.importe), 0), total: c.filter((x) => x.estado !== 'exento').reduce((s, x) => s + Number(x.importe), 0) });
   const kv = {};
   const kpi = (k, l, sub) => { kv[k] = h('div', { class: 'value' }); return h('div', { class: 'card kpi' }, h('div', { class: 'label' }, l), kv[k], sub ? h('div', { class: 'sub' }, sub) : null); };
-  const kpisEl = h('div', { class: 'kpi-row kpi-4' }, kpi('cob', 'Cobrado'), kpi('pen', 'Pendiente', 'Cuotas generadas aún sin cobrar'), kpi('rec', 'Recibos por hacer', 'Cobradas sin «recibo hecho»'), kpi('al', 'Alumnos'));
+  const kpisEl = h('div', { class: 'kpi-row kpi-2' }, kpi('rec', 'Recibos por hacer', 'Cobradas sin «recibo hecho»'), kpi('al', 'Alumnos', 'Sin 1 to 1, 0.x ni Empresas'));
+  // alumnos contables: ID distinto, sin 0.x (conceptos), sin 1 to 1 ni Empresas
+  const contable = (a) => !esOtro(a) && !/^(1\s*to\s*1|empresas?)$/i.test((a.modalidad || '').trim());
+  const metodoDe = (c) => (c.metodo_pago || '').trim() || 'Sin método';
+  const resMetodo = h('div', { class: 'card ac-met' });
+  function pintarMetodos() {
+    const m = new Map();
+    for (const c of cuotas) {
+      if (c.estado === 'exento') continue;
+      const k = metodoDe(c); const t = m.get(k) || { pag: 0, tot: 0, n: 0, np: 0 };
+      t.tot += Number(c.importe); t.n++; if (c.estado === 'pagado') { t.pag += Number(c.importe); t.np++; }
+      m.set(k, t);
+    }
+    const filas = [...m.entries()].sort((x, y) => y[1].tot - x[1].tot);
+    const T = filas.reduce((s, [, t]) => ({ pag: s.pag + t.pag, tot: s.tot + t.tot, n: s.n + t.n, np: s.np + t.np }), { pag: 0, tot: 0, n: 0, np: 0 });
+    const pct = (a, b) => (b ? Math.round((a / b) * 100) + ' %' : '–');
+    const fila = (k, t, tot) => h('tr', tot ? { class: 'tot' } : {}, h('td', { class: 'l' }, tot ? h('b', {}, k) : k), h('td', { class: 'num' }, fmtEUR2(t.pag)), h('td', { class: 'num' }, fmtEUR2(t.tot)), h('td', { class: 'num' }, fmtEUR2(t.tot - t.pag)), h('td', { class: 'num' }, pct(t.pag, t.tot)), h('td', { class: 'num' }, `${t.np}/${t.n}`));
+    clear(resMetodo, h('div', { class: 'label' }, 'Cobrado por método de pago (todo el curso, welcome pack + mensualidades + otros)'),
+      h('div', { class: 'table-wrap' }, h('table', { class: 'tbl' }, h('thead', {}, h('tr', {}, ['Método', 'Cobrado', 'Total', 'Pendiente', '% cobrado', 'Cuotas'].map((x, i) => h('th', { class: i ? 'num' : 'l' }, x)))), h('tbody', {}, filas.map(([k, t]) => fila(k, t, false)), fila('TOTAL', T, true)))));
+  }
   function pintarKpis() {
-    const t = totales(cuotas);
-    kv.cob.textContent = fmtEUR2(t.pagado); kv.pen.textContent = fmtEUR2(t.total - t.pagado);
-    kv.rec.textContent = String(cuotas.filter((c) => c.estado === 'pagado' && !c.recibo_hecho).length); kv.al.textContent = String(filasBase.length);
+    kv.rec.textContent = String(cuotas.filter((c) => c.estado === 'pagado' && !c.recibo_hecho).length);
+    kv.al.textContent = String(new Set(filasBase.filter(contable).map((a) => a.num ?? a.id)).size);
+    pintarMetodos();
   }
   const resumen = h('tr', { class: 'ac-resumen' });
   function pintarPie() {
@@ -327,7 +346,7 @@ export async function renderPagos(view, ctx) {
   clear(view,
     cabecera(`Pagos · ${curso.nombre}`, 'Por mes: cuantía · P (pagado) · R (recibo hecho). Arrastra o usa Ctrl/Mayús+clic para elegir varias celdas.', mesSel, btnGen, btnWp, btnPrecios, zoomBox, h('a', { class: 'btn small', href: '#/ac_pagos_importar' }, 'Importar del CRM'), ctx.veAlgo('fact') ? h('a', { class: 'btn small', href: '#/ingresos', title: 'El cuadro de Ingresos se rellena con los pagos marcados aquí' }, 'Ver Resumen de Pagos →') : null),
     sinInsc ? h('div', { class: 'banner warn' }, `${sinInsc} alumnos inscritos todavía no tienen cuota fijada en este curso: escribe su cuota en la fila (si no aparecen aquí, ábrelos desde Alumnos).`) : null,
-    kpisEl,
+    kpisEl, resMetodo,
     h('div', { class: 'filters filters-4' }, ctlQ, ctlModo, ctlNivel, ctlRecibo),
     h('label', { class: 'check ac-pg-chk' }, ctlPend, ' Solo con pagos pendientes hasta este mes'),
     aviso,

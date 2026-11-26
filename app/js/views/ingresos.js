@@ -49,22 +49,40 @@ const nombreGrupo = (m) => { const n = normalizar(m).replace(/s$/, ''); return O
 // Lo cobrado en Pagos (cuotas marcadas como pagadas) por grupo, level y mes: así se rellena el cuadro, como en el Excel.
 // Cada alumno cuenta en su grupo activo del curso (modalidad y nivel del grupo); sin grupo va a «Sin grupo».
 async function pagosDelCurso(cursoId) {
-  const [cuotas, grupos] = await Promise.all([api.cuotas(cursoId), api.grupos(cursoId)]);
+  const [cuotas, grupos, alumnos] = await Promise.all([api.cuotas(cursoId), api.grupos(cursoId), api.alumnos()]);
+  const alu = new Map(alumnos.map((a) => [a.id, a]));
+  // grupo del alumno (para el level): el activo; si no, el último en el que estuvo (las bajas conservan lo cobrado)
   const deAlumno = new Map();
   for (const g of grupos) for (const m of g.miembros || []) if (!m.fecha_baja && !deAlumno.has(m.alumno_id)) deAlumno.set(m.alumno_id, g);
+  for (const g of grupos) for (const m of g.miembros || []) if (!deAlumno.has(m.alumno_id)) deAlumno.set(m.alumno_id, g);
+  const esOtro = (a) => Number(a?.num) > 0 && Number(a?.num) < 1; // 0.x: Camps, Story Time…
+  const grupoDe = (a) => (esOtro(a) ? 'Activities' : a?.modalidad ? nombreGrupo(a.modalidad) : null);
   const res = new Map();
+  const metodos = {}; // METODO -> { mes: importe } (mensualidades + otros cobrados; sin welcome pack, como las filas "Modalidad Pago" del Excel)
+  const nAlu = {}; // grupo -> { mes: Set(num) } alumnos con mensualidad ese mes
+  const claveMetodo = (m) => { const n = normalizar(m || ''); if (n.startsWith('domicil')) return 'DOMICILIACION'; if (n.startsWith('transf')) return 'TRANSFERENCIA'; if (n.startsWith('tpv') || n.startsWith('tarjeta')) return 'TPV / TARJETA'; if (n.startsWith('efect')) return 'EFECTIVO'; return 'VARIOS'; };
   for (const c of cuotas) {
-    if (c.estado !== 'pagado' || !num(c.importe)) continue;
-    const g = deAlumno.get(c.alumno_id);
-    const grupo = g ? nombreGrupo(g.modalidad) : 'Sin grupo'; const level = g?.nivel || '';
+    if (c.estado === 'exento' || !num(c.importe)) continue;
+    const a = alu.get(c.alumno_id); const g = deAlumno.get(c.alumno_id);
+    const grupo = grupoDe(a) || (g ? nombreGrupo(g.modalidad) : 'Sin grupo');
+    if (c.concepto !== 'welcome_pack' && MESES.includes(c.mes) && !esOtro(a) && c.concepto === 'mensualidad') {
+      const s = ((nAlu[grupo] ||= {})[c.mes] ||= new Set()); s.add(a?.num ?? c.alumno_id);
+    }
+    if (c.estado !== 'pagado') continue;
+    if (c.concepto !== 'welcome_pack' && MESES.includes(c.mes)) {
+      const mk = claveMetodo(c.metodo_pago); const mm = (metodos[mk] ||= {}); mm[c.mes] = (mm[c.mes] || 0) + num(c.importe);
+    }
+    const level = (g?.nivel && !esOtro(a)) ? g.nivel : '';
     const k = `${grupo}|${level}`;
     if (!res.has(k)) res.set(k, { grupo, level, meses: {}, wp: null });
     const e = res.get(k);
     if (c.concepto === 'welcome_pack') e.wp = (e.wp || 0) + num(c.importe);
-    else if (c.concepto === 'mensualidad' && MESES.includes(c.mes)) e.meses[c.mes] = (e.meses[c.mes] || 0) + num(c.importe);
+    else if ((c.concepto === 'mensualidad' || c.concepto === 'otro') && MESES.includes(c.mes)) e.meses[c.mes] = (e.meses[c.mes] || 0) + num(c.importe);
   }
   for (const e of res.values()) for (const m of Object.keys(e.meses)) e.meses[m] = Math.round(e.meses[m] * 100) / 100;
-  return [...res.values()];
+  for (const mm of Object.values(metodos)) for (const m of Object.keys(mm)) mm[m] = Math.round(mm[m] * 100) / 100;
+  const alumnosMes = {}; for (const [g, mm] of Object.entries(nAlu)) alumnosMes[g] = Object.fromEntries(Object.entries(mm).map(([m, st]) => [m, st.size]));
+  return { filas: [...res.values()], metodos, alumnos: alumnosMes };
 }
 // valor efectivo de una celda: lo de Pagos si hay pagos marcados; si no, lo guardado en Ingresos
 const val = (f, mes) => (mes ? (f.pagos?.meses[mes] ?? num(f.celdas[mes]?.cantidad)) : (f.pagos?.wp ?? num(f.wp?.cantidad)));
@@ -75,9 +93,10 @@ export async function renderIngresos(view, ctx) {
   const curso = ctx.cursoActual();
   const registros = await ctx.ingresos(curso.id); // array compartido con el Panel
   let filas = construirFilas(registros);
-  let hayPagos = false;
+  let hayPagos = false; let derivado = null;
   try {
-    for (const e of await pagosDelCurso(curso.id)) {
+    const pc = await pagosDelCurso(curso.id); derivado = { metodos: pc.metodos, alumnos: pc.alumnos };
+    for (const e of pc.filas) {
       let f = filas.find((x) => x.grupo === e.grupo && x.level === e.level && !/extra/i.test(x.tipo) && x.tipo);
       if (!f) { f = { grupo: e.grupo, level: e.level, tipo: 'Mensualidad', celdas: {}, wp: null }; filas.push(f); }
       f.pagos = e; hayPagos = true;
@@ -252,5 +271,5 @@ export async function renderIngresos(view, ctx) {
         h('tfoot', {}, h('tr', {}, h('th', { scope: 'row', class: 'sticky-col' }, 'Total'), totalWP, MESES.map((m) => totalesMes[m]), totalGeneral))))),
     resumenCont);
   pintarFilas();
-  resumen = await renderResumenIngresos(resumenCont, ctx, curso, totalesPorMes);
+  resumen = await renderResumenIngresos(resumenCont, ctx, curso, totalesPorMes, derivado);
 }

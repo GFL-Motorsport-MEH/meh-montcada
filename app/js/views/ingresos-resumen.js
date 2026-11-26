@@ -21,14 +21,16 @@ export function leerValor(txt, entero = false) {
 }
 
 // Tabla editable fila x mes. registros: array de la BD (se modifica al guardar).
-function tablaEditable({ titulo, sub, clase, filas, campoFila, campoValor, entero, registros, crear, actualizar, curso, extras }) {
+function tablaEditable({ titulo, sub, clase, filas, campoFila, campoValor, entero, registros, crear, actualizar, curso, extras, derivado }) {
   const tbody = h('tbody');
   const tfoot = h('tfoot');
   const buscar = (fila, mes) => registros.find((r) => r[campoFila] === fila && r.mes === capitalizar(mes));
   const fmt = entero ? fmtInt : fmt2;
+  // derivado(fila, mes): valor calculado desde Pagos (solo lectura); si no hay, se usa lo guardado
+  const valorDe = (f, m) => (derivado ? num(derivado(f, m)) : num(buscar(f, m)?.[campoValor]));
 
   function pie() {
-    const porMes = MESES.map((m) => filas.reduce((s, f) => s + num(buscar(f, m)?.[campoValor]), 0));
+    const porMes = MESES.map((m) => filas.reduce((s, f) => s + valorDe(f, m), 0));
     const anual = porMes.reduce((a, b) => a + b, 0);
     const filasPie = [h('tr', {}, h('th', { scope: 'row', class: 'sticky-col' }, 'Total'),
       porMes.map((v) => h('td', { class: 'num' }, v ? (entero ? String(v) : fmtEUR(v)) : '—')),
@@ -36,10 +38,10 @@ function tablaEditable({ titulo, sub, clase, filas, campoFila, campoValor, enter
     if (extras) filasPie.push(...extras(porMes));
     clear(tfoot, filasPie);
     for (const f of filas) {
-      const t = MESES.reduce((s, m) => s + num(buscar(f, m)?.[campoValor]), 0);
+      const t = MESES.reduce((s, m) => s + valorDe(f, m), 0);
       const td = tbody.querySelector(`td[data-total="${CSS.escape(f)}"]`);
       if (!td) continue;
-      if (entero) td.textContent = t ? `media ${Math.round(t / Math.max(1, MESES.filter((m) => num(buscar(f, m)?.[campoValor])).length))}` : '—';
+      if (entero) td.textContent = t ? `media ${Math.round(t / Math.max(1, MESES.filter((m) => valorDe(f, m)).length))}` : '—';
       else clear(td, fmtEUR(t), anual ? h('span', { class: 'line2' }, fmtPct(t / anual)) : null); // el % debajo, para que quepa
     }
   }
@@ -68,6 +70,7 @@ function tablaEditable({ titulo, sub, clase, filas, campoFila, campoValor, enter
   }
 
   function celda(fila, mes, etiqueta) {
+    if (derivado) return h('td', { class: 'num derivada', title: 'Calculado desde Pagos' }, fmt(valorDe(fila, mes)));
     const leer = () => num(buscar(fila, mes)?.[campoValor]);
     const input = h('input', { class: 'cell', type: 'text', inputmode: entero ? 'numeric' : 'decimal', 'aria-label': `${etiqueta} · ${capitalizar(mes)}`, value: fmt(leer()) });
     input.addEventListener('focus', () => { const v = leer(); input.value = v ? String(v).replace('.', ',') : ''; input.select(); });
@@ -89,7 +92,7 @@ function tablaEditable({ titulo, sub, clase, filas, campoFila, campoValor, enter
   function exportar() {
     const cab = [entero ? 'Grupo' : 'Modalidad', ...MESES.map(capitalizar)];
     const cuerpo = filas.map((f) => [METODO_LABEL[f] || f, ...MESES.map((m) => {
-      const v = num(buscar(f, m)?.[campoValor]); return v ? (entero ? String(v) : v.toFixed(2).replace('.', ',')) : '';
+      const v = valorDe(f, m); return v ? (entero ? String(v) : v.toFixed(2).replace('.', ',')) : '';
     })]);
     descargarCSV(`${clase}_${curso.nombre}.csv`, [cab, ...cuerpo]);
   }
@@ -107,13 +110,15 @@ function tablaEditable({ titulo, sub, clase, filas, campoFila, campoValor, enter
 }
 
 // totalesMes(): ingresos de la cuadricula por mes (array de 12), para la fila "Sin desglosar".
-export async function renderResumenIngresos(cont, ctx, curso, totalesMes) {
+export async function renderResumenIngresos(cont, ctx, curso, totalesMes, derivado) {
   const [metodos, alumnos] = await Promise.all([db.getIngresosMetodo(curso.id), db.getAlumnosMes(curso.id)]);
-  const filasMet = [...new Set([...METODOS, ...metodos.map((r) => r.metodo)])];
-  const filasAlu = [...new Set([...GRUPOS_ALUMNOS, ...alumnos.map((r) => r.grupo)])];
+  const filasMet = [...new Set([...METODOS, ...(derivado ? [] : metodos.map((r) => r.metodo))])];
+  const filasAlu = [...new Set([...GRUPOS_ALUMNOS, ...(derivado ? Object.keys(derivado.alumnos).filter((g) => g !== 'Activities' && g !== 'Sin grupo') : alumnos.map((r) => r.grupo))])];
+  const dMet = derivado ? (f, m) => derivado.metodos[f]?.[m] || 0 : null;
+  const dAlu = derivado ? (f, m) => derivado.alumnos[f]?.[m] || 0 : null;
   const tMet = tablaEditable({
     titulo: 'Cobros por modalidad de pago', clase: 'grid-metodos',
-    sub: 'Como las filas "Modalidad Pago" de la hoja Ing. No incluye el Welcome pack ni todos los extras, por eso no suma el total del mes.',
+    sub: derivado ? 'Calculado desde Pagos: mensualidades y otros cobrados por modalidad de pago (sin Welcome pack).' : 'Como las filas "Modalidad Pago" de la hoja Ing. No incluye el Welcome pack ni todos los extras, por eso no suma el total del mes.', derivado: dMet,
     filas: filasMet, campoFila: 'metodo', campoValor: 'importe', registros: metodos, curso,
     crear: db.crearIngresoMetodo, actualizar: db.actualizarIngresoMetodo,
     extras: (porMes) => {
@@ -127,7 +132,7 @@ export async function renderResumenIngresos(cont, ctx, curso, totalesMes) {
   });
   const tAlu = tablaEditable({
     titulo: 'Alumnos por grupo', clase: 'grid-alumnos', entero: true,
-    sub: 'Número de alumnos de cada mes (filas "Nr Alumnos" de la hoja Ing).',
+    sub: derivado ? 'Calculado desde Pagos: alumnos (ID distinto) con mensualidad cada mes, según su Curso; sin conceptos 0.x.' : 'Número de alumnos de cada mes (filas "Nr Alumnos" de la hoja Ing).', derivado: dAlu,
     filas: filasAlu, campoFila: 'grupo', campoValor: 'alumnos', registros: alumnos, curso,
     crear: db.crearAlumnosMes, actualizar: db.actualizarAlumnosMes,
   });
