@@ -93,9 +93,13 @@ export async function renderRemesas(view, ctx) {
   const inscPor = new Map(insc.map((i) => [i.alumno_id, i]));
   const respIds = [...new Set(alumnos.filter((a) => a.responsable_id && (esDomi(a.metodo_pago) || doms.some((d) => d.alumno_id === a.id))).map((a) => a.responsable_id))];
   const priv = new Map();
-  try { for (let i = 0; i < respIds.length; i += 100) for (const p of await api.privados(respIds.slice(i, i + 100))) priv.set(p.responsable_id, p); } catch { /* sin permiso de IBAN: se ven vacíos */ }
   const privDomi = new Map(); // IBAN propio de cada domiciliación: manda sobre el del responsable (un responsable puede tener IBAN distintos según el alumno)
-  try { const ids = doms.map((d) => d.id); for (let i = 0; i < ids.length; i += 100) for (const p of await api.privadosDomi(ids.slice(i, i + 100))) privDomi.set(p.domiciliacion_id, p); } catch { /* sin permiso */ }
+  // todas las tandas de IBAN a la vez (antes se pedían una tras otra: ~10 viajes seguidos); sin permiso, se ven vacíos
+  const tandas = (ids) => Array.from({ length: Math.ceil(ids.length / 100) }, (_, i) => ids.slice(i * 100, i * 100 + 100));
+  await Promise.all([
+    ...tandas(respIds).map((t) => api.privados(t).then((rs) => { for (const p of rs) priv.set(p.responsable_id, p); }).catch(() => {})),
+    ...tandas(doms.map((d) => d.id)).map((t) => api.privadosDomi(t).then((rs) => { for (const p of rs) privDomi.set(p.domiciliacion_id, p); }).catch(() => {})),
+  ]);
 
   // cambios de cuota del mes en curso entre el día 5 y el 25
   const hoy = hoyISO(); const mesHoy = hoy.slice(0, 7);
