@@ -19,11 +19,15 @@ async function renderFactcheck(cont, ctx) {
   clear(cont, cargando());
   const { state } = ctx;
   const curso = ctx.cursoActual();
-  const [ingresos, metodosIng, manual, fact, movs] = await Promise.all([ctx.ingresosPagos(curso.id, curso.nombre), db.getIngresosMetodo(curso.id), db.getFactcheckManual(),
-    state.facturacion ? Promise.resolve(state.facturacion) : db.getFacturacion(), state.movimientos ? Promise.resolve(state.movimientos) : db.getMovimientos().catch(() => [])]);
-  state.facturacion = fact; state.movimientos = movs;
-  const ingCentro = ctx.ingresosDelCentro(ingresos);
   const periodos = MESES.map((m) => ({ mes: m, periodo: fechaEnMes(curso, m).slice(0, 7) }));
+  const pers = periodos.map((p) => p.periodo).sort();
+  const desde = `${pers[0]}-01`;
+  const [ay, am] = pers.at(-1).split('-').map(Number);
+  const hasta = `${pers.at(-1)}-${String(new Date(ay, am, 0).getDate()).padStart(2, '0')}`;
+  // facturación y banco llegan ya sumados por mes (no se descargan las líneas)
+  const [ingresos, metodosIng, manual, factTot, bancoTot] = await Promise.all([ctx.ingresosPagos(curso.id, curso.nombre), db.getIngresosMetodo(curso.id), db.getFactcheckManual(),
+    db.getFactcheckFacturacion(desde, hasta), db.getFactcheckBanco(desde, hasta)]);
+  const ingCentro = ctx.ingresosDelCentro(ingresos);
   const delPeriodo = new Set(periodos.map((p) => p.periodo));
   const valManual = (periodo, campo) => manual.find((x) => x.periodo === periodo && x.campo === campo)?.valor;
 
@@ -35,17 +39,15 @@ async function renderFactcheck(cont, ctx) {
       x.ing = ingCentro.filter((r) => (r.mes || '').toLowerCase() === p.mes && !/welcome/i.test(r.tipo || '')).reduce((s, r) => s + num(r.cantidad), 0);
       for (const [k, im] of METODOS) x.m[k].ing = ctx.ingresosDelCentro(metodosIng).filter((r) => (r.mes || '').toLowerCase() === p.mes && r.metodo === im).reduce((s, r) => s + num(r.importe), 0);
     }
-    for (const l of state.facturacion) {
-      const per = (l.fecha_pago || '').slice(0, 7);
-      if (!delPeriodo.has(per)) continue;
-      const x = d.get(per); x.fact += num(l.cantidad);
-      const met = METODOS.find((m) => m[2] === l.metodo_pago); if (met) x.m[met[0]].fact += num(l.cantidad);
+    for (const l of factTot) {
+      const x = d.get(l.periodo); if (!x) continue;
+      x.fact += num(l.total);
+      const met = METODOS.find((m) => m[2] === l.metodo_pago); if (met) x.m[met[0]].fact += num(l.total);
     }
-    for (const mv of state.movimientos) {
-      const per = (mv.fecha || '').slice(0, 7);
-      if (!delPeriodo.has(per) || num(mv.importe) <= 0 || mv.estado === 'ignorado') continue;
-      if (state.centroId && (mv.centro_id || ctx.centroPrincipal()?.id) !== state.centroId) continue;
-      d.get(per).bancoAuto += num(mv.importe);
+    for (const b of bancoTot) {
+      const x = d.get(b.periodo); if (!x) continue;
+      if (state.centroId && (b.centro_id || ctx.centroPrincipal()?.id) !== state.centroId) continue;
+      x.bancoAuto += num(b.total);
     }
     return d;
   }

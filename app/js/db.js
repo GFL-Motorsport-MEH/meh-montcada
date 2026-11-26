@@ -238,6 +238,13 @@ export async function actualizarAlumnosMes(id, cambios) {
 
 // ---------- facturación (import del CRM) ----------
 export const FACT_COLS = 'id,centro,alumno,id_crm,fecha_pago,tipo_operacion,fecha_operacion,num_factura,num_recibo,metodo_pago,modalidad_pago,descripcion,qty,cantidad,iva,importe,total,mimag_comprobacion,fiscontal_comprobacion';
+// Totales ya sumados en la base de datos (Control > FactCheck): evitan descargar todas las líneas.
+export async function getFactcheckFacturacion(desde, hasta) {
+  return check(await supabase.rpc('factcheck_facturacion', { p_desde: desde, p_hasta: hasta })) || [];
+}
+export async function getFactcheckBanco(desde, hasta) {
+  return check(await supabase.rpc('factcheck_banco', { p_desde: desde, p_hasta: hasta })) || [];
+}
 export async function getFacturacion() {
   return selectAll('facturacion', FACT_COLS, (q) => q.order('fecha_pago', { ascending: false }).order('id', { ascending: true }));
 }
