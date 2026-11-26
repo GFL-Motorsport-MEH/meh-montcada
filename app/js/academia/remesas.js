@@ -87,7 +87,7 @@ export async function renderRemesas(view, ctx) {
   activarLeyendas();
   const curso = ctx.cursoActual();
   const editor = ctx.edita('ac_remesas') || ctx.edita('ac_pagos');
-  const [lista0, doms0, alumnos, insc, cambios, envios0, notas0, cuotas] = await Promise.all([api.remesasLista(), api.domiciliaciones(), api.alumnos(), api.inscripciones(curso.id), api.cuotaCambios(curso.id), api.remesaEnvios(curso.id), api.domiNotas().catch(() => []), api.cuotas(curso.id).catch(() => [])]);
+  const [lista0, doms0, alumnos, insc, cambios, envios0, notas0] = await Promise.all([api.remesasLista(), api.domiciliaciones(), api.alumnos(), api.inscripciones(curso.id), api.cuotaCambios(curso.id), api.remesaEnvios(curso.id), api.domiNotas().catch(() => [])]);
   let lista = [...lista0]; let doms = [...doms0]; let envios = [...envios0]; const notas = [...notas0];
   const alPor = new Map(alumnos.map((a) => [a.id, a]));
   const inscPor = new Map(insc.map((i) => [i.alumno_id, i]));
@@ -303,26 +303,40 @@ export async function renderRemesas(view, ctx) {
       h('summary', {}, h('strong', {}, 'Resumen de remesas'), h('span', { class: 'muted small' }, ` · ${titulo} · ${tn} cobros · ${fmtEUR2(tt)}`)),
       tablaOrd('resumen', cols, filas, fila, { pie, clase: 'ac-compacta' }));
     det.addEventListener('toggle', () => { try { localStorage.setItem('remesas_resumen', det.open ? '1' : '0'); } catch { /* sin almacenamiento */ } });
-    clear(resumenEl, det, panelPagos(env), await panelComparar());
+    const cmpAbierto = (() => { try { return localStorage.getItem('remesas_comparar') === '1'; } catch { return false; } })();
+    // la comparación pide los detalles de cada envío: solo se calcula con el panel abierto (así la pantalla carga rápido)
+    const cmp = cmpAbierto ? await panelComparar() : h('details', { class: 'card ac-rresumen', ontoggle: (e) => { if (e.target.open) { try { localStorage.setItem('remesas_comparar', '1'); } catch { /* sin almacenamiento */ } pintarResumen(); } } }, h('summary', {}, h('strong', {}, 'Comparar dos meses')));
+    clear(resumenEl, det, panelPagos(env), cmp);
   }
 
   // ---------- comparación con Pagos: la domiciliación de Pagos del mes frente a lo enviado ----------
+  let cuotasP = null; // las cuotas de todo el curso son muchas filas: se piden solo cuando se abre este panel
+  const getCuotas = () => (cuotasP ||= api.cuotas(curso.id).catch(() => []));
   function panelPagos(env) {
     if (!env) return null;
-    const r = compararRemesaPagos(env.mes, { envios, lineasEnv: new Map([[env.id, lineasEnvioFull]]), cuotas, alumnos, listaRem: lista, doms });
-    if (!r) return null;
+    const hueco = h('div', { class: 'small muted' }, 'Calculando…');
+    const cont = h('details', { class: 'card ac-rresumen', open: (() => { try { return localStorage.getItem('remesas_pagos') === '1'; } catch { return false; } })() },
+      h('summary', {}, h('strong', {}, 'Comparación con Pagos'), h('span', { class: 'small muted' }, ` · ${capitalizar(env.mes)}`)), hueco);
+    let hecho = false;
+    const calcula = async () => {
+      if (hecho || !cont.open) return; hecho = true;
+      const cuotas = await getCuotas();
+      const r = compararRemesaPagos(env.mes, { envios, lineasEnv: new Map([[env.id, lineasEnvioFull]]), cuotas, alumnos, listaRem: lista, doms });
+      clear(hueco.parentNode === cont ? cont : cont, h('summary', {}, h('strong', {}, 'Comparación con Pagos'), h('span', { class: 'small muted' }, ` · ${capitalizar(env.mes)} · ${r && Math.abs(r.dif) < 0.005 ? 'cuadra ✓' : r ? `diferencia ${fmtDif(r.dif)}` : ''}`)), r ? tablaPagos(r) : null);
+    };
+    cont.addEventListener('toggle', () => { try { localStorage.setItem('remesas_pagos', cont.open ? '1' : '0'); } catch { /* sin almacenamiento */ } calcula(); });
+    if (cont.open) calcula();
+    return cont;
+  }
+  function tablaPagos(r) {
     const cuadra = Math.abs(r.dif) < 0.005;
-    const abierto = (() => { try { return localStorage.getItem('remesas_pagos') !== '0'; } catch { return true; } })();
-    const det = h('details', { class: 'card ac-rresumen', open: abierto },
-      h('summary', {}, h('strong', {}, 'Comparación con Pagos'), h('span', { class: `small ${cuadra ? 'muted' : ''}`, style: cuadra ? '' : 'color:var(--danger,#b91c1c)' }, ` · ${capitalizar(env.mes)} · ${cuadra ? 'cuadra ✓' : `diferencia ${fmtDif(r.dif)}`}`)),
+    return h('div', {},
       h('table', { class: 'data ac-compacta' }, h('tbody', {},
         h('tr', {}, h('td', {}, 'Remesas enviadas'), h('td', { class: 'num' }, fmtEUR2(r.enviado))),
         h('tr', {}, h('td', {}, 'Domiciliación en Pagos (solo quienes iban en la remesa)'), h('td', { class: 'num' }, fmtEUR2(r.pagos))),
         h('tr', {}, h('td', { title: 'Alumnos con domiciliación en Pagos que no iban en la remesa (alta posterior al envío) o trimestrales que no se cobran este mes' }, 'Fuera de remesa (alta posterior / trimestrales): no cuentan'), h('td', { class: 'num' }, fmtEUR2(r.fuera))),
         h('tr', {}, h('th', {}, 'Diferencia (Pagos − remesa)'), h('th', { class: 'num' }, cuadra ? '✓' : fmtDif(r.dif))))),
       h('div', { class: 'small muted', style: 'white-space:pre-line;margin-top:6px' }, r.detalle));
-    det.addEventListener('toggle', () => { try { localStorage.setItem('remesas_pagos', det.open ? '1' : '0'); } catch { /* sin almacenamiento */ } });
-    return det;
   }
 
   // ---------- comparar dos meses: cifras en dos colores, una al lado de la otra ----------

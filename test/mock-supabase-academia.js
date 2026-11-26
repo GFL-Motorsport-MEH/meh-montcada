@@ -114,10 +114,10 @@ class Q {
     if (this.op === 'delete') { db[this.t] = db[this.t].filter((r) => !match(r)); return { data: null, error: null }; }
     let out = db[this.t].filter(match);
     for (const [c, asc] of [...this.orders].reverse()) out = [...out].sort((a, b) => { const x = a[c] ?? '', y = b[c] ?? ''; return (x < y ? -1 : x > y ? 1 : 0) * (asc ? 1 : -1); });
-    if (this.cnt) return { data: null, count: out.length, error: null };
+    const total = out.length;
     const [a, b] = this.rng || [0, 999]; out = out.slice(a, b + 1).map((r) => this.embed(r));
     if (this.single_) return { data: out[0] || null, error: null };
-    return { data: out, error: null };
+    return this.cnt ? { data: out, count: total, error: null } : { data: out, error: null };
   }
 }
 export function createClient() {

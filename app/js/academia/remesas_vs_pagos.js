@@ -23,7 +23,7 @@ export function compararRemesaPagos(mes, { envios, lineasEnv, cuotas, alumnos, l
     const enRem = new Map(); for (const l of lin) enRem.set(l.alumno_id, (enRem.get(l.alumno_id) || 0) + Number(l.importe));
     const esPer = (id) => perDeAlumno.has(id) || (lin.some((l) => l.alumno_id === id && (listaRem.find((r) => r.nombre === l.remesa_nombre)?.periodicidad || 1) > 1));
     const perDe = (id) => perDeAlumno.get(id) || listaRem.find((r) => r.nombre === lin.find((l) => l.alumno_id === id)?.remesa_nombre)?.periodicidad || 3;
-    const mesesPeriodo = (id) => { const i0 = MESES.indexOf(mes); return Array.from({ length: perDe(id) }, (_, n) => MESES[i0 + n]).filter(Boolean); // sin dar la vuelta: el curso acaba en agosto };
+    const mesesPeriodo = (id) => { const i0 = MESES.indexOf(mes); return Array.from({ length: perDe(id) }, (_, n) => MESES[i0 + n]).filter(Boolean); }; // sin dar la vuelta: el curso acaba en agosto
     const porAl = new Map(); // cuota mensual de Pagos por alumno (solo mensuales)
     for (const c of cobros) if (!esPer(c.alumno_id)) porAl.set(c.alumno_id, (porAl.get(c.alumno_id) || 0) + Number(c.importe));
     const fuera = cobros.filter((c) => !esPer(c.alumno_id) && !enRem.has(c.alumno_id));
