@@ -28,9 +28,9 @@ const CLAVES = {
 async function renderFaltaFact(cont, ctx) {
   clear(cont, cargando());
   const cursos = ctx.state.cursosVisibles;
-  const porCurso = new Map();
-  for (const c of cursos) porCurso.set(c.id, await ctx.gastos(c.id));
-  const todos = cursos.flatMap((c) => porCurso.get(c.id).map((g) => ({ g, curso: c })));
+  // solo se descargan los gastos sin factura (no todos), y de todos los cursos a la vez
+  const listas = await Promise.all(cursos.map((c) => db.getGastosSinFactura(c.id)));
+  const todos = cursos.flatMap((c, i) => listas[i].map((g) => ({ g, curso: c })));
   const f = vista('control.faltafact.f', { curso: '', metodo: '', q: '', fecha: { ...FECHA_VACIA } });
   let pila = (() => { const g = ordenGuardado('control.faltafact'); const l = g?.pila ? om.deGuardado(g.pila, (k) => (typeof k === 'string' ? k : null)) : (g?.campo ? [{ k: g.campo, dir: g.asc ? 1 : -1 }] : []); return l.length ? l : [{ k: 'fecha', dir: -1 }]; })();
   const guardaOrdenC = () => guardarOrden('control.faltafact', { campo: pila[0].k, asc: pila[0].dir > 0, pila }); // varias columnas: la última pulsada manda
@@ -83,9 +83,7 @@ async function renderFaltaFact(cont, ctx) {
     tr.classList.add('saving');
     try {
       const nuevo = await db.actualizarGasto(x.g.id, cambios);
-      const lista = porCurso.get(x.curso.id);
-      const i = lista.findIndex((g) => g.id === x.g.id);
-      lista[i] = nuevo; x.g = nuevo; ctx.setGastos(x.curso.id, lista);
+      x.g = nuevo; ctx.invalidar(x.curso.id); // la lista completa de Gastos se vuelve a leer al abrirla
       toast(cambios.sin_factura ? 'Marcado como sin factura' : 'Enlace a la factura guardado');
       pintar();
     } catch (ex) { toast('No se ha guardado: ' + ex.message, 'error'); tr.classList.remove('saving'); }
@@ -102,9 +100,7 @@ async function renderFaltaFact(cont, ctx) {
       await agrupar(`${elegidos.length} gastos marcados sin factura`, async () => {
         for (const x of elegidos) {
           const nuevo = await db.actualizarGasto(x.g.id, { sin_factura: true });
-          const lista = porCurso.get(x.curso.id);
-          const i = lista.findIndex((g) => g.id === x.g.id);
-          lista[i] = nuevo; x.g = nuevo; ctx.setGastos(x.curso.id, lista);
+          x.g = nuevo; ctx.invalidar(x.curso.id);
           sel.delete(x.g.id); ok++;
         }
       });

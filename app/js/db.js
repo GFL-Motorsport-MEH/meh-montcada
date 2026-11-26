@@ -120,6 +120,10 @@ export const GASTO_COLS = 'id,curso_id,mes,tipo,empresa,factura_nr,fecha_factura
 export async function getGastos(cursoId) {
   return selectAll('gastos', GASTO_COLS, (q) => q.eq('curso_id', cursoId).order('fecha_factura', { ascending: false }).order('id', { ascending: true }));
 }
+// solo los gastos sin enlace a factura y sin marcar «sin factura» (Control → Facturas pendientes), de varios cursos a la vez
+export async function getGastosSinFactura(cursoId) {
+  return selectAll('gastos', GASTO_COLS, (q) => q.eq('curso_id', cursoId).or('link_factura.is.null,link_factura.eq.').or('sin_factura.is.null,sin_factura.eq.false').neq('cantidad', 0).order('fecha_factura', { ascending: false }).order('id', { ascending: true }));
+}
 export async function getSugerenciasGastos() {
   return selectAll('gastos', 'tipo,empresa,periodicidad,metodo_pago', (q) => q.order('id', { ascending: true }));
 }
