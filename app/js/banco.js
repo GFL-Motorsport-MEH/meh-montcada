@@ -130,7 +130,7 @@ export function conciliar(gastos, movimientos, { ventana = 20, enlaces = [], pri
     for (const g of pend) {
       if (hechos.has(g.id)) continue;
       const obj = Math.round(restanteGasto(g, enlaces) * 100), fg = fechaGasto(g);
-      for (const x of libres) if (!x.usado && Math.abs(x.abs - obj) <= 1 && dias(x.m.fecha, fg) <= ventana && mismoCentro(g, x.m, principal) && (!soloNombre || nombreEnConcepto(g, x.m, alias)))
+      for (const x of libres) if (!x.usado && x.abs === obj && dias(x.m.fecha, fg) <= ventana && mismoCentro(g, x.m, principal) && (!soloNombre || nombreEnConcepto(g, x.m, alias)))
         pares.push({ g, x, d: dias(x.m.fecha, fg) });
     }
     pares.sort((a, b) => a.d - b.d);
@@ -144,18 +144,18 @@ export function conciliar(gastos, movimientos, { ventana = 20, enlaces = [], pri
     for (const g of pend) {
       if (hechos.has(g.id)) continue;
       const obj = Math.round(restanteGasto(g, enlaces) * 100), fg = fechaGasto(g);
-      const cand = libres.filter((x) => !x.usado && dias(x.m.fecha, fg) <= ventana && x.abs <= obj + 1 && mismoCentro(g, x.m, principal) && (!soloNombre || nombreEnConcepto(g, x.m, alias)));
-      const uno = cand.filter((x) => Math.abs(x.abs - obj) <= 1).sort((a, b) => dias(a.m.fecha, fg) - dias(b.m.fecha, fg))[0];
+      const cand = libres.filter((x) => !x.usado && dias(x.m.fecha, fg) <= ventana && x.abs <= obj && mismoCentro(g, x.m, principal) && (!soloNombre || nombreEnConcepto(g, x.m, alias)));
+      const uno = cand.filter((x) => x.abs === obj).sort((a, b) => dias(a.m.fecha, fg) - dias(b.m.fecha, fg))[0];
       let elegidos = uno ? [uno] : null;
       if (!elegidos) {
         const c = cand.slice(0, 40);
         buscar: for (let i = 0; i < c.length; i++) {
           for (let j = i + 1; j < c.length; j++) {
             const s2 = c[i].abs + c[j].abs;
-            if (Math.abs(s2 - obj) <= 1) { elegidos = [c[i], c[j]]; break buscar; }
-            if (s2 > obj + 1) continue;
+            if (s2 === obj) { elegidos = [c[i], c[j]]; break buscar; }
+            if (s2 > obj) continue;
             for (let k = j + 1; k < c.length; k++) {
-              if (Math.abs(s2 + c[k].abs - obj) <= 1) { elegidos = [c[i], c[j], c[k]]; break buscar; }
+              if (s2 + c[k].abs === obj) { elegidos = [c[i], c[j], c[k]]; break buscar; }
             }
           }
         }
@@ -171,18 +171,17 @@ export function conciliar(gastos, movimientos, { ventana = 20, enlaces = [], pri
     const cents = (g) => Math.round(restanteGasto(g, enlaces) * 100);
     let sel = null;
     buscar2: for (let i = 0; i < c.length; i++) for (let j = i + 1; j < c.length; j++) {
-      if (Math.abs(cents(c[i]) + cents(c[j]) - x.abs) <= 1) { sel = [c[i], c[j]]; break buscar2; }
-      for (let k = j + 1; k < c.length; k++) if (Math.abs(cents(c[i]) + cents(c[j]) + cents(c[k]) - x.abs) <= 1) { sel = [c[i], c[j], c[k]]; break buscar2; }
+      if (cents(c[i]) + cents(c[j]) === x.abs) { sel = [c[i], c[j]]; break buscar2; }
+      for (let k = j + 1; k < c.length; k++) if (cents(c[i]) + cents(c[j]) + cents(c[k]) === x.abs) { sel = [c[i], c[j], c[k]]; break buscar2; }
     }
     if (sel) { x.usado = true; sel.forEach((g) => hechos.add(g.id)); out.push({ gasto: sel[0], gastos: sel, movs: [x.m], asignaciones: sel.map((g) => ({ mov: x.m, gasto: g, importe: cents(g) / 100 })) }); }
   }
-  exactos(false);
-  pasada(false);   // 3.ª: cualquier movimiento con el mismo importe y fecha cercana
+  // (ya no hay pasada «solo por importe»: un mismo importe sin la empresa en el concepto se enlaza a mano)
   // 4.ª: un gasto de otro centro pagado desde esta cuenta (se puede pagar con la cuenta de la otra academia): solo con mismo importe Y la empresa reconocida en el concepto
   for (const g of pend) {
     if (hechos.has(g.id)) continue;
     const obj = Math.round(restanteGasto(g, enlaces) * 100), fg = fechaGasto(g);
-    const x = libres.filter((y) => !y.usado && Math.abs(y.abs - obj) <= 1 && dias(y.m.fecha, fg) <= ventana && !mismoCentro(g, y.m, principal) && nombreEnConcepto(g, y.m, alias))
+    const x = libres.filter((y) => !y.usado && y.abs === obj && dias(y.m.fecha, fg) <= ventana && !mismoCentro(g, y.m, principal) && nombreEnConcepto(g, y.m, alias))
       .sort((a, b) => dias(a.m.fecha, fg) - dias(b.m.fecha, fg))[0];
     if (x) { hechos.add(g.id); x.usado = true; out.push({ gasto: g, gastos: [g], movs: [x.m], otroCentro: true, asignaciones: [{ mov: x.m, gasto: g, importe: x.abs / 100 }] }); }
   }
@@ -198,7 +197,7 @@ export function conciliarDevoluciones(gastos, movimientos, { ventana = 90, enlac
   const out = [];
   for (const m of cobros) {
     const imp = restanteMov(m, enlaces);
-    const cand = abonos.filter((x) => !x.usado && Math.abs(restanteGasto(x.g, enlaces) - imp) <= 0.01 && dias(fechaGasto(x.g), m.fecha) <= ventana && mismoCentro(x.g, m, principal))
+    const cand = abonos.filter((x) => !x.usado && Math.round(restanteGasto(x.g, enlaces) * 100) === Math.round(imp * 100) && dias(fechaGasto(x.g), m.fecha) <= ventana && mismoCentro(x.g, m, principal))
       .sort((a, b) => Number(nombreEnConcepto(b.g, m, alias)) - Number(nombreEnConcepto(a.g, m, alias)) || dias(fechaGasto(a.g), m.fecha) - dias(fechaGasto(b.g), m.fecha));
     if (cand[0]) { cand[0].usado = true; out.push({ gasto: cand[0].g, gastos: [cand[0].g], movs: [m], asignaciones: [{ mov: m, gasto: cand[0].g, importe: imp }] }); }
   }
@@ -216,8 +215,8 @@ export function motivoGasto(g, mov, enlaces = [], alias = null) {
 }
 // Búsqueda manual: gastos que puede pagar este movimiento (pago -> facturas; cobro/devolución -> abonos).
 // Sin texto solo salen los candidatos claros: mismo importe o empresa reconocida en el concepto, del mismo centro y de fechas cercanas.
-// parecidos: añade los de importe parecido (±5 %); otrosCentros: incluye gastos de otros centros. Con texto busca en todos los gastos del centro.
-export function gastosParaMov(mov, gastos, enlaces, q = '', { limite = 40, principal = null, alias = null, parecidos = false, otrosCentros = false, ventana = 90 } = {}) {
+// Los importes tienen que coincidir exactamente. otrosCentros: incluye gastos de otros centros. Con texto busca en todos los gastos del centro.
+export function gastosParaMov(mov, gastos, enlaces, q = '', { limite = 40, principal = null, alias = null, otrosCentros = false, ventana = 90 } = {}) {
   const signo = num(mov.importe) < 0 ? 1 : -1, imp = Math.abs(num(mov.importe)), nq = normalizar(String(q).trim());
   const puntos = (g) => {
     const rest = restanteGasto(g, enlaces), f = fechaGasto(g);
@@ -227,7 +226,7 @@ export function gastosParaMov(mov, gastos, enlaces, q = '', { limite = 40, princ
     const rest = restanteGasto(g, enlaces), f = fechaGasto(g);
     if (f && dias(f, mov.fecha) > ventana) return false;
     if (Math.abs(rest - imp) <= 0.01 || nombreEnConcepto(g, mov, alias)) return true;
-    return parecidos && Math.abs(rest - imp) <= Math.max(0.01, imp * 0.05) && (!f || dias(f, mov.fecha) <= 45);
+    return false;
   };
   return gastos.filter((g) => Math.sign(num(g.cantidad)) === signo && restanteGasto(g, enlaces) > 0.009
     && (otrosCentros || mismoCentro(g, mov, principal))

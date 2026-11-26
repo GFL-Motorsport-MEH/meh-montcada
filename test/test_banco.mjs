@@ -62,7 +62,7 @@ const mc = (id, concepto, importe, fecha, centro) => ({ id, concepto, importe, f
 r = conciliar([gc('a', 'Iberdrola', 244.06, '2026-08-18', AL)], [mc('m1', 'ELECTRICIDAD IBERDROLA CLIENTES', -244.06, '2026-08-26', AL)], { principal: MO });
 ok(r.length === 1 && r[0].gasto.id === 'a', 'gasto marcado en banco sin enlace se concilia');
 // cuotas iguales cada mes: cada mes con su movimiento
-const cuotas = ['2026-07-31', '2026-08-31', '2026-09-30', '2026-10-31'].map((f, i) => gc('c' + i, 'Banc Sabadell', 910.57, f, AL));
+const cuotas = ['2026-07-31', '2026-08-31', '2026-09-30', '2026-10-31'].map((f, i) => gc('c' + i, 'Prestamos Sabadell', 910.57, f, AL));
 const movc = [['x1', '2026-08-31'], ['x2', '2026-09-30'], ['x3', '2026-10-30']].map(([id, f]) => mc(id, 'PRESTAMOS ADEUDO CUOTA N.80790', -910.57, f, AL));
 r = conciliar(cuotas, movc, { principal: MO });
 ok(r.length === 3 && r.every((p) => dias2(p.gasto.fecha_factura, p.movs[0].fecha) <= 1), 'cuotas mensuales: cada una con su mes');
@@ -84,7 +84,7 @@ const movb = mc('mb', 'ADEUDO RECIBO Alarmas Murcia SLU', -42.35, '2026-10-02', 
 ok(gastosParaMov(movb, lista.map((x) => ({ ...x, check_banca: false })), [], '', { principal: MO }).map((x) => x.id).join() === 'u1', 'manual: solo el candidato claro');
 ok(gastosParaMov(movb, lista, [], '', { principal: MO, otrosCentros: true }).map((x) => x.id).sort().join() === 'u1,u3', 'manual: otros centros solo si se pide');
 ok(gastosParaMov(movb, lista, [], 'obramat', { principal: MO }).map((x) => x.id).join() === 'u2', 'manual: con texto busca en todos los del centro');
-ok(gastosParaMov(mc('mp', 'X', -41, '2026-10-02', AL), lista, [], '', { principal: MO }).length === 0 && gastosParaMov(mc('mp', 'X', -41, '2026-10-02', AL), lista, [], '', { principal: MO, parecidos: true }).map((x) => x.id).sort().join() === 'u1,u2', 'manual: parecidos (±5 %) solo si se pide');
+ok(gastosParaMov(mc('mp', 'X', -41, '2026-10-02', AL), lista, [], '', { principal: MO }).length === 0, 'manual: importes parecidos NO salen (solo exactos o empresa reconocida)');
 
 
 // pago de un gasto de otra academia con esta cuenta: solo si coincide importe Y empresa; se marca como otro centro
@@ -92,6 +92,16 @@ r = conciliar([gc('oc', 'Obramat', 577.4, '2026-09-29', MO)], [mc('mo1', 'COMPRA
 ok(r.length === 1 && r[0].otroCentro === true, 'otro centro: mismo importe y empresa en el concepto');
 r = conciliar([gc('oc2', 'Leroy', 577.4, '2026-09-29', MO)], [mc('mo2', 'COMPRA TARJ. OBM MURCIA OBRAMAT', -577.4, '2026-09-25', AL)], { principal: MO });
 ok(r.length === 0, 'otro centro: sin empresa reconocida no se propone');
+
+
+// ---- regresión (26-nov-2026): nada de enlaces por importes aproximados ni sumas de pagos sin relación ----
+// IRPF 224,84 = 43,39 (Iberdrola) + 56,47 (Veolia) + 124,98: ni con 1 céntimo de margen
+r = conciliar([gc('irpf', 'Maria Lopez Garcia', 224.84, '2026-11-10', AL)], [mc('i1', 'ELECTRICIDAD IBERDROLA CLIENTES', -43.39, '2026-11-09', AL), mc('i2', 'AGUA VEOLIA GESTION', -56.47, '2026-11-16', AL), mc('i3', 'ADEUDO RECIBO SEGUPRO', -124.99, '2026-11-12', AL)], { principal: AL });
+ok(r.length === 0, 'no suma pagos sin relación para cuadrar un gasto');
+// ni 1 céntimo de diferencia, ni importe igual sin la empresa en el concepto
+ok(conciliar([gc('e1', 'Iberdrola', 244.07, '2026-08-18', AL)], [mc('e2', 'ELECTRICIDAD IBERDROLA CLIENTES', -244.06, '2026-08-26', AL)], { principal: AL }).length === 0, 'importe a 1 céntimo no vale');
+ok(conciliar([gc('e3', 'Maria Lopez Garcia', 244.06, '2026-08-18', AL)], [mc('e4', 'ELECTRICIDAD IBERDROLA CLIENTES', -244.06, '2026-08-26', AL)], { principal: AL }).length === 0, 'mismo importe sin la empresa: no es automático');
+ok(conciliar([gc('e5', 'Iberdrola', 244.06, '2026-08-18', AL)], [mc('e6', 'ELECTRICIDAD IBERDROLA CLIENTES', -244.06, '2026-08-26', AL)], { principal: AL }).length === 1, 'importe exacto y empresa: sí');
 
 console.log(ing(mr, env, 'SABADELL') === 880 && asig({ id: 'b' }, mr) === 120 ? '  ok: la devolución del banco resta del ingresado' : '  FALLO: devolución');
 }

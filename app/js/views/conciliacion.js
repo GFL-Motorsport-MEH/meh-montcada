@@ -129,7 +129,7 @@ async function renderConciliacion(cont, ctx) {
           pintarTotal();
         } });
         return h('label', { class: 'check small cand' }, chk, h('span', {}, c.texto, c.restante !== undefined && c.parcial ? h('span', { class: 'muted' }, ` (por cubrir ${fmtEUR2(c.restante)})`) : null, c.motivo ? h('span', { class: 'line2' }, c.motivo) : null), imp);
-      }) : h('p', { class: 'muted small' }, opciones.length ? 'No hay candidatos claros (mismo importe o empresa reconocida). Escribe en el buscador o marca «parecidos» / «otros centros».' : 'No hay nada que encaje. Prueba con otra búsqueda.'));
+      }) : h('p', { class: 'muted small' }, opciones.length ? 'No hay candidatos claros (mismo importe o empresa reconocida). Escribe en el buscador o marca «otros centros».' : 'No hay nada que encaje. Prueba con otra búsqueda.'));
       pintarTotal();
     }
     q.addEventListener('input', pintarLista);
@@ -346,7 +346,7 @@ async function renderConciliacion(cont, ctx) {
     const masDeUno = pagos.filter((p) => p.movs.length > 1 || p.gastos.length > 1).length;
     const linea = (p) => `${p.otroCentro ? '[otro centro] ' : ''}${fmtFecha(p.gasto.fecha_pago || p.gasto.fecha_factura)} · ${p.gastos.map((g) => `${g.empresa} ${fmtEUR2(g.cantidad)}`).join(' + ')} ↔ ${p.movs.map((m) => `${fmtFecha(m.fecha)} ${fmtEUR2(m.importe)}`).join(' + ')}`;
     const ok = await confirmar({ titulo: 'Conciliar automáticamente', ok: `Conciliar ${pares.length + rems.length}`,
-      texto: h('div', {}, pares.length ? h('p', {}, `He encontrado ${pagos.length} pagos con su movimiento en el banco (mismo importe, ±20 días)${masDeUno ? `; ${masDeUno} con varios pagos o varias facturas` : ''}${devs.length ? ` y ${devs.length} devoluciones (concepto «DEVOLUCIÓN») que cuadran con un abono` : ''}.`) : null,
+      texto: h('div', {}, pares.length ? h('p', {}, `He encontrado ${pagos.length} pagos con su movimiento en el banco (importe EXACTO, empresa reconocida en el concepto, ±20 días)${masDeUno ? `; ${masDeUno} con varios pagos o varias facturas` : ''}${devs.length ? ` y ${devs.length} devoluciones (concepto «DEVOLUCIÓN») que cuadran con un abono` : ''}.`) : null,
         rems.length ? h('div', {}, h('p', {}, `Ingresos de remesas (${rems.length}):`), h('ul', { class: 'lista-pares' }, rems.map((r) => h('li', {}, `${r.mes} · ${NOMBRE_BANCO[r.banco]} · ${fmtEUR2(r.total)} ← ${r.movs.map((x) => `${fmtFecha(x.fecha)} ${fmtEUR2(x.importe)}`).join(' + ')}`)))) : null,
         h('ul', { class: 'lista-pares' }, pares.slice(0, 14).map((p) => h('li', {}, p.movs[0] && num(p.movs[0].importe) > 0 ? h('strong', {}, 'Devolución · ') : null, linea(p)))),
         pares.length > 14 ? h('p', { class: 'muted small' }, `…y ${pares.length - 14} más.`) : null,
@@ -377,8 +377,8 @@ async function renderConciliacion(cont, ctx) {
       cabecera: textoMov(m),
       ayuda: pago ? 'Solo salen las facturas de este centro con el mismo importe o con la empresa en el concepto. Marca todas las que paga este movimiento (puede ser 1 o varias). Si una factura se paga en 2 o más pagos, enlaza cada pago por separado con el importe que cubre.'
         : 'Marca el abono o nota de crédito que devuelve este ingreso. Busca por empresa o importe.',
-      opciones: [['parecidos', 'Incluir importes parecidos (±5 %)'], ['otrosCentros', 'Incluir otros centros']],
-      buscar: (q, op) => { const l = gastosParaMov(m, todosGastos(), enlaces, q, { principal, alias, parecidos: !!op.parecidos, otrosCentros: !!op.otrosCentros }); for (const id of previos.keys()) { const g = gastoPorId().get(id); if (g && !l.includes(g)) l.unshift(g); } return l.map(info); },
+      opciones: [['otrosCentros', 'Incluir otros centros']],
+      buscar: (q, op) => { const l = gastosParaMov(m, todosGastos(), enlaces, q, { principal, alias, otrosCentros: !!op.otrosCentros }); for (const id of previos.keys()) { const g = gastoPorId().get(id); if (g && !l.includes(g)) l.unshift(g); } return l.map(info); },
     });
     if (!elegidos) return;
     try {
