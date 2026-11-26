@@ -336,21 +336,35 @@ async function renderConciliacion(cont, ctx) {
   }
 
   // ---- conciliar automáticamente ----
+  // Una cuenta bancaria cada vez (y solo con los gastos de su centro) para no mezclar nada
+  async function elegirCuentaAuto() {
+    if (f.cuenta) return cuentas.find((c) => c.id === f.cuenta) || null;
+    if (cuentas.length === 1) return cuentas[0];
+    const sel = h('select', { 'aria-label': 'Cuenta bancaria' }, cuentas.map((c) => h('option', { value: c.id }, c.nombre)));
+    const ok = await confirmar({ titulo: 'Conciliar automáticamente', ok: 'Buscar coincidencias', texto: h('div', {}, h('p', {}, 'Elige la cuenta bancaria. Se concilia de una en una, solo con los gastos de su centro.'), sel) });
+    return ok ? cuentas.find((c) => c.id === sel.value) || null : null;
+  }
   async function autoConciliar() {
+    const cuenta = await elegirCuentaAuto();
+    if (!cuenta) return;
     const principal = ctx.centroPrincipal()?.id || null, alias = aprenderAlias(enlaces, movs, todosGastos());
-    const pagos = conciliar(todosGastos(), movs, { enlaces, principal, alias });
-    const devs = conciliarDevoluciones(todosGastos(), movs, { enlaces, principal, alias });
+    const movsCuenta = movs.filter((m) => m.cuenta_id === cuenta.id);
+    const gastosCentro = todosGastos().filter((g) => (g.centro_id || principal) === (cuenta.centro_id || principal));
+    const pagos = conciliar(gastosCentro, movsCuenta, { enlaces, principal, alias });
+    const devs = conciliarDevoluciones(gastosCentro, movsCuenta, { enlaces, principal, alias });
     const pares = [...pagos, ...devs];
-    const rems = sugerirRemesas(envios, movs, { movRemesas: movRem, enlaces, cuentas });
-    if (!pares.length && !rems.length) { toast('No he encontrado nuevas coincidencias entre gastos y movimientos.'); return; }
-    const masDeUno = 0;
-    const linea = (p) => `${p.otroCentro ? '[otro centro] ' : ''}${fmtFecha(p.gasto.fecha_pago || p.gasto.fecha_factura)} · ${p.gastos.map((g) => `${g.empresa} ${fmtEUR2(g.cantidad)}`).join(' + ')} ↔ ${p.movs.map((m) => `${fmtFecha(m.fecha)} ${fmtEUR2(m.importe)}`).join(' + ')}`;
-    const ok = await confirmar({ titulo: 'Conciliar automáticamente', ok: `Conciliar ${pares.length + rems.length}`,
-      texto: h('div', {}, pares.length ? h('p', {}, `He encontrado ${pagos.length} pagos con su movimiento en el banco (importe EXACTO, empresa reconocida en el concepto, ±20 días)${masDeUno ? `; ${masDeUno} con varios pagos o varias facturas` : ''}${devs.length ? ` y ${devs.length} devoluciones (concepto «DEVOLUCIÓN») que cuadran con un abono` : ''}.`) : null,
+    const rems = sugerirRemesas(envios, movsCuenta, { movRemesas: movRem, enlaces, cuentas: [cuenta] });
+    if (!pares.length && !rems.length) { toast(`No he encontrado nuevas coincidencias en ${cuenta.nombre}.`); return; }
+    const linea = (p) => `${fmtFecha(p.gasto.fecha_pago || p.gasto.fecha_factura)} · ${p.gastos.map((g) => `${g.empresa} ${fmtEUR2(g.cantidad)}`).join(' + ')} ↔ ${p.movs.map((m) => `${fmtFecha(m.fecha)} ${fmtEUR2(m.importe)}`).join(' + ')}`;
+    const itemPar = (p) => h('li', {}, p.movs[0] && num(p.movs[0].importe) > 0 ? h('strong', {}, 'Devolución · ') : null, linea(p));
+    const POCOS = 14;
+    const listaPares = h('ul', { class: 'lista-pares', style: 'max-height:50vh;overflow:auto' }, pares.slice(0, POCOS).map(itemPar));
+    const masBtn = pares.length > POCOS ? h('button', { type: 'button', class: 'btn small', onclick: () => { clear(listaPares, pares.map(itemPar)); masBtn.remove(); } }, `Ver todas (${pares.length - POCOS} más)`) : null;
+    const ok = await confirmar({ titulo: `Conciliar automáticamente · ${cuenta.nombre}`, ok: `Conciliar ${pares.length + rems.length}`,
+      texto: h('div', {}, pares.length ? h('p', {}, `He encontrado ${pagos.length} pagos con su movimiento en esta cuenta (importe EXACTO, empresa reconocida en el concepto, ±20 días)${devs.length ? ` y ${devs.length} devoluciones (concepto «DEVOLUCIÓN») que cuadran con un abono` : ''}.`) : null,
         rems.length ? h('div', {}, h('p', {}, `Ingresos de remesas (${rems.length}):`), h('ul', { class: 'lista-pares' }, rems.map((r) => h('li', {}, `${r.mes} · ${NOMBRE_BANCO[r.banco]} · ${fmtEUR2(r.total)} ← ${r.movs.map((x) => `${fmtFecha(x.fecha)} ${fmtEUR2(x.importe)}`).join(' + ')}`)))) : null,
-        h('ul', { class: 'lista-pares' }, pares.slice(0, 14).map((p) => h('li', {}, p.movs[0] && num(p.movs[0].importe) > 0 ? h('strong', {}, 'Devolución · ') : null, linea(p)))),
-        pares.length > 14 ? h('p', { class: 'muted small' }, `…y ${pares.length - 14} más.`) : null,
-        h('p', { class: 'muted small' }, 'Se marcará "Comprobado en el banco" en los gastos que queden cubiertos del todo.')) });
+        listaPares, masBtn,
+        h('p', { class: 'muted small' }, 'Se marcará "Comprobado en el banco" en los gastos que queden cubiertos del todo. Los pagos múltiples y las coincidencias solo por importe se enlazan a mano.')) });
     if (!ok) return;
     try {
       const filas = pares.flatMap((p) => p.asignaciones.map((x) => ({ movimiento_id: x.mov.id, gasto_id: (x.gasto || p.gasto).id, importe: x.importe })));

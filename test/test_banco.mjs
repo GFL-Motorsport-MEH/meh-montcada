@@ -89,7 +89,7 @@ ok(gastosParaMov(mc('mp', 'X', -41, '2026-10-02', AL), lista, [], '', { principa
 
 // pago de un gasto de otra academia con esta cuenta: solo si coincide importe Y empresa; se marca como otro centro
 r = conciliar([gc('oc', 'Obramat', 577.4, '2026-09-29', MO)], [mc('mo1', 'COMPRA TARJ. OBM MURCIA OBRAMAT', -577.4, '2026-09-25', AL)], { principal: MO });
-ok(r.length === 1 && r[0].otroCentro === true, 'otro centro: mismo importe y empresa en el concepto');
+ok(r.length === 0, 'otro centro: el automático no lo hace (se enlaza a mano)');
 r = conciliar([gc('oc2', 'Leroy', 577.4, '2026-09-29', MO)], [mc('mo2', 'COMPRA TARJ. OBM MURCIA OBRAMAT', -577.4, '2026-09-25', AL)], { principal: MO });
 ok(r.length === 0, 'otro centro: sin empresa reconocida no se propone');
 

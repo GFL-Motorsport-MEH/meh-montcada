@@ -117,7 +117,7 @@ export const mismoCentro = (g, m, principal = null) => (g.centro_id || principal
 // Solo parejas 1 a 1 con el importe EXACTO y la empresa reconocida en el concepto del banco (por su nombre o por un alias aprendido),
 // del mismo centro y con fecha cercana (±ventana días; con importes repetidos, cada gasto con el movimiento más cercano en fecha).
 // Los pagos múltiples (una factura en varios pagos, un pago de varias facturas) y cualquier coincidencia «solo por importe» se enlazan a mano.
-// Último recurso: la misma pareja exacta con la empresa reconocida pero de otro centro (se marca otroCentro: true).
+// Los pagos de un centro con la cuenta del otro también se enlazan a mano («Incluir otros centros» en Vincular).
 // Devuelve [{ gasto, gastos, movs, asignaciones: [{ mov, gasto, importe }], otroCentro? }]
 export function conciliar(gastos, movimientos, { ventana = 20, enlaces = [], principal = null, alias = null } = {}) {
   // Lo que ya tiene algún enlace (pagos múltiples hechos a mano) no se toca: el automático solo propone gastos y movimientos sin enlazar
@@ -141,7 +141,6 @@ export function conciliar(gastos, movimientos, { ventana = 20, enlaces = [], pri
     }
   };
   pares(true);
-  pares(false);
   return out;
 }
 
