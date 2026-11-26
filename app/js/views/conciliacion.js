@@ -401,30 +401,40 @@ async function renderConciliacion(cont, ctx) {
       toast(elegidos.length ? 'Abono enlazado con el ingreso' : 'Enlaces quitados'); pintarCuentas(); pintar();
     } catch (ex) { toast(ex.message, 'error'); }
   }
-  // Pide el comentario que verá la gestoría (p. ej. «Traspaso de la cuenta de Montcada a la de Alcantarilla»)
-  async function pedirComentario(m, { titulo, actual = '' }) {
+  // Movimientos que no llevan factura (traspasos entre cuentas, pagos sin factura…): se dan por conciliados con un comentario para la gestoría,
+  // o se ignoran si de verdad no cuentan (duplicados, errores). El comentario aparece en el resumen que se envía a la gestoría.
+  async function decidirSinFactura(m, { editar = false } = {}) {
+    const ya = m.estado === 'ignorado' ? 'ignorado' : 'conciliado';
     const t = h('textarea', { rows: '3', class: 'input-comentario', placeholder: 'Ej.: Traspaso de la cuenta de Montcada a la de Alcantarilla · Pago sin factura de…', 'aria-label': 'Comentario para la gestoría', style: 'width:100%' });
-    t.value = actual;
-    const ok = await confirmar({ titulo, ok: 'Guardar', texto: h('div', {}, h('p', {}, textoMov(m)), h('p', { class: 'muted small' }, 'Este comentario aparecerá en el resumen que se envía a la gestoría.'), t) });
-    return ok ? t.value.trim() : null;
+    t.value = m.notas || '';
+    const modo = h('select', { 'aria-label': 'Qué hacer con el movimiento', disabled: editar }, h('option', { value: 'conciliado', selected: ya === 'conciliado' }, 'Darlo por conciliado (cuenta como cubierto)'), h('option', { value: 'ignorado', selected: ya === 'ignorado' }, 'Ignorarlo (no cuenta: duplicado, error…)'));
+    for (;;) {
+      const ok = await confirmar({ titulo: editar ? 'Comentario del movimiento' : 'Movimiento sin factura', ok: 'Guardar',
+        texto: h('div', {}, h('p', {}, textoMov(m)), editar ? null : h('p', {}, modo), h('p', { class: 'muted small' }, 'El comentario aparecerá en el resumen que se envía a la gestoría.'), t) });
+      if (!ok) return null;
+      const estado = editar ? m.estado : modo.value, comentario = t.value.trim();
+      if (estado === 'conciliado' && !comentario) { toast('Escribe un comentario: explica a la gestoría por qué no lleva factura.', 'error'); continue; }
+      return { estado, comentario };
+    }
   }
-  async function ignorar(m) {
-    const c = await pedirComentario(m, { titulo: 'Ignorar movimiento', actual: m.notas || '' });
-    if (c === null) return;
-    return cambiarEstado(m, 'ignorado', c);
+  async function sinFactura(m) {
+    const r = await decidirSinFactura(m);
+    if (r) await cambiarEstado(m, r.estado, r.comentario);
   }
   async function editarComentario(m) {
-    const c = await pedirComentario(m, { titulo: 'Comentario del movimiento ignorado', actual: m.notas || '' });
-    if (c === null) return;
-    try { refrescarMovs(await db.actualizarMovimientos([m.id], { notas: c || null })); toast('Comentario guardado'); pintar(); } catch (ex) { toast(ex.message, 'error'); }
+    const r = await decidirSinFactura(m, { editar: true });
+    if (!r) return;
+    try { refrescarMovs(await db.actualizarMovimientos([m.id], { notas: r.comentario || null })); toast('Comentario guardado'); pintar(); } catch (ex) { toast(ex.message, 'error'); }
   }
   async function cambiarEstado(m, estado, comentario) {
     try {
-      if (enlaces.some((e) => e.movimiento_id === m.id) || movRem.some((x) => x.movimiento_id === m.id)) await quitarEnlacesDe(m.id);   // quita los enlaces y recalcula las facturas afectadas
+      const tieneEnlaces = enlaces.some((e) => e.movimiento_id === m.id) || movRem.some((x) => x.movimiento_id === m.id);
+      if (tieneEnlaces) await quitarEnlacesDe(m.id);   // quita los enlaces y recalcula las facturas afectadas
       const mm = movs.find((x) => x.id === m.id) || m;
       const cambios = { estado, gasto_id: null };
-      if (estado === 'ignorado') cambios.notas = comentario || null; else if (mm.estado === 'ignorado') cambios.notas = null;   // el comentario es el motivo de ignorarlo
-      if (mm.estado !== estado || mm.gasto_id || 'notas' in cambios && (mm.notas || null) !== cambios.notas) refrescarMovs(await db.actualizarMovimientos([m.id], cambios));
+      if (comentario !== undefined) cambios.notas = comentario || null;
+      else if (!tieneEnlaces && mm.notas && estado === 'pendiente') cambios.notas = null;   // el comentario era el motivo de darlo por conciliado / ignorarlo
+      if (mm.estado !== estado || mm.gasto_id || ('notas' in cambios && (mm.notas || null) !== cambios.notas)) refrescarMovs(await db.actualizarMovimientos([m.id], cambios));
       pintarCuentas(); pintar();
     } catch (ex) { toast(ex.message, 'error'); }
   }
@@ -500,16 +510,16 @@ async function renderConciliacion(cont, ctx) {
           !misRem.length || mis.length ? h('button', { class: 'btn small', onclick: () => vincular(m) }, pago ? (parcial ? 'Editar enlaces' : 'Vincular') : (mis.length ? 'Editar abono' : 'Vincular abono')) : null,
           !misRem.length && (!pago || /devol|impag|rechaz|retroc/.test(normalizar(m.concepto || ''))) ? h('button', { class: 'btn small', onclick: () => remesasDeMov(m) }, pago ? 'Devolución de remesa' : 'Remesas') : null,
           pago && !parcial ? h('button', { class: 'btn small', onclick: () => crearGasto(m) }, 'Crear gasto') : null,
-          parcial ? h('button', { class: 'btn small ghost', onclick: () => cambiarEstado(m, 'pendiente') }, 'Quitar enlaces') : h('button', { class: 'btn small ghost', onclick: () => ignorar(m) }, 'Ignorar')]
+          parcial ? h('button', { class: 'btn small ghost', onclick: () => cambiarEstado(m, 'pendiente') }, 'Quitar enlaces') : h('button', { class: 'btn small ghost', title: 'Traspaso entre cuentas, pago sin factura… o ignorar el movimiento', onclick: () => sinFactura(m) }, 'Sin factura / ignorar')]
         : [m.estado === 'conciliado' ? h('button', { class: 'btn small', onclick: () => (misRem.length ? remesasDeMov(m) : vincular(m)) }, 'Editar') : null, h('button', { class: 'btn small ghost', onclick: () => cambiarEstado(m, 'pendiente') }, 'Deshacer')];
-      if (m.estado === 'ignorado') acciones.unshift(h('button', { class: 'btn small', onclick: () => editarComentario(m) }, m.notas ? 'Comentario' : 'Añadir comentario'));
+      if (m.estado === 'ignorado' || (m.estado === 'conciliado' && !mis.length && !misRem.length)) acciones.unshift(h('button', { class: 'btn small', onclick: () => editarComentario(m) }, m.notas ? 'Comentario' : 'Añadir comentario'));
       const enlacesTxt = mis.map((e) => { const g = porId.get(e.gasto_id); return g ? `↔ ${g.empresa}${g.factura_nr ? ' ' + g.factura_nr : ''} · ${g.concepto || ''} (${fmtEUR2(num(e.importe))}${Math.abs(num(g.cantidad)) - num(e.importe) > 0.01 ? ` de ${fmtEUR2(Math.abs(num(g.cantidad)))}` : ''})` : null; }).filter(Boolean);
       for (const x of misRem) enlacesTxt.push(`↔ Remesas ${x.mes} ${NOMBRE_BANCO[x.banco]}${x.remesa_nombre ? ' ' + x.remesa_nombre : ''} (${fmtEUR2(num(x.importe))})`);
       const cen = state.centros.length > 1 ? h('select', { class: 'select-celda', 'aria-label': `Centro del movimiento ${m.concepto || ''}`, onchange: (e) => moverCentro(m, e.target.value) },
         h('option', { value: '' }, ctx.tituloCentro(ctx.centroPrincipal()?.nombre)), state.centros.filter((c) => !c.principal).map((c) => h('option', { value: c.id, selected: c.id === m.centro_id }, ctx.tituloCentro(c.nombre)))) : null;
       return h('tr', { class: `mov-${m.estado}` },
         h('td', { class: 'mono' }, fmtFecha(m.fecha)),
-        h('td', {}, m.concepto || '—', !pago && esDevolucion(m) ? h('span', { class: 'pill ok' }, 'Devolución') : null, h('span', { class: 'line2' }, [nombreCuenta(m.cuenta_id), ...enlacesTxt].filter(Boolean).join(' · ')), m.estado === 'ignorado' ? h('span', { class: 'line2' }, m.notas ? `📝 ${m.notas}` : 'Sin comentario para la gestoría') : null),
+        h('td', {}, m.concepto || '—', !pago && esDevolucion(m) ? h('span', { class: 'pill ok' }, 'Devolución') : null, h('span', { class: 'line2' }, [nombreCuenta(m.cuenta_id), ...enlacesTxt].filter(Boolean).join(' · ')), m.estado === 'ignorado' || m.notas ? h('span', { class: 'line2' }, m.notas ? `📝 ${m.notas}` : 'Sin comentario para la gestoría') : null),
         h('td', { class: `num ${pago ? '' : 'pos'}` }, fmtEUR2(num(m.importe))),
         cen ? h('td', {}, cen) : null,
         h('td', {}, h('span', { class: `pill ${m.estado === 'conciliado' ? 'ok' : m.estado === 'ignorado' ? 'off' : 'warn'}` }, parcial ? `parcial ${fmtEUR2(asignadoMov(m, enlaces) + asigRem(m))} de ${fmtEUR2(Math.abs(num(m.importe)))}` : m.estado)),
