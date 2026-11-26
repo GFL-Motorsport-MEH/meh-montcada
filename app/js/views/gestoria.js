@@ -49,6 +49,7 @@ export function datosPeriodo({ periodo, gastos, facturacion, movimientos, extrac
   const enStorage = lista.filter((g) => String(g.link_factura || '').startsWith('storage:'));
   const porRevisar = lista.filter((g) => g.revisado === false);
   const movPend = movs.filter((m) => m.estado === 'pendiente');
+  const ignorados = movs.filter((m) => m.estado === 'ignorado'), ignoradosSinComentario = ignorados.filter((m) => !String(m.notas || '').trim());
   // Conciliación: enlaces de los movimientos del mes y de las facturas del envío (un pago puede cubrir varias facturas y viceversa)
   const idsLista = new Set(lista.map((g) => g.id)), idsMovs = new Set(movs.map((m) => m.id));
   const enlacesPeriodo = enlaces.filter((e) => idsLista.has(e.gasto_id) || idsMovs.has(e.movimiento_id));
@@ -67,10 +68,11 @@ export function datosPeriodo({ periodo, gastos, facturacion, movimientos, extrac
     { ok: porRevisar.length === 0, critico: false, texto: porRevisar.length ? `${porRevisar.length} gastos por revisar (los subió otra persona)` : 'Ningún gasto por revisar' },
     { ok: soloEnlace.length === 0, critico: false, texto: soloEnlace.length ? `${soloEnlace.length} facturas solo como enlace (Google Drive / OneDrive): van en el listado con su enlace, no dentro del ZIP` : 'Todas las facturas van dentro del ZIP' },
     { ok: abonosSinCobro.length === 0, critico: false, texto: abonosSinCobro.length ? `${abonosSinCobro.length} abonos / notas de crédito sin devolución enlazada en el banco (se indican en la hoja «Abonos»)` : (abonos.length ? `Abonos del envío (${abonos.length}) con su devolución enlazada` : 'Sin abonos en el envío') },
+    { ok: ignoradosSinComentario.length === 0, critico: false, texto: ignoradosSinComentario.length ? `${ignoradosSinComentario.length} movimientos ignorados del banco sin comentario (explícale a la gestoría qué son: traspasos, pagos sin factura…)` : (ignorados.length ? `Movimientos ignorados con su comentario (${ignorados.length}, hoja «Ignorados»)` : 'Sin movimientos ignorados') },
     { ok: parciales.length === 0, critico: false, texto: parciales.length ? `${parciales.length} facturas con el pago solo en parte conciliado (hoja «Conciliación»)` : 'Sin facturas con pago parcial' },
     { ok: movPend.length === 0, critico: false, texto: movPend.length ? `${movPend.length} movimientos del banco sin conciliar en el mes` : (movs.length ? 'Banco del mes conciliado' : 'No hay movimientos del banco importados en el mes') },
   ];
-  return { periodo, desde, hasta, gMes, gAnt, lista, ingresos, movs, porCuenta, sinFra, soloEnlace, enStorage, porRevisar, movPend, checks, enlaces, movsPorId, enlacesPeriodo, conc, abonos, abonosSinCobro, parciales };
+  return { periodo, desde, hasta, gMes, gAnt, lista, ingresos, movs, porCuenta, sinFra, soloEnlace, enStorage, porRevisar, movPend, ignorados, checks, enlaces, movsPorId, enlacesPeriodo, conc, abonos, abonosSinCobro, parciales };
 }
 
 // Texto de cómo está cubierta una factura o abono en el banco: «Pagada en 2 pagos: 12/10 300,00 + 15/10 200,00», «Parcial…», «Sin conciliar»
@@ -120,7 +122,11 @@ export function hojasPaquete(d, ctx) {
     [],
     ['Cuenta', 'Saldo inicial', 'Saldo final', 'Extractos (desde - hasta)'],
     ...d.porCuenta.map((x) => [x.cuenta.nombre, x.extractos[0]?.saldo_inicial ?? '', x.extractos[0]?.saldo_final ?? '', x.extractos.map((e) => `${e.fecha_desde} a ${e.fecha_hasta}${e.archivo_pdf ? ' PDF' : ''}${e.archivo_n43 ? ' N43' : ''}`).join(' · ') || 'FALTA'])];
-  const banco = [['Fecha', 'Cuenta', 'Concepto', 'Importe', 'Estado'], ...d.movs.map((m) => [m.fecha, d.porCuenta.find((x) => x.cuenta.id === m.cuenta_id)?.cuenta.nombre || '', m.concepto || '', num(m.importe), m.estado || ''])];
+  const nomCuenta = (m) => d.porCuenta.find((x) => x.cuenta.id === m.cuenta_id)?.cuenta.nombre || '';
+  const banco = [['Fecha', 'Cuenta', 'Concepto', 'Importe', 'Estado', 'Comentario'], ...d.movs.map((m) => [m.fecha, nomCuenta(m), m.concepto || '', num(m.importe), m.estado || '', m.notas || ''])];
+  // movimientos del banco que no se enlazan con ninguna factura (traspasos entre cuentas, pagos sin factura…) con la explicación escrita en Conciliación
+  const ignorados = [['Fecha', 'Cuenta', 'Concepto del banco', 'Importe', 'Comentario'], ...d.ignorados.slice().sort((a, b) => a.fecha.localeCompare(b.fecha)).map((m) => [m.fecha, nomCuenta(m), m.concepto || '', num(m.importe), m.notas || '(sin comentario)'])];
+  if (!d.ignorados.length) ignorados.push(['Sin movimientos ignorados en este periodo']);
   const empresaG = (g) => `${g.empresa || ''}${g.factura_nr ? ` ${g.factura_nr}` : ''}`;
   const cab = ['Situación', 'Fecha movimiento', 'Cuenta', 'Concepto del banco', 'Importe del movimiento', 'Empresa / nº factura', 'Concepto del gasto', 'Importe de la factura', 'Importe cubierto por este movimiento', 'Pendiente de la factura', 'Pendiente del movimiento'];
   const fila = (x) => [x.situacion, x.m.fecha, d.porCuenta.find((c) => c.cuenta.id === x.m.cuenta_id)?.cuenta.nombre || '', x.m.concepto || '', num(x.m.importe), empresaG(x.g), x.g.concepto || '', num(x.g.cantidad), x.importe, x.pendienteGasto, x.pendienteMov];
@@ -131,7 +137,7 @@ export function hojasPaquete(d, ctx) {
     ...d.abonos.map((g) => [fechaGasto(g), empresaG(g), g.concepto || '', num(g.cantidad), asignadoGasto(g, d.enlaces), restanteGasto(g, d.enlaces), estadoBanco(g, d)])];
   if (!d.abonos.length) abonos.push(['Sin abonos ni notas de crédito en este envío']);
   const variosPagos = [cab, ...d.conc.variosPagos.map(fila).sort(orden)], variosFacturas = [cab, ...d.conc.variosFacturas.map(fila).sort(orden)];
-  return { gastos, ingresos, balance, banco, conciliacion, abonos, variosPagos, variosFacturas };
+  return { gastos, ingresos, balance, banco, ignorados, conciliacion, abonos, variosPagos, variosFacturas };
 }
 
 async function renderGestoria(cont, ctx) {
@@ -304,7 +310,7 @@ async function renderGestoria(cont, ctx) {
     archivos.push({ nombre: `${base}/Gastos ${periodo}.xlsx`, datos: await crearXlsx([{ nombre: 'Gastos', filas: hojas.gastos }]).arrayBuffer() });
     archivos.push({ nombre: `${base}/Ingresos ${periodo}.xlsx`, datos: await crearXlsx([{ nombre: 'Facturas emitidas', filas: hojas.ingresos }]).arrayBuffer() });
     archivos.push({ nombre: `${base}/Conciliacion bancaria ${periodo}.xlsx`, datos: await crearXlsx([{ nombre: 'Conciliación', filas: hojas.conciliacion }, { nombre: 'Abonos', filas: hojas.abonos },
-      { nombre: 'Factura en varios pagos', filas: hojas.variosPagos }, { nombre: 'Pago de varias facturas', filas: hojas.variosFacturas }]).arrayBuffer() });
+      { nombre: 'Factura en varios pagos', filas: hojas.variosPagos }, { nombre: 'Pago de varias facturas', filas: hojas.variosFacturas }, { nombre: 'Ignorados', filas: hojas.ignorados }]).arrayBuffer() });
     archivos.push({ nombre: `${base}/Balance ${periodo}.xlsx`, datos: await crearXlsx([{ nombre: 'Balance', filas: hojas.balance }, { nombre: 'Movimientos banco', filas: hojas.banco }]).arrayBuffer() });
     const errores = [];
     for (const g of d.enStorage) {
@@ -331,6 +337,8 @@ async function renderGestoria(cont, ctx) {
       '- Una factura puede pagarse con 2 o más movimientos del banco, y un único movimiento puede pagar 2 o más facturas. Cada pareja movimiento-factura con el importe que cubre está en "Conciliacion bancaria ' + periodo + '.xlsx" (hoja "Conciliación").',
       `- Facturas pagadas en varios pagos: ${new Set(d.conc.variosPagos.map((f) => f.g.id)).size} · Pagos que cubren varias facturas: ${new Set(d.conc.variosFacturas.map((f) => f.m.id)).size} (hojas "Factura en varios pagos" y "Pago de varias facturas").`,
       `- Abonos / notas de crédito del envío: ${d.abonos.length}${d.abonosSinCobro.length ? ` (${d.abonosSinCobro.length} todavía sin devolución cobrada en el banco)` : ''} (hoja "Abonos"). La columna "Banco" de "Gastos" indica cómo está cubierto cada gasto.`,
+      `- Movimientos del banco ignorados (traspasos entre cuentas, pagos sin factura…): ${d.ignorados.length}. Cada uno lleva el comentario escrito al ignorarlo (hoja "Ignorados" de "Conciliacion bancaria ${periodo}.xlsx" y columna "Comentario" de "Movimientos banco" en el Balance).`,
+      ...d.ignorados.map((m) => `  · ${m.fecha} ${fmtEUR2(m.importe)} ${m.concepto || ''}: ${m.notas || '(sin comentario)'}`),
       ...d.parciales.map((g) => `- PARCIAL: ${fechaGasto(g)} ${g.empresa} ${g.factura_nr || ''} ${fmtEUR2(g.cantidad)}: ${estadoBanco(g, d)}`), '');
     if (faltan.length) lineas.push('PENDIENTE / AVISOS', ...faltan.map((c) => `- ${c.texto}`), '');
     if (d.soloEnlace.length) lineas.push('FACTURAS COMO ENLACE (no van en el ZIP)', ...d.soloEnlace.map((g) => `- ${fechaGasto(g)} ${g.empresa} ${g.factura_nr || ''} ${fmtEUR2(g.cantidad)}: ${g.link_factura}`), '');

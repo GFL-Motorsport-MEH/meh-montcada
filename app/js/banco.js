@@ -178,6 +178,14 @@ export function conciliar(gastos, movimientos, { ventana = 20, enlaces = [], pri
   }
   exactos(false);
   pasada(false);   // 3.ª: cualquier movimiento con el mismo importe y fecha cercana
+  // 4.ª: un gasto de otro centro pagado desde esta cuenta (se puede pagar con la cuenta de la otra academia): solo con mismo importe Y la empresa reconocida en el concepto
+  for (const g of pend) {
+    if (hechos.has(g.id)) continue;
+    const obj = Math.round(restanteGasto(g, enlaces) * 100), fg = fechaGasto(g);
+    const x = libres.filter((y) => !y.usado && Math.abs(y.abs - obj) <= 1 && dias(y.m.fecha, fg) <= ventana && !mismoCentro(g, y.m, principal) && nombreEnConcepto(g, y.m, alias))
+      .sort((a, b) => dias(a.m.fecha, fg) - dias(b.m.fecha, fg))[0];
+    if (x) { hechos.add(g.id); x.usado = true; out.push({ gasto: g, gastos: [g], movs: [x.m], otroCentro: true, asignaciones: [{ mov: x.m, gasto: g, importe: x.abs / 100 }] }); }
+  }
   return out;
 }
 

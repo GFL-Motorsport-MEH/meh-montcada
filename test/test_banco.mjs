@@ -86,5 +86,12 @@ ok(gastosParaMov(movb, lista, [], '', { principal: MO, otrosCentros: true }).map
 ok(gastosParaMov(movb, lista, [], 'obramat', { principal: MO }).map((x) => x.id).join() === 'u2', 'manual: con texto busca en todos los del centro');
 ok(gastosParaMov(mc('mp', 'X', -41, '2026-10-02', AL), lista, [], '', { principal: MO }).length === 0 && gastosParaMov(mc('mp', 'X', -41, '2026-10-02', AL), lista, [], '', { principal: MO, parecidos: true }).map((x) => x.id).sort().join() === 'u1,u2', 'manual: parecidos (±5 %) solo si se pide');
 
+
+// pago de un gasto de otra academia con esta cuenta: solo si coincide importe Y empresa; se marca como otro centro
+r = conciliar([gc('oc', 'Obramat', 577.4, '2026-09-29', MO)], [mc('mo1', 'COMPRA TARJ. OBM MURCIA OBRAMAT', -577.4, '2026-09-25', AL)], { principal: MO });
+ok(r.length === 1 && r[0].otroCentro === true, 'otro centro: mismo importe y empresa en el concepto');
+r = conciliar([gc('oc2', 'Leroy', 577.4, '2026-09-29', MO)], [mc('mo2', 'COMPRA TARJ. OBM MURCIA OBRAMAT', -577.4, '2026-09-25', AL)], { principal: MO });
+ok(r.length === 0, 'otro centro: sin empresa reconocida no se propone');
+
 console.log(ing(mr, env, 'SABADELL') === 880 && asig({ id: 'b' }, mr) === 120 ? '  ok: la devolución del banco resta del ingresado' : '  FALLO: devolución');
 }

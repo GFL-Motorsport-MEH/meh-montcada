@@ -344,7 +344,7 @@ async function renderConciliacion(cont, ctx) {
     const rems = sugerirRemesas(envios, movs, { movRemesas: movRem, enlaces, cuentas });
     if (!pares.length && !rems.length) { toast('No he encontrado nuevas coincidencias entre gastos y movimientos.'); return; }
     const masDeUno = pagos.filter((p) => p.movs.length > 1 || p.gastos.length > 1).length;
-    const linea = (p) => `${fmtFecha(p.gasto.fecha_pago || p.gasto.fecha_factura)} · ${p.gastos.map((g) => `${g.empresa} ${fmtEUR2(g.cantidad)}`).join(' + ')} ↔ ${p.movs.map((m) => `${fmtFecha(m.fecha)} ${fmtEUR2(m.importe)}`).join(' + ')}`;
+    const linea = (p) => `${p.otroCentro ? '[otro centro] ' : ''}${fmtFecha(p.gasto.fecha_pago || p.gasto.fecha_factura)} · ${p.gastos.map((g) => `${g.empresa} ${fmtEUR2(g.cantidad)}`).join(' + ')} ↔ ${p.movs.map((m) => `${fmtFecha(m.fecha)} ${fmtEUR2(m.importe)}`).join(' + ')}`;
     const ok = await confirmar({ titulo: 'Conciliar automáticamente', ok: `Conciliar ${pares.length + rems.length}`,
       texto: h('div', {}, pares.length ? h('p', {}, `He encontrado ${pagos.length} pagos con su movimiento en el banco (mismo importe, ±20 días)${masDeUno ? `; ${masDeUno} con varios pagos o varias facturas` : ''}${devs.length ? ` y ${devs.length} devoluciones (concepto «DEVOLUCIÓN») que cuadran con un abono` : ''}.`) : null,
         rems.length ? h('div', {}, h('p', {}, `Ingresos de remesas (${rems.length}):`), h('ul', { class: 'lista-pares' }, rems.map((r) => h('li', {}, `${r.mes} · ${NOMBRE_BANCO[r.banco]} · ${fmtEUR2(r.total)} ← ${r.movs.map((x) => `${fmtFecha(x.fecha)} ${fmtEUR2(x.importe)}`).join(' + ')}`)))) : null,
@@ -401,11 +401,30 @@ async function renderConciliacion(cont, ctx) {
       toast(elegidos.length ? 'Abono enlazado con el ingreso' : 'Enlaces quitados'); pintarCuentas(); pintar();
     } catch (ex) { toast(ex.message, 'error'); }
   }
-  async function cambiarEstado(m, estado) {
+  // Pide el comentario que verá la gestoría (p. ej. «Traspaso de la cuenta de Montcada a la de Alcantarilla»)
+  async function pedirComentario(m, { titulo, actual = '' }) {
+    const t = h('textarea', { rows: '3', class: 'input-comentario', placeholder: 'Ej.: Traspaso de la cuenta de Montcada a la de Alcantarilla · Pago sin factura de…', 'aria-label': 'Comentario para la gestoría', style: 'width:100%' });
+    t.value = actual;
+    const ok = await confirmar({ titulo, ok: 'Guardar', texto: h('div', {}, h('p', {}, textoMov(m)), h('p', { class: 'muted small' }, 'Este comentario aparecerá en el resumen que se envía a la gestoría.'), t) });
+    return ok ? t.value.trim() : null;
+  }
+  async function ignorar(m) {
+    const c = await pedirComentario(m, { titulo: 'Ignorar movimiento', actual: m.notas || '' });
+    if (c === null) return;
+    return cambiarEstado(m, 'ignorado', c);
+  }
+  async function editarComentario(m) {
+    const c = await pedirComentario(m, { titulo: 'Comentario del movimiento ignorado', actual: m.notas || '' });
+    if (c === null) return;
+    try { refrescarMovs(await db.actualizarMovimientos([m.id], { notas: c || null })); toast('Comentario guardado'); pintar(); } catch (ex) { toast(ex.message, 'error'); }
+  }
+  async function cambiarEstado(m, estado, comentario) {
     try {
       if (enlaces.some((e) => e.movimiento_id === m.id) || movRem.some((x) => x.movimiento_id === m.id)) await quitarEnlacesDe(m.id);   // quita los enlaces y recalcula las facturas afectadas
       const mm = movs.find((x) => x.id === m.id) || m;
-      if (mm.estado !== estado || mm.gasto_id) refrescarMovs(await db.actualizarMovimientos([m.id], { estado, gasto_id: null }));
+      const cambios = { estado, gasto_id: null };
+      if (estado === 'ignorado') cambios.notas = comentario || null; else if (mm.estado === 'ignorado') cambios.notas = null;   // el comentario es el motivo de ignorarlo
+      if (mm.estado !== estado || mm.gasto_id || 'notas' in cambios && (mm.notas || null) !== cambios.notas) refrescarMovs(await db.actualizarMovimientos([m.id], cambios));
       pintarCuentas(); pintar();
     } catch (ex) { toast(ex.message, 'error'); }
   }
@@ -481,15 +500,16 @@ async function renderConciliacion(cont, ctx) {
           !misRem.length || mis.length ? h('button', { class: 'btn small', onclick: () => vincular(m) }, pago ? (parcial ? 'Editar enlaces' : 'Vincular') : (mis.length ? 'Editar abono' : 'Vincular abono')) : null,
           !misRem.length && (!pago || /devol|impag|rechaz|retroc/.test(normalizar(m.concepto || ''))) ? h('button', { class: 'btn small', onclick: () => remesasDeMov(m) }, pago ? 'Devolución de remesa' : 'Remesas') : null,
           pago && !parcial ? h('button', { class: 'btn small', onclick: () => crearGasto(m) }, 'Crear gasto') : null,
-          parcial ? h('button', { class: 'btn small ghost', onclick: () => cambiarEstado(m, 'pendiente') }, 'Quitar enlaces') : h('button', { class: 'btn small ghost', onclick: () => cambiarEstado(m, 'ignorado') }, 'Ignorar')]
+          parcial ? h('button', { class: 'btn small ghost', onclick: () => cambiarEstado(m, 'pendiente') }, 'Quitar enlaces') : h('button', { class: 'btn small ghost', onclick: () => ignorar(m) }, 'Ignorar')]
         : [m.estado === 'conciliado' ? h('button', { class: 'btn small', onclick: () => (misRem.length ? remesasDeMov(m) : vincular(m)) }, 'Editar') : null, h('button', { class: 'btn small ghost', onclick: () => cambiarEstado(m, 'pendiente') }, 'Deshacer')];
+      if (m.estado === 'ignorado') acciones.unshift(h('button', { class: 'btn small', onclick: () => editarComentario(m) }, m.notas ? 'Comentario' : 'Añadir comentario'));
       const enlacesTxt = mis.map((e) => { const g = porId.get(e.gasto_id); return g ? `↔ ${g.empresa}${g.factura_nr ? ' ' + g.factura_nr : ''} · ${g.concepto || ''} (${fmtEUR2(num(e.importe))}${Math.abs(num(g.cantidad)) - num(e.importe) > 0.01 ? ` de ${fmtEUR2(Math.abs(num(g.cantidad)))}` : ''})` : null; }).filter(Boolean);
       for (const x of misRem) enlacesTxt.push(`↔ Remesas ${x.mes} ${NOMBRE_BANCO[x.banco]}${x.remesa_nombre ? ' ' + x.remesa_nombre : ''} (${fmtEUR2(num(x.importe))})`);
       const cen = state.centros.length > 1 ? h('select', { class: 'select-celda', 'aria-label': `Centro del movimiento ${m.concepto || ''}`, onchange: (e) => moverCentro(m, e.target.value) },
         h('option', { value: '' }, ctx.tituloCentro(ctx.centroPrincipal()?.nombre)), state.centros.filter((c) => !c.principal).map((c) => h('option', { value: c.id, selected: c.id === m.centro_id }, ctx.tituloCentro(c.nombre)))) : null;
       return h('tr', { class: `mov-${m.estado}` },
         h('td', { class: 'mono' }, fmtFecha(m.fecha)),
-        h('td', {}, m.concepto || '—', !pago && esDevolucion(m) ? h('span', { class: 'pill ok' }, 'Devolución') : null, h('span', { class: 'line2' }, [nombreCuenta(m.cuenta_id), ...enlacesTxt].filter(Boolean).join(' · '))),
+        h('td', {}, m.concepto || '—', !pago && esDevolucion(m) ? h('span', { class: 'pill ok' }, 'Devolución') : null, h('span', { class: 'line2' }, [nombreCuenta(m.cuenta_id), ...enlacesTxt].filter(Boolean).join(' · ')), m.estado === 'ignorado' ? h('span', { class: 'line2' }, m.notas ? `📝 ${m.notas}` : 'Sin comentario para la gestoría') : null),
         h('td', { class: `num ${pago ? '' : 'pos'}` }, fmtEUR2(num(m.importe))),
         cen ? h('td', {}, cen) : null,
         h('td', {}, h('span', { class: `pill ${m.estado === 'conciliado' ? 'ok' : m.estado === 'ignorado' ? 'off' : 'warn'}` }, parcial ? `parcial ${fmtEUR2(asignadoMov(m, enlaces) + asigRem(m))} de ${fmtEUR2(Math.abs(num(m.importe)))}` : m.estado)),
