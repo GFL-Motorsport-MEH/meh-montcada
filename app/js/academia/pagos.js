@@ -52,7 +52,10 @@ export async function renderPagos(view, ctx) {
   const kv = {};
   const kpi = (k, l, sub) => { kv[k] = h('div', { class: 'value' }); return h('div', { class: 'card kpi' }, h('div', { class: 'label' }, l), kv[k], sub ? h('div', { class: 'sub' }, sub) : null); };
   const mini = (k, l) => { kv[k] = h('b', {}); return h('span', { class: 'ac-mini' }, l + ': ', kv[k]); };
-  const kpisEl = h('div', { class: 'ac-minis' }, mini('rec', 'Recibos por hacer'), mini('al', 'Alumnos (sin 1 to 1, 0.x ni Empresas)'));
+  let verMet = (() => { try { return localStorage.getItem('ac_pagos_met') !== '0'; } catch { return true; } })();
+  const btnMet = h('button', { type: 'button', class: 'btn small', title: 'Mostrar u ocultar el resumen por método de pago', onclick: () => { verMet = !verMet; try { localStorage.setItem('ac_pagos_met', verMet ? '1' : '0'); } catch { /* sin almacenamiento */ } aplicaMet(); } });
+  const aplicaMet = () => { for (const r of filasMet) r.hidden = !verMet; btnMet.textContent = verMet ? 'Ocultar resumen por método' : 'Mostrar resumen por método'; btnMet.setAttribute('aria-pressed', String(verMet)); };
+  const kpisEl = h('div', { class: 'ac-minis' }, mini('rec', 'Recibos por hacer'), mini('al', 'Alumnos (sin 1 to 1, 0.x ni Empresas)'), btnMet);
   // alumnos contables: ID distinto, sin 0.x (conceptos), sin 1 to 1 ni Empresas
   const contable = (a) => !esOtro(a) && !/^(1\s*to\s*1|empresas?)$/i.test((a.modalidad || '').trim());
   const METS = [['Domiciliacion', /^domicil/i], ['Transferencia', /^transf/i], ['TPV / Tarjeta', /^(tpv|tarjeta)/i], ['Efectivo', /^efect/i], ['Otros / sin método', null]];
@@ -333,7 +336,7 @@ export async function renderPagos(view, ctx) {
   const aviso = avisoFiltros(f, { claves: ['q', 'modo', 'nivel', 'recibo', 'soloPend'],
     etiquetas: { q: 'Búsqueda', modo: 'Modo de pago', nivel: 'Nivel', recibo: 'Recibos', soloPend: 'Solo con pagos pendientes hasta este mes' },
     formato: { q: busqueda, recibo: (v) => (v ? 'cobrados sin recibo hecho' : '') }, alLimpiar: () => pintar() });
-  pintar(); pintarPie(); pintarKpis();
+  pintar(); pintarPie(); pintarKpis(); aplicaMet();
   clear(view,
     cabecera(`Pagos · ${curso.nombre}`, 'Por mes: cuantía · P (pagado) · R (recibo hecho). Arrastra o usa Ctrl/Mayús+clic para elegir varias celdas.', mesSel, btnGen, btnWp, btnPrecios, zoomBox, h('a', { class: 'btn small', href: '#/ac_pagos_importar' }, 'Importar del CRM'), ctx.veAlgo('fact') ? h('a', { class: 'btn small', href: '#/ingresos', title: 'El cuadro de Ingresos se rellena con los pagos marcados aquí' }, 'Ver Resumen de Pagos →') : null),
     sinInsc ? h('div', { class: 'banner warn' }, `${sinInsc} alumnos inscritos todavía no tienen cuota fijada en este curso: escribe su cuota en la fila (si no aparecen aquí, ábrelos desde Alumnos).`) : null,

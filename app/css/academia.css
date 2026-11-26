@@ -539,3 +539,5 @@ tr.ac-resumen.ac-met th { padding-top: 1px; padding-bottom: 1px; font-size: 10px
 tr.ac-resumen.ac-met th.l { color: var(--text-muted); }
 tr.ac-resumen.ac-met th b { display: inline; font-size: 10px; }
 tr.ac-resumen.ac-met .ac-de { display: inline; font-size: 8px; }
+tr.ac-met[hidden] { display: none; }
+.ac-minis .btn { margin-left: auto; padding: 1px 8px; font-size: 11px; }
