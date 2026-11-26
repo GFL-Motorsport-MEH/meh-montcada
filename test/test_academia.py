@@ -220,6 +220,7 @@ try:
         celdas = page.locator("td.ac-cel"); a, z = celdas.nth(0).bounding_box(), celdas.nth(3).bounding_box()
         page.mouse.move(a["x"] + 3, a["y"] + 3); page.mouse.down(); page.mouse.move(z["x"] + 3, z["y"] + 3, steps=4); page.mouse.up()
         expect(page.locator(".ac-pg-barra")).to_contain_text("4 celdas")
+        check(page.locator("table.ac-pg tr.ac-rem").count() == 3, "Pagos: filas de comparación con las remesas enviadas bajo Domiciliación")
         page.locator(".ac-pg-barra").get_by_role("button", name="Pagado").click(); page.wait_for_timeout(400)
         check(len([c for c in db(page, "ac_cuotas") if c["estado"] == "pagado"]) == 2, "pago múltiple: marca varias celdas de una vez")
         page.locator(".ac-pg-barra").get_by_role("button", name="Importe…").click(); page.locator(".drawer input[data-punto]").fill("70"); page.get_by_role("button", name="Aplicar").click(); page.wait_for_timeout(400)
