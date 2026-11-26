@@ -8,15 +8,15 @@ let n = 0; const ok = (c, msg) => { assert.ok(c, msg); n++; };
 
 // 1 factura pagada en 2 pagos
 let r = conciliar([g('f', 'Previntegral', 300, '2026-10-01')], [m('a', 'RECIBO PREVINTEGRAL', -100, '2026-10-10'), m('b', 'RECIBO PREVINTEGRAL', -200, '2026-10-12')]);
-ok(r.length === 1 && r[0].movs.length === 2, '1 factura en 2 pagos');
+ok(r.length === 0, 'pagos múltiples: 1 factura en 2 pagos NO es automático (se enlaza a mano)');
 // 1 pago de 2 facturas de la misma empresa (nombre en el concepto)
 r = conciliar([g('x', 'Acme SL', 100, '2026-10-02'), g('y', 'Acme SL', 200, '2026-10-03'), g('z', 'Otra', 300, '2026-10-02')], [m('p', 'TRANSF ACME SL', -300, '2026-10-11')]);
-ok(r.length === 1 && r[0].gastos.map((x) => x.id).join() === 'x,y' && r[0].asignaciones.length === 2, '1 pago de 2 facturas');
+ok(r.length === 0, 'pagos múltiples: 1 pago de 2 facturas NO es automático (se enlaza a mano)');
 // lo ya enlazado no se vuelve a proponer y cuenta el restante
 const enl = [{ movimiento_id: 'a', gasto_id: 'f', importe: 100 }];
 ok(restanteGasto(g('f', 'P', 300, '2026-10-01'), enl) === 200 && restanteMov(m('a', '', -100, '2026-10-10'), enl) === 0, 'restantes');
 r = conciliar([g('f', 'Previntegral', 300, '2026-10-01')], [m('a', 'RECIBO PREVINTEGRAL', -100, '2026-10-10'), m('b', 'RECIBO PREVINTEGRAL', -200, '2026-10-12')], { enlaces: enl });
-ok(r.length === 1 && r[0].asignaciones.length === 1 && r[0].asignaciones[0].mov.id === 'b' && r[0].asignaciones[0].importe === 200, 'solo propone lo que falta');
+ok(r.length === 0, 'una factura parcialmente enlazada no se completa sola');
 // devoluciones: solo con DEVOLUCIÓN en el concepto, contra el abono del mismo importe
 const abono = g('ab', 'Amazon', -9.24, '2026-10-05');
 r = conciliarDevoluciones([abono, g('ot', 'Otro', -9.24, '2026-10-05')], [m('d', 'Devolución AMAZON EU', 9.24, '2026-10-20'), m('i', 'Ingreso varios', 9.24, '2026-10-21')]);

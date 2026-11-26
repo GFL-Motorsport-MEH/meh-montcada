@@ -343,7 +343,7 @@ async function renderConciliacion(cont, ctx) {
     const pares = [...pagos, ...devs];
     const rems = sugerirRemesas(envios, movs, { movRemesas: movRem, enlaces, cuentas });
     if (!pares.length && !rems.length) { toast('No he encontrado nuevas coincidencias entre gastos y movimientos.'); return; }
-    const masDeUno = pagos.filter((p) => p.movs.length > 1 || p.gastos.length > 1).length;
+    const masDeUno = 0;
     const linea = (p) => `${p.otroCentro ? '[otro centro] ' : ''}${fmtFecha(p.gasto.fecha_pago || p.gasto.fecha_factura)} · ${p.gastos.map((g) => `${g.empresa} ${fmtEUR2(g.cantidad)}`).join(' + ')} ↔ ${p.movs.map((m) => `${fmtFecha(m.fecha)} ${fmtEUR2(m.importe)}`).join(' + ')}`;
     const ok = await confirmar({ titulo: 'Conciliar automáticamente', ok: `Conciliar ${pares.length + rems.length}`,
       texto: h('div', {}, pares.length ? h('p', {}, `He encontrado ${pagos.length} pagos con su movimiento en el banco (importe EXACTO, empresa reconocida en el concepto, ±20 días)${masDeUno ? `; ${masDeUno} con varios pagos o varias facturas` : ''}${devs.length ? ` y ${devs.length} devoluciones (concepto «DEVOLUCIÓN») que cuadran con un abono` : ''}.`) : null,

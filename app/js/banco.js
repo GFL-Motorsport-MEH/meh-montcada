@@ -114,77 +114,34 @@ export const nombreEnConcepto = (g, m, alias = null) => {
 export const mismoCentro = (g, m, principal = null) => (g.centro_id || principal || null) === (m.centro_id || principal || null);
 
 // Concilia gastos pendientes (importe > 0) con movimientos pendientes negativos, teniendo en cuenta lo que ya está enlazado.
-// 1) un movimiento del mismo importe (±1 céntimo) en ±ventana días (el más cercano en fecha);
-// 2) si no, la suma de 2 o 3 movimientos dentro de la ventana. Devuelve [{ gasto, movs, asignaciones: [{ mov, importe }] }]
+// Solo parejas 1 a 1 con el importe EXACTO y la empresa reconocida en el concepto del banco (por su nombre o por un alias aprendido),
+// del mismo centro y con fecha cercana (±ventana días; con importes repetidos, cada gasto con el movimiento más cercano en fecha).
+// Los pagos múltiples (una factura en varios pagos, un pago de varias facturas) y cualquier coincidencia «solo por importe» se enlazan a mano.
+// Último recurso: la misma pareja exacta con la empresa reconocida pero de otro centro (se marca otroCentro: true).
+// Devuelve [{ gasto, gastos, movs, asignaciones: [{ mov, gasto, importe }], otroCentro? }]
 export function conciliar(gastos, movimientos, { ventana = 20, enlaces = [], principal = null, alias = null } = {}) {
-  const libres = movimientos.filter((m) => m.estado === 'pendiente' && num(m.importe) < 0 && restanteMov(m, enlaces) > 0.009)
+  // Lo que ya tiene algún enlace (pagos múltiples hechos a mano) no se toca: el automático solo propone gastos y movimientos sin enlazar
+  const libres = movimientos.filter((m) => m.estado === 'pendiente' && num(m.importe) < 0 && asignadoMov(m, enlaces) < 0.005 && restanteMov(m, enlaces) > 0.009)
     .map((m) => ({ m, abs: Math.round(restanteMov(m, enlaces) * 100), usado: false }));
   // Los gastos ya marcados «en banco» (p. ej. desde el Excel) pero sin enlace también se concilian: lo que cuenta es el enlace, no la marca
-  const pend = gastos.filter((g) => num(g.cantidad) > 0 && fechaGasto(g) && restanteGasto(g, enlaces) > 0.009)
-    .sort((a, b) => fechaGasto(a).localeCompare(fechaGasto(b)));
+  const pend = gastos.filter((g) => num(g.cantidad) > 0 && fechaGasto(g) && asignadoGasto(g, enlaces) < 0.005 && restanteGasto(g, enlaces) > 0.009);
   const out = [], hechos = new Set();
-  // 1.ª pasada: solo movimientos donde aparece el nombre de la empresa (más seguro); 2.ª: cualquiera con el mismo importe
-  // Parejas de mismo importe: se asignan primero las más cercanas en fecha (con varios pagos iguales, p. ej. cuotas mensuales, cada mes con el suyo)
-  const exactos = (soloNombre) => {
-    const pares = [];
+  const pares = (mismo) => {
+    const lista = [];
     for (const g of pend) {
       if (hechos.has(g.id)) continue;
       const obj = Math.round(restanteGasto(g, enlaces) * 100), fg = fechaGasto(g);
-      for (const x of libres) if (!x.usado && x.abs === obj && dias(x.m.fecha, fg) <= ventana && mismoCentro(g, x.m, principal) && (!soloNombre || nombreEnConcepto(g, x.m, alias)))
-        pares.push({ g, x, d: dias(x.m.fecha, fg) });
+      for (const x of libres) if (!x.usado && x.abs === obj && dias(x.m.fecha, fg) <= ventana && mismoCentro(g, x.m, principal) === mismo && nombreEnConcepto(g, x.m, alias)) lista.push({ g, x, d: dias(x.m.fecha, fg) });
     }
-    pares.sort((a, b) => a.d - b.d);
-    for (const { g, x } of pares) {
+    lista.sort((a, b) => a.d - b.d);
+    for (const { g, x } of lista) {
       if (hechos.has(g.id) || x.usado) continue;
       hechos.add(g.id); x.usado = true;
-      out.push({ gasto: g, gastos: [g], movs: [x.m], asignaciones: [{ mov: x.m, gasto: g, importe: x.abs / 100 }] });
+      out.push({ gasto: g, gastos: [g], movs: [x.m], ...(mismo ? {} : { otroCentro: true }), asignaciones: [{ mov: x.m, gasto: g, importe: x.abs / 100 }] });
     }
   };
-  const pasada = (soloNombre) => {
-    for (const g of pend) {
-      if (hechos.has(g.id)) continue;
-      const obj = Math.round(restanteGasto(g, enlaces) * 100), fg = fechaGasto(g);
-      const cand = libres.filter((x) => !x.usado && dias(x.m.fecha, fg) <= ventana && x.abs <= obj && mismoCentro(g, x.m, principal) && (!soloNombre || nombreEnConcepto(g, x.m, alias)));
-      const uno = cand.filter((x) => x.abs === obj).sort((a, b) => dias(a.m.fecha, fg) - dias(b.m.fecha, fg))[0];
-      let elegidos = uno ? [uno] : null;
-      if (!elegidos) {
-        const c = cand.slice(0, 40);
-        buscar: for (let i = 0; i < c.length; i++) {
-          for (let j = i + 1; j < c.length; j++) {
-            const s2 = c[i].abs + c[j].abs;
-            if (s2 === obj) { elegidos = [c[i], c[j]]; break buscar; }
-            if (s2 > obj) continue;
-            for (let k = j + 1; k < c.length; k++) {
-              if (s2 + c[k].abs === obj) { elegidos = [c[i], c[j], c[k]]; break buscar; }
-            }
-          }
-        }
-      }
-      if (elegidos) { hechos.add(g.id); elegidos.forEach((x) => { x.usado = true; }); out.push({ gasto: g, gastos: [g], movs: elegidos.map((x) => x.m), asignaciones: elegidos.map((x) => ({ mov: x.m, gasto: g, importe: x.abs / 100 })) }); }
-    }
-  };
-  exactos(true);
-  pasada(true);
-  // 2.ª pasada: un pago que cubre 2 o 3 facturas de la misma empresa (su nombre aparece en el concepto del movimiento)
-  for (const x of libres.filter((y) => !y.usado)) {
-    const c = pend.filter((g) => !hechos.has(g.id) && nombreEnConcepto(g, x.m, alias) && mismoCentro(g, x.m, principal) && dias(x.m.fecha, fechaGasto(g)) <= ventana).slice(0, 12);
-    const cents = (g) => Math.round(restanteGasto(g, enlaces) * 100);
-    let sel = null;
-    buscar2: for (let i = 0; i < c.length; i++) for (let j = i + 1; j < c.length; j++) {
-      if (cents(c[i]) + cents(c[j]) === x.abs) { sel = [c[i], c[j]]; break buscar2; }
-      for (let k = j + 1; k < c.length; k++) if (cents(c[i]) + cents(c[j]) + cents(c[k]) === x.abs) { sel = [c[i], c[j], c[k]]; break buscar2; }
-    }
-    if (sel) { x.usado = true; sel.forEach((g) => hechos.add(g.id)); out.push({ gasto: sel[0], gastos: sel, movs: [x.m], asignaciones: sel.map((g) => ({ mov: x.m, gasto: g, importe: cents(g) / 100 })) }); }
-  }
-  // (ya no hay pasada «solo por importe»: un mismo importe sin la empresa en el concepto se enlaza a mano)
-  // 4.ª: un gasto de otro centro pagado desde esta cuenta (se puede pagar con la cuenta de la otra academia): solo con mismo importe Y la empresa reconocida en el concepto
-  for (const g of pend) {
-    if (hechos.has(g.id)) continue;
-    const obj = Math.round(restanteGasto(g, enlaces) * 100), fg = fechaGasto(g);
-    const x = libres.filter((y) => !y.usado && y.abs === obj && dias(y.m.fecha, fg) <= ventana && !mismoCentro(g, y.m, principal) && nombreEnConcepto(g, y.m, alias))
-      .sort((a, b) => dias(a.m.fecha, fg) - dias(b.m.fecha, fg))[0];
-    if (x) { hechos.add(g.id); x.usado = true; out.push({ gasto: g, gastos: [g], movs: [x.m], otroCentro: true, asignaciones: [{ mov: x.m, gasto: g, importe: x.abs / 100 }] }); }
-  }
+  pares(true);
+  pares(false);
   return out;
 }
 
