@@ -220,7 +220,6 @@ try:
         celdas = page.locator("td.ac-cel"); a, z = celdas.nth(0).bounding_box(), celdas.nth(3).bounding_box()
         page.mouse.move(a["x"] + 3, a["y"] + 3); page.mouse.down(); page.mouse.move(z["x"] + 3, z["y"] + 3, steps=4); page.mouse.up()
         expect(page.locator(".ac-pg-barra")).to_contain_text("4 celdas")
-        check(page.locator("table.ac-pg tr.ac-rem").count() == 3, "Pagos: filas de comparación con las remesas enviadas bajo Domiciliación")
         page.locator(".ac-pg-barra").get_by_role("button", name="Pagado").click(); page.wait_for_timeout(400)
         check(len([c for c in db(page, "ac_cuotas") if c["estado"] == "pagado"]) == 2, "pago múltiple: marca varias celdas de una vez")
         page.locator(".ac-pg-barra").get_by_role("button", name="Importe…").click(); page.locator(".drawer input[data-punto]").fill("70"); page.get_by_role("button", name="Aplicar").click(); page.wait_for_timeout(400)
@@ -341,6 +340,7 @@ try:
         ev = db(page, "ac_remesa_envios"); rs = db(page, "ac_remesa_envio_resumen"); ln = db(page, "ac_remesa_envio_lineas")
         check(len(ev) == 1 and len(rs) == 1 and float(rs[0]["total"]) == 65 and len(ln) == 1, "REMESAS ENVIADAS guarda el resumen y las líneas del mes")
         # el mes enviado se ve y se edita en la vista principal, sin tocar nada más
+        expect(page.locator(".ac-rresumen", has_text="Comparación con Pagos")).to_be_visible()
         cuota0 = [i["cuota_mensual"] for i in db(page, "ac_inscripciones")]
         page.locator("table.ac-domi input[aria-label='Importe']").first.fill("50")
         page.locator("table.ac-domi input[aria-label='Importe']").first.press("Tab"); page.wait_for_timeout(400)

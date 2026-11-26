@@ -18,11 +18,7 @@ const SIMBOLO = { pagado: '✓', devuelto: '↩', exento: '–', pendiente: '' }
 export async function renderPagos(view, ctx) {
   clear(view, cargando());
   const curso = ctx.cursoActual();
-  const [alumnos, insc, cuotas, precios, remesas, listas, bajasCurso, gruposCurso, envios, listaRem, doms] = await Promise.all([api.alumnos(), api.inscripciones(curso.id), api.cuotas(curso.id), api.wpPrecios(curso.id), api.remesas(curso.id), api.listas(), api.bajas(), api.grupos(curso.id), api.remesaEnvios(curso.id).catch(() => []), api.remesasLista().catch(() => []), api.domiciliaciones().catch(() => [])]);
-  // líneas de cada remesa enviada (quién iba en ella): sirven para comparar Pagos con lo enviado
-  const lineasEnv = new Map();
-  await Promise.all(envios.map(async (e) => { try { lineasEnv.set(e.id, await api.remesaEnvioLineas(e.id)); } catch { lineasEnv.set(e.id, []); } }));
-  const alPorId = new Map(alumnos.map((a) => [a.id, a]));
+  const [alumnos, insc, cuotas, precios, remesas, listas, bajasCurso, gruposCurso] = await Promise.all([api.alumnos(), api.inscripciones(curso.id), api.cuotas(curso.id), api.wpPrecios(curso.id), api.remesas(curso.id), api.listas(), api.bajas(), api.grupos(curso.id)]);
   const conBaja = new Set(bajasCurso.filter((b) => !b.curso_id || b.curso_id === curso.id).map((b) => b.alumno_id)); // las bajas siguen visibles: el resumen de meses ya cobrados no debe variar
   const remPor = new Map(remesas.map((r) => [r.id, r]));
   const dondeCargo = (c) => { const r = remPor.get(c.remesa_id); return r ? ` · en ${r.nombre || capitalizar(r.mes)}${r.banco ? ' (' + r.banco + ')' : ''}` : (c.concepto === 'mensualidad' ? ' · sin remesa' : ''); };
@@ -58,62 +54,15 @@ export async function renderPagos(view, ctx) {
   const mini = (k, l) => { kv[k] = h('b', {}); return h('span', { class: 'ac-mini' }, l + ': ', kv[k]); };
   let verMet = (() => { try { return localStorage.getItem('ac_pagos_met') !== '0'; } catch { return true; } })();
   const btnMet = h('button', { type: 'button', class: 'btn small', title: 'Mostrar u ocultar el resumen por método de pago', onclick: () => { verMet = !verMet; try { localStorage.setItem('ac_pagos_met', verMet ? '1' : '0'); } catch { /* sin almacenamiento */ } aplicaMet(); } });
-  const aplicaMet = () => { for (const r of [...filasMet, ...filasRem]) r.hidden = !verMet; btnMet.textContent = verMet ? 'Ocultar resumen por método' : 'Mostrar resumen por método'; btnMet.setAttribute('aria-pressed', String(verMet)); };
+  const aplicaMet = () => { for (const r of filasMet) r.hidden = !verMet; btnMet.textContent = verMet ? 'Ocultar resumen por método' : 'Mostrar resumen por método'; btnMet.setAttribute('aria-pressed', String(verMet)); };
   const kpisEl = h('div', { class: 'ac-minis' }, mini('rec', 'Recibos por hacer'), mini('al', 'Alumnos (sin 1 to 1, 0.x ni Empresas)'), btnMet);
   // alumnos contables: ID distinto, sin 0.x (conceptos), sin 1 to 1 ni Empresas
   const contable = (a) => !esOtro(a) && !/^(1\s*to\s*1|empresas?)$/i.test((a.modalidad || '').trim());
   const METS = [['Domiciliacion', /^domicil/i], ['Transferencia', /^transf/i], ['TPV / Tarjeta', /^(tpv|tarjeta)/i], ['Efectivo', /^efect/i], ['Otros / sin método', null]];
   const metIdx = (c) => { const m = (c.metodo_pago || '').trim(); const i = METS.findIndex(([, re]) => re && re.test(m)); return i < 0 ? METS.length - 1 : i; };
   const filasMet = METS.map(([n]) => h('tr', { class: 'ac-resumen ac-met' }));
-  // Domiciliación de Pagos frente a las remesas enviadas del mes. Solo cuentan los alumnos que iban en la remesa:
-  // quien se apuntó (o pasó a domiciliación) después del envío no está en ella y se resta de la comparación.
-  const filasRem = [h('tr', { class: 'ac-resumen ac-met ac-rem' }), h('tr', { class: 'ac-resumen ac-met ac-rem' }), h('tr', { class: 'ac-resumen ac-met ac-rem' })];
-  // alumnos con remesa bimensual/trimestral: en Pagos salen mes a mes, pero la remesa los cobra de golpe en su mes de inicio
-  const perDeAlumno = new Map();
-  for (const d of doms) { if (d.archivado || !d.remesa_id) continue; const r = listaRem.find((x) => x.id === d.remesa_id); if (r && (r.periodicidad || 1) > 1) perDeAlumno.set(d.alumno_id, r.periodicidad); }
-  const r2p = (n) => Math.round(n * 100) / 100;
-  function compararRemesa(mes) {
-    const env = envios.find((e) => e.mes === mes); if (!env) return null;
-    const cobros = cuotas.filter((c) => metIdx(c) === 0 && c.mes === mes && (c.concepto === 'mensualidad' || c.concepto === 'otro') && c.estado !== 'exento');
-    const enviado = r2p((env.resumen || []).reduce((t, r) => t + Number(r.total), 0));
-    const lin = lineasEnv.get(env.id) || [];
-    const sumaPagos = (l) => r2p(l.reduce((t, c) => t + Number(c.importe), 0));
-    const nom = (id, num) => { const a = alPorId.get(id); return a ? nombreAlumno(a) : `ID ${num ?? '?'}`; };
-    if (!lin.length) { const pagos = sumaPagos(cobros); return { enviado, pagos, fuera: 0, dif: r2p(pagos - enviado), detalle: 'Este envío solo guardó totales por remesa: no se sabe quién iba en él, así que no se puede separar a los apuntados después ni a los trimestrales.' }; }
-    const enRem = new Map(); for (const l of lin) enRem.set(l.alumno_id, (enRem.get(l.alumno_id) || 0) + Number(l.importe));
-    const esPer = (id) => perDeAlumno.has(id) || (lin.some((l) => l.alumno_id === id && (listaRem.find((r) => r.nombre === l.remesa_nombre)?.periodicidad || 1) > 1));
-    const perDe = (id) => perDeAlumno.get(id) || listaRem.find((r) => r.nombre === lin.find((l) => l.alumno_id === id)?.remesa_nombre)?.periodicidad || 3;
-    const mesesPeriodo = (id) => { const i0 = MESES.indexOf(mes); return Array.from({ length: perDe(id) }, (_, n) => MESES[(i0 + n) % 12]); };
-    const porAl = new Map(); // cuota mensual de Pagos por alumno (solo mensuales)
-    for (const c of cobros) if (!esPer(c.alumno_id)) porAl.set(c.alumno_id, (porAl.get(c.alumno_id) || 0) + Number(c.importe));
-    const fuera = cobros.filter((c) => !esPer(c.alumno_id) && !enRem.has(c.alumno_id));
-    const dentro = cobros.filter((c) => !esPer(c.alumno_id) && enRem.has(c.alumno_id));
-    // trimestrales que van en esta remesa: se comparan con la suma de sus cuotas del periodo (mes de inicio y siguientes)
-    const trimEnRem = [...enRem].filter(([id]) => esPer(id));
-    const pagosPeriodo = (id) => r2p(cuotas.filter((c) => c.alumno_id === id && metIdx(c) === 0 && (c.concepto === 'mensualidad' || c.concepto === 'otro') && c.estado !== 'exento' && mesesPeriodo(id).includes(c.mes)).reduce((t, c) => t + Number(c.importe), 0));
-    const trimDif = trimEnRem.filter(([id, v]) => Math.abs(pagosPeriodo(id) - v) >= 0.005);
-    // trimestrales que salen en Pagos este mes pero no van en esta remesa (cubiertos por la de su mes de inicio, o apuntados después)
-    const trimFuera = cobros.filter((c) => esPer(c.alumno_id) && !enRem.has(c.alumno_id));
-    const sinPago = lin.filter((l) => !esPer(l.alumno_id) && !porAl.has(l.alumno_id));
-    const distinto = [...porAl].filter(([id, v]) => enRem.has(id) && Math.abs(v - enRem.get(id)) >= 0.005);
-    const pagos = r2p(sumaPagos(dentro) + trimEnRem.reduce((t, [id]) => t + pagosPeriodo(id), 0));
-    const lista = (arr, f) => arr.length ? arr.slice(0, 12).map(f).join(' · ') + (arr.length > 12 ? ` · … (+${arr.length - 12})` : '') : '';
-    const partes = [];
-    if (fuera.length) partes.push(`Fuera de la remesa (se apuntaron o pasaron a domiciliación después del envío; no cuentan): ${lista(fuera, (c) => `${nom(c.alumno_id)} ${fmtEUR2(Number(c.importe))}`)}`);
-    if (trimFuera.length) partes.push(`Trimestrales/bimensuales que no se cobran este mes (van en la remesa de su mes de inicio o se apuntaron después; no cuentan): ${lista(trimFuera, (c) => `${nom(c.alumno_id)} ${fmtEUR2(Number(c.importe))}`)}`);
-    if (trimEnRem.length) partes.push(`Trimestrales cobrados este mes: la remesa lleva el periodo entero y se compara con la suma de sus cuotas de Pagos del periodo (${trimEnRem.length} alumnos)`);
-    if (trimDif.length) partes.push(`Trimestral con importe distinto entre la remesa y Pagos del periodo: ${lista(trimDif, ([id, v]) => `${nom(id)} remesa ${fmtEUR2(v)} / Pagos periodo ${fmtEUR2(pagosPeriodo(id))}`)}`);
-    if (sinPago.length) partes.push(`En la remesa pero sin cuota de domiciliación este mes en Pagos: ${lista(sinPago, (l) => `${l.alumno_nombre || nom(l.alumno_id, l.alumno_num)} ${fmtEUR2(Number(l.importe))}`)}`);
-    if (distinto.length) partes.push(`Importe distinto entre Pagos y la remesa: ${lista(distinto, ([id, v]) => `${nom(id)} Pagos ${fmtEUR2(v)} / remesa ${fmtEUR2(enRem.get(id))}`)}`);
-    return { enviado, pagos, fuera: r2p(sumaPagos(fuera) + sumaPagos(trimFuera)), dif: r2p(pagos - enviado), detalle: partes.join('\n') || 'Pagos y remesa coinciden.' };
-  }
   function pintarMetodos() {
     const col = (c) => { const t = totales(c); return h('th', { class: 'num' + (t.total ? '' : ' vacio'), title: `Cobrado ${fmtEUR2(t.pagado)} de ${fmtEUR2(t.total)}` }, t.total ? [h('b', {}, fmtN(t.pagado)), h('span', { class: 'ac-de' }, `/${fmtN(t.total)}`)] : ''); };
-    const rc = new Map(COLS.filter((k) => k.m).map((k) => [k.m, compararRemesa(k.m)]));
-    const celda = (k, f) => { const r = k.m ? rc.get(k.m) : null; return r ? f(r) : h('th', { class: 'num vacio' }); };
-    clear(filasRem[0], h('th', { colspan: 6, class: 'l', title: 'Total de las remesas enviadas de cada mes (REMESAS ENVIADAS en Remesas)' }, 'Remesas enviadas'), COLS.map((k) => celda(k, (r) => h('th', { class: 'num', title: r.detalle }, fmtN(r.enviado)))));
-    clear(filasRem[1], h('th', { colspan: 6, class: 'l', title: 'Cuotas de domiciliación de Pagos que no iban en la remesa (alta posterior al envío) o de trimestrales que no se cobran ese mes: no se comparan' }, 'Fuera de remesa (alta posterior / trimestrales)'), COLS.map((k) => celda(k, (r) => h('th', { class: 'num' + (r.fuera ? '' : ' vacio'), title: r.detalle }, r.fuera ? fmtN(r.fuera) : ''))));
-    clear(filasRem[2], h('th', { colspan: 6, class: 'l', title: 'Domiciliación en Pagos (solo quienes iban en la remesa) menos lo enviado' }, 'Pagos domiciliación − remesa'), COLS.map((k) => celda(k, (r) => h('th', { class: 'num' + (Math.abs(r.dif) < 0.005 ? '' : ' ac-dif-rem'), title: r.detalle, style: Math.abs(r.dif) < 0.005 ? '' : 'color:var(--danger,#b91c1c)' }, Math.abs(r.dif) < 0.005 ? '✓' : (r.dif > 0 ? '+' : '') + fmtN(r.dif)))));
     METS.forEach(([n], i) => clear(filasMet[i], h('th', { colspan: 6, class: 'l' }, n), COLS.map((k) => col(cuotas.filter((c) => metIdx(c) === i && (c.concepto === k.c || (k.c === 'mensualidad' && c.concepto === 'otro')) && c.mes === k.m)))));
   }
   function pintarKpis() {
@@ -374,7 +323,7 @@ export async function renderPagos(view, ctx) {
   const th = (k, t, cls, extra) => { const el = h('th', { class: 'ac-ord ' + (cls || ''), title: 'Clic para ordenar', onclick: () => ordenar(k) }, t, h('span', { class: 'ac-fl' }), extra || null); cabs.set(k, el); return el; };
   const tb = h('table', { class: 'data ac-pg' },
     h('colgroup', {}, ['38px', '210px', '60px', '64px', '96px', '54px'].map((w) => h('col', { style: `width:${w}` })), COLS.map(() => h('col'))),
-    h('thead', {}, filasMet[0], ...filasRem, ...filasMet.slice(1), resumen, h('tr', {}, th('num', 'ID'), th('nombre', 'Alumno', 'l'), th('nivel', 'Nivel'), th('curso', 'Curso'), th('modo', 'Modo pago'), th('cuota', 'Cuota'),
+    h('thead', {}, ...filasMet, resumen, h('tr', {}, th('num', 'ID'), th('nombre', 'Alumno', 'l'), th('nivel', 'Nivel'), th('curso', 'Curso'), th('modo', 'Modo pago'), th('cuota', 'Cuota'),
       COLS.map((k, ci) => th('c' + ci, k.t, 'ac-mes', h('div', { class: 'ac-sub' }, '€ · P · R'))))), cuerpo);
   pintarFlechas();
   if (f.modo && !modos.includes(f.modo)) f.modo = '';
