@@ -84,26 +84,67 @@ export const restanteGasto = (g, enlaces) => r2(Math.abs(num(g.cantidad)) - asig
 export const restanteMov = (m, enlaces) => r2(Math.abs(num(m.importe)) - asignadoMov(m, enlaces));
 export const esAbono = (g) => num(g.cantidad) < 0;
 export const esDevolucion = (m) => /devoluc/.test(normalizar(m.concepto || ''));
-const nombreEnConcepto = (g, m) => {
-  const w = normalizar(g.empresa || '').split(/\s+/).find((x) => x.length >= 4);
-  return !!w && normalizar(m.concepto || '').includes(w);
+// Clave del concepto de un movimiento sin números ni palabras genéricas («COMPRA TARJ. 5540… AMAZON…» -> «amazon luxembourg»)
+const GENERICAS = new Set(['compra', 'tarj', 'tarjeta', 'transferencia', 'transf', 'adeudo', 'recibo', 'factura', 'cuota', 'pago', 'servicio', 'servicios', 'cliente', 'clientes']);
+const LUGARES = new Set(['murcia', 'montcada', 'alcantarilla', 'barcelona', 'madrid', 'espana', 'catalunya', 'cataluna', 'valencia', 'palmar', 'reixac', 'sabadell']);
+export function claveConcepto(concepto) {
+  const t = normalizar(concepto || '').split(/[^a-z0-9ñ]+/).filter((x) => x.length >= 3 && !/\d/.test(x) && !GENERICAS.has(x));
+  return t.slice(0, 3).join(' ');
+}
+// Aprende, de lo ya enlazado a mano o automáticamente, qué empresa corresponde a cada tipo de concepto del banco
+// (p. ej. «AGUA VEOLIA…» = «Hidrogea Agua Murcia»). Devuelve Map(claveConcepto -> Set(empresa normalizada)).
+export function aprenderAlias(enlaces, movimientos, gastos) {
+  const mp = new Map(movimientos.map((m) => [m.id, m])), gp = new Map(gastos.map((g) => [g.id, g])), out = new Map();
+  for (const e of enlaces || []) {
+    const m = mp.get(e.movimiento_id), g = gp.get(e.gasto_id);
+    if (!m || !g || !g.empresa) continue;
+    const k = claveConcepto(m.concepto); if (!k) continue;
+    if (!out.has(k)) out.set(k, new Set());
+    out.get(k).add(normalizar(g.empresa).trim());
+  }
+  return out;
+}
+export const nombreEnConcepto = (g, m, alias = null) => {
+  const w = normalizar(g.empresa || '').split(/\s+/).find((x) => x.length >= 4 && !LUGARES.has(x)); // un lugar («Murcia») no identifica a una empresa
+  if (w && normalizar(m.concepto || '').includes(w)) return true;
+  const a = alias && alias.get(claveConcepto(m.concepto));
+  return !!(a && a.has(normalizar(g.empresa || '').trim()));
 };
+// Un pago de la cuenta de un centro solo se concilia con gastos de ese centro (sin centro = el principal)
+export const mismoCentro = (g, m, principal = null) => (g.centro_id || principal || null) === (m.centro_id || principal || null);
 
 // Concilia gastos pendientes (importe > 0) con movimientos pendientes negativos, teniendo en cuenta lo que ya está enlazado.
 // 1) un movimiento del mismo importe (±1 céntimo) en ±ventana días (el más cercano en fecha);
 // 2) si no, la suma de 2 o 3 movimientos dentro de la ventana. Devuelve [{ gasto, movs, asignaciones: [{ mov, importe }] }]
-export function conciliar(gastos, movimientos, { ventana = 20, enlaces = [] } = {}) {
+export function conciliar(gastos, movimientos, { ventana = 20, enlaces = [], principal = null, alias = null } = {}) {
   const libres = movimientos.filter((m) => m.estado === 'pendiente' && num(m.importe) < 0 && restanteMov(m, enlaces) > 0.009)
     .map((m) => ({ m, abs: Math.round(restanteMov(m, enlaces) * 100), usado: false }));
-  const pend = gastos.filter((g) => !g.check_banca && num(g.cantidad) > 0 && fechaGasto(g) && restanteGasto(g, enlaces) > 0.009)
+  // Los gastos ya marcados «en banco» (p. ej. desde el Excel) pero sin enlace también se concilian: lo que cuenta es el enlace, no la marca
+  const pend = gastos.filter((g) => num(g.cantidad) > 0 && fechaGasto(g) && restanteGasto(g, enlaces) > 0.009)
     .sort((a, b) => fechaGasto(a).localeCompare(fechaGasto(b)));
   const out = [], hechos = new Set();
   // 1.ª pasada: solo movimientos donde aparece el nombre de la empresa (más seguro); 2.ª: cualquiera con el mismo importe
+  // Parejas de mismo importe: se asignan primero las más cercanas en fecha (con varios pagos iguales, p. ej. cuotas mensuales, cada mes con el suyo)
+  const exactos = (soloNombre) => {
+    const pares = [];
+    for (const g of pend) {
+      if (hechos.has(g.id)) continue;
+      const obj = Math.round(restanteGasto(g, enlaces) * 100), fg = fechaGasto(g);
+      for (const x of libres) if (!x.usado && Math.abs(x.abs - obj) <= 1 && dias(x.m.fecha, fg) <= ventana && mismoCentro(g, x.m, principal) && (!soloNombre || nombreEnConcepto(g, x.m, alias)))
+        pares.push({ g, x, d: dias(x.m.fecha, fg) });
+    }
+    pares.sort((a, b) => a.d - b.d);
+    for (const { g, x } of pares) {
+      if (hechos.has(g.id) || x.usado) continue;
+      hechos.add(g.id); x.usado = true;
+      out.push({ gasto: g, gastos: [g], movs: [x.m], asignaciones: [{ mov: x.m, gasto: g, importe: x.abs / 100 }] });
+    }
+  };
   const pasada = (soloNombre) => {
     for (const g of pend) {
       if (hechos.has(g.id)) continue;
       const obj = Math.round(restanteGasto(g, enlaces) * 100), fg = fechaGasto(g);
-      const cand = libres.filter((x) => !x.usado && dias(x.m.fecha, fg) <= ventana && x.abs <= obj + 1 && (!soloNombre || nombreEnConcepto(g, x.m)));
+      const cand = libres.filter((x) => !x.usado && dias(x.m.fecha, fg) <= ventana && x.abs <= obj + 1 && mismoCentro(g, x.m, principal) && (!soloNombre || nombreEnConcepto(g, x.m, alias)));
       const uno = cand.filter((x) => Math.abs(x.abs - obj) <= 1).sort((a, b) => dias(a.m.fecha, fg) - dias(b.m.fecha, fg))[0];
       let elegidos = uno ? [uno] : null;
       if (!elegidos) {
@@ -122,10 +163,11 @@ export function conciliar(gastos, movimientos, { ventana = 20, enlaces = [] } = 
       if (elegidos) { hechos.add(g.id); elegidos.forEach((x) => { x.usado = true; }); out.push({ gasto: g, gastos: [g], movs: elegidos.map((x) => x.m), asignaciones: elegidos.map((x) => ({ mov: x.m, gasto: g, importe: x.abs / 100 })) }); }
     }
   };
+  exactos(true);
   pasada(true);
   // 2.ª pasada: un pago que cubre 2 o 3 facturas de la misma empresa (su nombre aparece en el concepto del movimiento)
   for (const x of libres.filter((y) => !y.usado)) {
-    const c = pend.filter((g) => !hechos.has(g.id) && nombreEnConcepto(g, x.m) && dias(x.m.fecha, fechaGasto(g)) <= ventana).slice(0, 12);
+    const c = pend.filter((g) => !hechos.has(g.id) && nombreEnConcepto(g, x.m, alias) && mismoCentro(g, x.m, principal) && dias(x.m.fecha, fechaGasto(g)) <= ventana).slice(0, 12);
     const cents = (g) => Math.round(restanteGasto(g, enlaces) * 100);
     let sel = null;
     buscar2: for (let i = 0; i < c.length; i++) for (let j = i + 1; j < c.length; j++) {
@@ -134,34 +176,55 @@ export function conciliar(gastos, movimientos, { ventana = 20, enlaces = [] } = 
     }
     if (sel) { x.usado = true; sel.forEach((g) => hechos.add(g.id)); out.push({ gasto: sel[0], gastos: sel, movs: [x.m], asignaciones: sel.map((g) => ({ mov: x.m, gasto: g, importe: cents(g) / 100 })) }); }
   }
+  exactos(false);
   pasada(false);   // 3.ª: cualquier movimiento con el mismo importe y fecha cercana
   return out;
 }
 
 // Devoluciones: movimientos positivos cuyo concepto dice DEVOLUCIÓN se enlazan solos con el abono / nota de crédito (gasto negativo)
 // del mismo importe. Si hay varios posibles se prefiere el de la misma empresa y la fecha más cercana.
-export function conciliarDevoluciones(gastos, movimientos, { ventana = 90, enlaces = [] } = {}) {
+export function conciliarDevoluciones(gastos, movimientos, { ventana = 90, enlaces = [], principal = null, alias = null } = {}) {
   const cobros = movimientos.filter((m) => m.estado === 'pendiente' && num(m.importe) > 0 && esDevolucion(m) && restanteMov(m, enlaces) > 0.009)
     .sort((a, b) => a.fecha.localeCompare(b.fecha));
   const abonos = gastos.filter((g) => esAbono(g) && !g.check_banca && fechaGasto(g) && restanteGasto(g, enlaces) > 0.009).map((g) => ({ g, usado: false }));
   const out = [];
   for (const m of cobros) {
     const imp = restanteMov(m, enlaces);
-    const cand = abonos.filter((x) => !x.usado && Math.abs(restanteGasto(x.g, enlaces) - imp) <= 0.01 && dias(fechaGasto(x.g), m.fecha) <= ventana)
-      .sort((a, b) => Number(nombreEnConcepto(b.g, m)) - Number(nombreEnConcepto(a.g, m)) || dias(fechaGasto(a.g), m.fecha) - dias(fechaGasto(b.g), m.fecha));
+    const cand = abonos.filter((x) => !x.usado && Math.abs(restanteGasto(x.g, enlaces) - imp) <= 0.01 && dias(fechaGasto(x.g), m.fecha) <= ventana && mismoCentro(x.g, m, principal))
+      .sort((a, b) => Number(nombreEnConcepto(b.g, m, alias)) - Number(nombreEnConcepto(a.g, m, alias)) || dias(fechaGasto(a.g), m.fecha) - dias(fechaGasto(b.g), m.fecha));
     if (cand[0]) { cand[0].usado = true; out.push({ gasto: cand[0].g, gastos: [cand[0].g], movs: [m], asignaciones: [{ mov: m, gasto: cand[0].g, importe: imp }] }); }
   }
   return out;
 }
 
-// Búsqueda manual: gastos que puede pagar este movimiento (pago -> facturas; cobro/devolución -> abonos). Con texto busca en todos.
-export function gastosParaMov(mov, gastos, enlaces, q = '', { limite = 40 } = {}) {
+// Por qué un gasto se propone para un movimiento (para mostrarlo en la ventana de enlazar)
+export function motivoGasto(g, mov, enlaces = [], alias = null) {
+  const imp = Math.abs(num(mov.importe)), rest = restanteGasto(g, enlaces), f = fechaGasto(g);
+  const m = [];
+  if (Math.abs(rest - imp) <= 0.01) m.push('mismo importe'); else if (rest < imp - 0.01) m.push('importe menor (puede ser parte)');
+  if (nombreEnConcepto(g, mov, alias)) m.push('empresa en el concepto');
+  if (f) { const d = Math.round(dias(f, mov.fecha)); m.push(d === 0 ? 'mismo día' : `${d} día${d === 1 ? '' : 's'}`); }
+  return m.join(' · ');
+}
+// Búsqueda manual: gastos que puede pagar este movimiento (pago -> facturas; cobro/devolución -> abonos).
+// Sin texto solo salen los candidatos claros: mismo importe o empresa reconocida en el concepto, del mismo centro y de fechas cercanas.
+// parecidos: añade los de importe parecido (±5 %); otrosCentros: incluye gastos de otros centros. Con texto busca en todos los gastos del centro.
+export function gastosParaMov(mov, gastos, enlaces, q = '', { limite = 40, principal = null, alias = null, parecidos = false, otrosCentros = false, ventana = 90 } = {}) {
   const signo = num(mov.importe) < 0 ? 1 : -1, imp = Math.abs(num(mov.importe)), nq = normalizar(String(q).trim());
+  const puntos = (g) => {
+    const rest = restanteGasto(g, enlaces), f = fechaGasto(g);
+    return (Math.abs(rest - imp) <= 0.01 ? 4 : 0) + (nombreEnConcepto(g, mov, alias) ? 3 : 0) - (f ? Math.min(dias(f, mov.fecha), 365) / 400 : 0.9);
+  };
+  const claro = (g) => {
+    const rest = restanteGasto(g, enlaces), f = fechaGasto(g);
+    if (f && dias(f, mov.fecha) > ventana) return false;
+    if (Math.abs(rest - imp) <= 0.01 || nombreEnConcepto(g, mov, alias)) return true;
+    return parecidos && Math.abs(rest - imp) <= Math.max(0.01, imp * 0.05) && (!f || dias(f, mov.fecha) <= 45);
+  };
   return gastos.filter((g) => Math.sign(num(g.cantidad)) === signo && restanteGasto(g, enlaces) > 0.009
-    && (!nq || normalizar(`${g.empresa} ${g.concepto} ${g.factura_nr} ${num(g.cantidad).toFixed(2).replace('.', ',')} ${g.cantidad}`).includes(nq)))
-    .sort((a, b) => Number(nombreEnConcepto(b, mov)) - Number(nombreEnConcepto(a, mov))
-      || Math.abs(restanteGasto(a, enlaces) - imp) - Math.abs(restanteGasto(b, enlaces) - imp)
-      || dias(fechaGasto(a) || mov.fecha, mov.fecha) - dias(fechaGasto(b) || mov.fecha, mov.fecha))
+    && (otrosCentros || mismoCentro(g, mov, principal))
+    && (nq ? normalizar(`${g.empresa} ${g.concepto} ${g.factura_nr} ${num(g.cantidad).toFixed(2).replace('.', ',')} ${g.cantidad}`).includes(nq) : claro(g)))
+    .sort((a, b) => puntos(b) - puntos(a))
     .slice(0, limite);
 }
 // Búsqueda manual desde un gasto (p. ej. un abono): movimientos del banco que lo pueden cubrir (abono -> ingresos del banco)

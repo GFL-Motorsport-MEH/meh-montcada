@@ -3,7 +3,7 @@ import { h, clear, cargando, toast, confirmar, fmtEUR2, fmtFecha, num, normaliza
 import * as db from '../db.js';
 import { vista, filtroFecha, pasaFecha, describirFecha, crearAviso, vincular as vincularCampo, FECHA_VACIA } from '../vista.js';
 import { registrarSeccion } from './control.js';
-import { parsearExtracto, ponerClaves, cuentaDeArchivo, conciliar, conciliarDevoluciones, gastosParaMov, movsParaGasto, asignadoMov, asignadoGasto, restanteMov, restanteGasto, esAbono, esDevolucion, bancoDeCuenta, esperadoRemesas, ingresadoRemesas, asignadoRemesasMov, sugerirRemesas } from '../banco.js';
+import { parsearExtracto, ponerClaves, cuentaDeArchivo, conciliar, conciliarDevoluciones, gastosParaMov, movsParaGasto, asignadoMov, asignadoGasto, restanteMov, restanteGasto, esAbono, esDevolucion, bancoDeCuenta, esperadoRemesas, ingresadoRemesas, asignadoRemesasMov, sugerirRemesas, aprenderAlias, motivoGasto } from '../banco.js';
 import { abrirGastoForm } from './gasto-form.js';
 import { formatoIBAN, ibanValido } from './config.js';
 
@@ -102,7 +102,8 @@ async function renderConciliacion(cont, ctx) {
 
   // Ventana para elegir uno o varios elementos que cubren un importe (facturas para un pago, pagos para una factura, ingresos para un abono).
   // ancla = importe que hay que cubrir; previos = Map id -> importe ya enlazado (se pueden cambiar); buscar(q) -> [{ id, texto, restante }]
-  async function elegirEnlaces({ titulo, cabecera, ancla, previos, buscar, ayuda }) {
+  async function elegirEnlaces({ titulo, cabecera, ancla, previos, buscar, ayuda, opciones = [] }) {
+    const op = {};
     const sel = new Map([...previos].map(([id, imp]) => [id, imp]));
     const conocidos = new Map();   // id -> { id, texto, restante } (incluye los ya enlazados)
     const q = h('input', { type: 'search', placeholder: 'Buscar por empresa, concepto, nº de factura o importe…', 'aria-label': 'Buscar' });
@@ -117,7 +118,7 @@ async function renderConciliacion(cont, ctx) {
     function pintarLista() {
       const items = new Map();
       for (const id of sel.keys()) if (conocidos.has(id)) items.set(id, conocidos.get(id));
-      for (const c of buscar(q.value)) { conocidos.set(c.id, c); if (!items.has(c.id)) items.set(c.id, c); }
+      for (const c of buscar(q.value, op)) { conocidos.set(c.id, c); if (!items.has(c.id)) items.set(c.id, c); }
       const pendiente = () => r2(ancla - [...sel.values()].reduce((a, b) => a + (Number(b) || 0), 0));
       clear(lista, items.size ? [...items.values()].map((c) => {
         const activo = sel.has(c.id);
@@ -127,13 +128,14 @@ async function renderConciliacion(cont, ctx) {
           if (chk.checked) { const v = r2(Math.min(c.restante, Math.max(pendiente(), 0)) || c.restante); sel.set(c.id, v); imp.value = v; imp.disabled = false; } else { sel.delete(c.id); imp.value = ''; imp.disabled = true; }
           pintarTotal();
         } });
-        return h('label', { class: 'check small cand' }, chk, h('span', {}, c.texto, c.restante !== undefined && c.parcial ? h('span', { class: 'muted' }, ` (por cubrir ${fmtEUR2(c.restante)})`) : null), imp);
-      }) : h('p', { class: 'muted small' }, 'No hay nada que encaje. Prueba con otra búsqueda.'));
+        return h('label', { class: 'check small cand' }, chk, h('span', {}, c.texto, c.restante !== undefined && c.parcial ? h('span', { class: 'muted' }, ` (por cubrir ${fmtEUR2(c.restante)})`) : null, c.motivo ? h('span', { class: 'line2' }, c.motivo) : null), imp);
+      }) : h('p', { class: 'muted small' }, opciones.length ? 'No hay candidatos claros (mismo importe o empresa reconocida). Escribe en el buscador o marca «parecidos» / «otros centros».' : 'No hay nada que encaje. Prueba con otra búsqueda.'));
       pintarTotal();
     }
     q.addEventListener('input', pintarLista);
     pintarLista();
-    const cont = h('div', { class: 'enlazar' }, h('p', {}, cabecera), ayuda ? h('p', { class: 'muted small' }, ayuda) : null, q, lista, total);
+    const checks = opciones.length ? h('div', { class: 'filters' }, opciones.map(([clave, label]) => h('label', { class: 'check small' }, h('input', { type: 'checkbox', onchange: (e) => { op[clave] = e.target.checked; pintarLista(); } }), label))) : null;
+    const cont = h('div', { class: 'enlazar' }, h('p', {}, cabecera), ayuda ? h('p', { class: 'muted small' }, ayuda) : null, q, checks, lista, total);
     for (;;) {
       const ok = await confirmar({ titulo, ok: 'Guardar enlaces', texto: cont });
       if (!ok) return null;
@@ -335,8 +337,9 @@ async function renderConciliacion(cont, ctx) {
 
   // ---- conciliar automáticamente ----
   async function autoConciliar() {
-    const pagos = conciliar(todosGastos(), movs, { enlaces });
-    const devs = conciliarDevoluciones(todosGastos(), movs, { enlaces });
+    const principal = ctx.centroPrincipal()?.id || null, alias = aprenderAlias(enlaces, movs, todosGastos());
+    const pagos = conciliar(todosGastos(), movs, { enlaces, principal, alias });
+    const devs = conciliarDevoluciones(todosGastos(), movs, { enlaces, principal, alias });
     const pares = [...pagos, ...devs];
     const rems = sugerirRemesas(envios, movs, { movRemesas: movRem, enlaces, cuentas });
     if (!pares.length && !rems.length) { toast('No he encontrado nuevas coincidencias entre gastos y movimientos.'); return; }
@@ -367,13 +370,15 @@ async function renderConciliacion(cont, ctx) {
     const pago = num(m.importe) < 0;
     const previos = new Map(enlaces.filter((e) => e.movimiento_id === m.id).map((e) => [e.gasto_id, num(e.importe)]));
     const previoDe = (g) => previos.get(g.id) || 0;
-    const info = (g) => ({ id: g.id, texto: textoGasto(g), restante: Math.round((restanteGasto(g, enlaces) + previoDe(g)) * 100) / 100, parcial: asignadoGasto(g, enlaces) - previoDe(g) > 0.009 });
+    const principal = ctx.centroPrincipal()?.id || null, alias = aprenderAlias(enlaces, movs, todosGastos());
+    const info = (g) => ({ id: g.id, texto: textoGasto(g), motivo: pago ? motivoGasto(g, m, enlaces, alias) : '', restante: Math.round((restanteGasto(g, enlaces) + previoDe(g)) * 100) / 100, parcial: asignadoGasto(g, enlaces) - previoDe(g) > 0.009 });
     const elegidos = await elegirEnlaces({
       titulo: pago ? 'Enlazar pago con facturas' : 'Enlazar ingreso con abonos / notas de crédito', ancla: Math.abs(num(m.importe)) - asigRem(m), previos,
       cabecera: textoMov(m),
-      ayuda: pago ? 'Marca todas las facturas que paga este movimiento (puede ser 1 o varias). Si una factura se paga en 2 o más pagos, enlaza cada pago por separado con el importe que cubre.'
+      ayuda: pago ? 'Solo salen las facturas de este centro con el mismo importe o con la empresa en el concepto. Marca todas las que paga este movimiento (puede ser 1 o varias). Si una factura se paga en 2 o más pagos, enlaza cada pago por separado con el importe que cubre.'
         : 'Marca el abono o nota de crédito que devuelve este ingreso. Busca por empresa o importe.',
-      buscar: (q) => { const l = gastosParaMov(m, todosGastos(), enlaces, q); for (const id of previos.keys()) { const g = gastoPorId().get(id); if (g && !l.includes(g)) l.unshift(g); } return l.map(info); },
+      opciones: [['parecidos', 'Incluir importes parecidos (±5 %)'], ['otrosCentros', 'Incluir otros centros']],
+      buscar: (q, op) => { const l = gastosParaMov(m, todosGastos(), enlaces, q, { principal, alias, parecidos: !!op.parecidos, otrosCentros: !!op.otrosCentros }); for (const id of previos.keys()) { const g = gastoPorId().get(id); if (g && !l.includes(g)) l.unshift(g); } return l.map(info); },
     });
     if (!elegidos) return;
     try {
