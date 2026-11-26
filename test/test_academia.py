@@ -91,8 +91,8 @@ try:
         ir(page, "ac_alumnos")
         page.get_by_role("button", name="+ Nuevo alumno").click()
         d = page.locator(".drawer")
-        d.locator("label.field", has_text="Apellidos").first.locator("input").fill("Bueno Foz")
-        d.locator("label.field", has_text="Nombre").first.locator("input").fill("Alba")
+        d.locator("label.field", has_text="Apellidos").first.locator("input").fill("Bueno Fóz")
+        d.locator("label.field", has_text="Nombre").first.locator("input").fill("Álba")
         d.locator("label.field", has_text="Fecha de nacimiento").locator("input").fill("2017-05-29")
         d.locator("label.field", has_text="Método de pago").locator("select").select_option("Domiciliacion")
         d.locator("label.field", has_text="Cuota mensual").locator("input").fill("65")
@@ -108,6 +108,7 @@ try:
             page.locator(".dialog-actions .btn:not(.primary)").click(); page.wait_for_timeout(300)
         al = db(page, "ac_alumnos")
         check(len(al) == 1 and al[0]["responsable_id"], "alumno creado con responsable")
+        check(al[0]["nombre"] == "Alba" and al[0]["apellidos"] == "Bueno Foz", "nombres nuevos se guardan sin tildes")
         check(db(page, "ac_responsables_priv")[0]["iban"] == "ES0000000000000000000000", "IBAN guardado en tabla privada, sin espacios y en mayúsculas")
         check(db(page, "ac_inscripciones")[0]["cuota_mensual"] == 65, "inscripción del curso con cuota 65")
         expect(page.locator("table.ac-tabla")).to_contain_text("Bueno Foz, Alba")
@@ -182,11 +183,11 @@ try:
         check(d.locator("label.field", has_text="Alergias").locator("input").input_value() == "Frutos secos" and d.locator("input[type=checkbox]").first.is_checked(), "alergias y RRSS leídos")
         check(len([a for a in db(page, "ac_alumnos") if a["apellidos"] == "Pérez Gil"]) == 0, "no se guarda nada hasta confirmar")
         page.get_by_role("button", name="Crear alumno").click(); page.wait_for_timeout(700)
-        nuevo = [a for a in db(page, "ac_alumnos") if a["apellidos"] == "Pérez Gil"]
+        nuevo = [a for a in db(page, "ac_alumnos") if a["apellidos"] == "Perez Gil"]
         check(len(nuevo) == 1 and nuevo[0]["intolerancias"] == "Frutos secos" and nuevo[0]["responsable_id"], "alumno creado tras revisar")
         check(db(page, "ac_responsables_priv")[-1]["iban"] == "ES1122223333444455556666", "IBAN leído guardado sin espacios")
         # vincular a mano un familiar con otros apellidos
-        page.locator("table.ac-tabla tbody tr", has_text="Pérez Gil, Lucía").click()
+        page.locator("table.ac-tabla tbody tr", has_text="Perez Gil, Lucia").click()
         d = page.locator(".drawer")
         d.locator(".buscador-alumno input").fill("Bueno Foz, Leo")
         d.get_by_role("button", name="Vincular", exact=True).click(); page.wait_for_timeout(900)

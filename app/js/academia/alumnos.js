@@ -1,5 +1,5 @@
 // Alumnos: listado con filtros y ficha (datos, inscripción del curso, grupos, cuotas, anotaciones y tutorías).
-import { h, clear, cargando, toast, confirmar, fmtFecha, fmtEUR2, hoyISO, normalizar, MESES, capitalizar } from '../ui.js';
+import { h, clear, cargando, toast, confirmar, fmtFecha, fmtEUR2, hoyISO, normalizar, MESES, capitalizar, limpiarNombres } from '../ui.js';
 import * as api from './api.js';
 import { avisosAlumnoGrupo, confirmarAvisos } from './avisos.js';
 import { campo, txt, area, fecha, numero, sel, drawer, cabecera, tabla, pill, edad, nombreAlumno, pillNivel, hhmm, DIAS_CORTO, guardarBoton, buscadorAlumno, refrescar } from './kit.js';
@@ -61,7 +61,7 @@ export async function renderAlumnos(view, ctx) {
 
   // guarda un campo del alumno al salir de la celda (edición en tabla)
   async function guardarCampo(a, campo, valor) {
-    const v = typeof valor === 'string' ? valor.trim() || null : valor;
+    const v0 = typeof valor === 'string' ? valor.trim() || null : valor; const v = typeof v0 === 'string' ? limpiarNombres('ac_alumnos', { [campo]: v0 })[campo] : v0;
     if ((a[campo] ?? null) === v) return;
     try { const antes = a[campo]; await api.upd('ac_alumnos', a.id, { [campo]: v }); a[campo] = v; toast('Guardado'); if ((campo === 'metodo_pago' && esDomi(v) && !esDomi(antes) && a.estado === 'inscrito') || (campo === 'estado' && v === 'inscrito' && antes !== 'inscrito' && esDomi(a.metodo_pago))) await ofrecerRemesas(a, ctx); } catch (ex) { toast('No se ha guardado: ' + ex.message, 'error'); }
   }
@@ -85,7 +85,7 @@ export async function renderAlumnos(view, ctx) {
   }
 
   // celdas editables
-  const inp = (a, campo, extra = {}) => { const e = h('input', { type: 'text', value: a[campo] ?? '', class: 'ac-celda', ...extra }); e.addEventListener('change', () => guardarCampo(a, campo, e.value)); return e; };
+  const inp = (a, campo, extra = {}) => { const e = h('input', { type: 'text', value: a[campo] ?? '', class: 'ac-celda', ...extra }); e.addEventListener('change', () => { guardarCampo(a, campo, e.value); const l = limpiarNombres('ac_alumnos', { [campo]: e.value.trim() })[campo]; if (l !== e.value.trim()) e.value = l; }); return e; };
   const selc = (a, campo, ops, vacio = '—') => { const e = sel(ops, a[campo], { ...(vacio === false ? {} : { vacio }), class: 'ac-celda' }); e.addEventListener('change', () => guardarCampo(a, campo, e.value)); return e; };
   const celdaGrupos = (a) => {
     const mios = gruposAl.get(a.id) || [];

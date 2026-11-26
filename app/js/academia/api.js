@@ -1,6 +1,7 @@
 // Acceso a datos del módulo Academia (tablas ac_*). Una pequeña caché de 60 s evita repetir consultas al cambiar de pestaña;
 // cualquier escritura la vacía entera.
 import { supabase, traducirError } from '../db.js';
+import { limpiarNombres } from '../ui.js';
 import * as od from '../onedrive.js';
 import { registrarPersonas } from '../personas.js';
 
@@ -19,7 +20,8 @@ export function setCentro(id, principalId) {
   centroActivo = nuevo; centroPrincipal = principalId || null;
   if (cambia) invalidar();
 }
-const conCentro = (tabla, f) => (centroActivo && RAIZ.has(tabla) && f.centro_id === undefined ? { ...f, centro_id: centroActivo } : f);
+const conCentro = (tabla, f) => conCentro0(tabla, limpiarNombres(tabla, f));
+const conCentro0 = (tabla, f) => (centroActivo && RAIZ.has(tabla) && f.centro_id === undefined ? { ...f, centro_id: centroActivo } : f);
 // filas que cuelgan de un alumno (campo alumno_id): solo las de los alumnos del centro activo; las sueltas (sin alumno) son del principal
 async function delCentro(filas, campo = 'alumno_id') {
   if (!centroActivo) return filas;
@@ -223,18 +225,18 @@ export async function insMany(tabla, filas, { lote = 200, onConflict, ignorar = 
   return out;
 }
 export async function upd(tabla, id, parche) {
-  const r = chk(await supabase.from(tabla).update(parche).eq('id', id).select().single()); tocar(tabla, [id], r);
+  const r = chk(await supabase.from(tabla).update(limpiarNombres(tabla, parche)).eq('id', id).select().single()); tocar(tabla, [id], r);
   return r;
 }
 export async function del(tabla, id) { chk(await supabase.from(tabla).delete().eq('id', id)); invalidarTabla(tabla); }
 export async function delMany(tabla, ids, lote = 100) { for (let i = 0; i < ids.length; i += lote) chk(await supabase.from(tabla).delete().in('id', ids.slice(i, i + lote))); invalidarTabla(tabla); }
 export async function delWhere(tabla, col, valor) { chk(await supabase.from(tabla).delete().eq(col, valor)); invalidarTabla(tabla); }
 export async function guardarPrivados(responsable_id, datos) {
-  chk(await supabase.from('ac_responsables_priv').upsert({ responsable_id, ...datos }, { onConflict: 'responsable_id' }));
+  chk(await supabase.from('ac_responsables_priv').upsert(limpiarNombres('ac_responsables_priv', { responsable_id, ...datos }), { onConflict: 'responsable_id' }));
 }
 export async function generarCuotas(curso, mes) { const r = chk(await supabase.rpc('ac_generar_cuotas', { p_curso: curso, p_mes: mes })); invalidarTabla('ac_cuotas'); return r; }
 export async function updMany(tabla, ids, parche, lote = 100) {
-  for (let i = 0; i < ids.length; i += lote) chk(await supabase.from(tabla).update(parche).in('id', ids.slice(i, i + lote)));
+  for (let i = 0; i < ids.length; i += lote) chk(await supabase.from(tabla).update(limpiarNombres(tabla, parche)).in('id', ids.slice(i, i + lote)));
   tocar(tabla, ids, parche);
 }
 export const descuentos = () => memo('descuentos', () => all('ac_descuentos').then((l) => l.sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre))));

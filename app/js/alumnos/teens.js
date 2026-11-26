@@ -1,6 +1,6 @@
 // ALUMNOS · TEENS Championship: notas de los test de unidad y exámenes por nivel (A2 / B1 / B2), clasificación de grupos y de alumnos.
 // Cuatro vistas: Clasificación · Alumnos y grupos · Notas · Configuración (pesos y total de cada prueba). Cálculo en teens-calc.js.
-import { h, clear, cargando, toast, confirmar } from '../ui.js';
+import { h, clear, cargando, toast, confirmar, normalizar } from '../ui.js';
 import * as api from './api.js';
 import { sel, txt, tabla, cabecera } from '../academia/kit.js';
 import { NIVELES, PRUEBAS, CFG_DEF, configDe, mediaAlumno, notasPorAlumno, clasificacion } from './teens-calc.js';
@@ -53,7 +53,7 @@ export async function renderTeens(view, ctx) {
     return h('div', {},
       editor ? h('div', { class: 'al-barra' }, nG, h('button', { class: 'btn small', type: 'button', onclick: () => guardar(async () => {
         const n = nG.value.trim(); if (!n) { toast('Escribe el nombre del grupo.', 'error'); return; }
-        if (gs.some((g) => g.nombre.toLowerCase() === n.toLowerCase())) { toast('Ya hay un grupo con ese nombre en este nivel.', 'error'); return; }
+        if (gs.some((g) => normalizar(g.nombre) === normalizar(n))) { toast('Ya hay un grupo con ese nombre en este nivel.', 'error'); return; }
         D.grupos.push(await api.insAc('al_teens_grupos', { nombre: n, nivel })); toast('Grupo creado'); pintar();
       }) }, '+ Grupo')) : null,
       tabla([{ t: 'Grupo', v: (g) => h('strong', {}, g.nombre), s: (g) => g.nombre }, { t: 'Alumnos', num: true, v: (g) => D.alumnos.filter((a) => a.grupo_id === g.id).length },

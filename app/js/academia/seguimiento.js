@@ -174,7 +174,7 @@ function abrirListas({ recargar }) {
           onblur: async (e) => {
             const nuevo = e.target.value.trim();
             if (!nuevo || nuevo === it.valor) { e.target.value = it.valor; return; }
-            if (items.some((x) => x !== it && x.valor.toLowerCase() === nuevo.toLowerCase())) { toast('Ya existe ese valor.', 'error'); e.target.value = it.valor; return; }
+            if (items.some((x) => x !== it && normalizar(x.valor) === normalizar(nuevo))) { toast('Ya existe ese valor.', 'error'); e.target.value = it.valor; return; }
             try { await api.upd('ac_listas', it.id, { valor: nuevo }); await api.renombrarEnContactos(col, it.valor, nuevo); hecho = true; toast('Renombrado'); pintar(); } catch (ex) { err(ex); e.target.value = it.valor; }
           } });
         const mover = (dir) => async () => {
@@ -209,12 +209,12 @@ function abrirListas({ recargar }) {
       const nuevoNombre = h('input', { type: 'text', placeholder: `Nuevo valor de «${titulo}»` });
       const anadir = async () => {
         const v = nuevoNombre.value.trim(); if (!v) return;
-        if (items.some((x) => x.valor.toLowerCase() === v.toLowerCase())) { toast('Ya existe ese valor.', 'error'); return; }
+        if (items.some((x) => normalizar(x.valor) === normalizar(v))) { toast('Ya existe ese valor.', 'error'); return; }
         try { await api.ins('ac_listas', { lista, valor: v, color: nuevoColor.value, orden: items.length + 1 }); hecho = true; pintar(); } catch (ex) { err(ex); }
       };
       nuevoNombre.addEventListener('keydown', (e) => { if (e.key === 'Enter') anadir(); });
       // devuelve los valores de partida que se hayan quitado (nunca borra nada)
-      const faltan = DEFECTO[lista].filter((v) => !items.some((x) => x.valor.toLowerCase() === v.toLowerCase()));
+      const faltan = DEFECTO[lista].filter((v) => !items.some((x) => normalizar(x.valor) === normalizar(v)));
       const restaurar = faltan.length ? h('button', { class: 'btn ghost small', type: 'button', onclick: async () => {
         try {
           let o = items.length;

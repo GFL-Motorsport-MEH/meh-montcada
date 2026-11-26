@@ -101,6 +101,18 @@ export function hoyISO() {
 export function normalizar(s) {
   return (s || '').toString().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
+// Quita tildes y diéresis (la ñ se conserva; ç → c). Se aplica a los nombres que se guardan de ahora en adelante.
+export function sinTildes(s) {
+  if (typeof s !== 'string') return s;
+  return s.replace(/ñ/g, '\u0001').replace(/Ñ/g, '\u0002').normalize('NFD').replace(/[̀-ͯ]/g, '').normalize('NFC').replace(/\u0001/g, 'ñ').replace(/\u0002/g, 'Ñ');
+}
+// Campos de nombre que nunca llevan tildes (la base de datos también lo fuerza con un disparador)
+const CAMPOS_SIN_TILDES = { ac_alumnos: ['nombre', 'apellidos', 'colegio'], ac_responsables: ['nombre', 'apellidos'], ac_autorizados: ['nombre'], ac_contactos: ['nombre'], ac_profesoras: ['nombre'], ac_grupos: ['nombre'], al_teens_alumnos: ['nombre'], al_studyclub_reservas: ['nombre'], ac_responsables_priv: ['titular_iban'] };
+export function limpiarNombres(tabla, fila) {
+  const cs = CAMPOS_SIN_TILDES[tabla]; if (!cs || !fila) return fila;
+  const o = { ...fila }; for (const c of cs) if (typeof o[c] === 'string') o[c] = sinTildes(o[c]);
+  return o;
+}
 // Clase de color de un grupo de alumnos (Babies, Kids, Teens, Adultos, 1 to 1, Empresas, Activities); ver app.css
 export const grupoClase = (g) => 'g-' + normalizar(g).trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
