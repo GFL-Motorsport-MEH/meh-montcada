@@ -843,3 +843,5 @@ table.tabla-gastos { max-width: none; }
 th.ord-auto { cursor: pointer; user-select: none; }
 th.ord-auto:hover { color: var(--text-primary); }
 th.ord-auto .ord-flecha { font-size: 9px; color: var(--text-secondary); white-space: nowrap; }
+.btn-eliminar-cuenta { display: block; margin: 10px 0 0 auto; padding: 0; border: 0; background: none; font: inherit; font-size: 11px; color: var(--text-muted, #8a8f98); text-decoration: underline; cursor: pointer; opacity: .7; }
+.btn-eliminar-cuenta:hover, .btn-eliminar-cuenta:focus-visible { color: var(--bad, #c0392b); opacity: 1; }

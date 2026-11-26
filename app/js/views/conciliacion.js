@@ -288,11 +288,11 @@ async function renderConciliacion(cont, ctx) {
       return h('div', { class: 'card cuenta' }, campo('nombre', 'Nombre'), campo('iban', 'IBAN', { class: 'input-cuenta mono' }),
         campo('referencia', 'Referencia en el extracto', { title: 'Un texto que aparezca en los extractos de esta cuenta (nº de cuenta, alias...) para reconocerlos al importar' }),
         cen, h('div', { class: 'muted small' }, `${c.banco || 'Banco sin detectar'} · ${ms.length} movimientos${ult ? ` · hasta ${fmtFecha(ult)}` : ''} · ${pend} pagos pendientes`),
-        admin ? h('button', { class: 'btn small', onclick: async () => {
+        admin ? h('button', { class: 'btn-eliminar-cuenta', title: 'Eliminar esta cuenta', onclick: async () => {
           if (ms.length) { toast(`«${c.nombre}» tiene ${ms.length} movimientos importados y no se puede eliminar.`, 'error'); return; }
           if (!confirm(`¿Eliminar la cuenta «${c.nombre}»? No se puede deshacer.`)) return;
           try { await db.borrarCuenta(c.id); cuentas.splice(cuentas.indexOf(c), 1); toast('Cuenta eliminada'); pintarCuentas(); pintarFiltros(); } catch (ex) { toast(ex.message, 'error'); }
-        } }, 'Eliminar cuenta') : null);
+        } }, 'eliminar') : null);
     }), admin ? h('button', { class: 'card cuenta nueva', onclick: async () => {
       try { cuentas.push(await db.crearCuenta({ nombre: `Cuenta ${cuentas.length + 1}`, orden: cuentas.length })); pintarCuentas(); pintarFiltros(); } catch (ex) { toast(ex.message, 'error'); }
     } }, '+ Añadir cuenta bancaria') : null);
