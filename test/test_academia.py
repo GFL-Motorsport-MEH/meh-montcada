@@ -242,6 +242,7 @@ try:
         ir(page, "ac_remesas"); ir(page, "ac_pagos")
         primera = page.locator("table.ac-pg tbody tr").first
         check(primera.locator("td.ac-id").inner_text().strip() == "0.4" and "Scape Room" in primera.locator("td.ac-nom").inner_text(), "la fila 0.4 (Scape Room) está arriba en Pagos")
+        check("ac-baja" not in (primera.get_attribute("class") or ""), "las filas 0.x (conceptos, no alumnos) nunca se sombrean como baja aunque figuren como antiguo")
         page.locator("table.ac-pg th.ac-ord", has_text="Nivel").click(); page.wait_for_timeout(900)
         guardado = [o for o in db(page, "ui_orden_tablas") if o["clave"] == "pagos"]
         check(guardado and guardado[0]["orden"]["k"] == "nivel", "el orden elegido se guarda en el servidor (compartido)")
