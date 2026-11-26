@@ -72,6 +72,8 @@ export function cuentaDeArchivo(texto, cuentas) {
 
 const dias = (a, b) => Math.abs((new Date(a) - new Date(b)) / 86400000);
 const fechaGasto = (g) => g.fecha_pago || g.fecha_factura;
+// Distancia en días entre el movimiento y el gasto: la menor entre su fecha de pago y su fecha de factura (a veces la de pago es la del periodo contable)
+const distFecha = (g, fecha) => Math.min(...[g.fecha_pago, g.fecha_factura].filter(Boolean).map((f) => dias(f, fecha)), Infinity);
 
 // ---------- enlaces movimiento <-> gasto (tabla movimiento_gastos) ----------
 // Un gasto puede estar pagado con varios movimientos y un movimiento puede pagar varios gastos: cada enlace guarda el importe
@@ -131,7 +133,7 @@ export function conciliar(gastos, movimientos, { ventana = 20, enlaces = [], pri
     for (const g of pend) {
       if (hechos.has(g.id)) continue;
       const obj = Math.round(restanteGasto(g, enlaces) * 100), fg = fechaGasto(g);
-      for (const x of libres) if (!x.usado && x.abs === obj && dias(x.m.fecha, fg) <= ventana && mismoCentro(g, x.m, principal) === mismo && nombreEnConcepto(g, x.m, alias)) lista.push({ g, x, d: dias(x.m.fecha, fg) });
+      for (const x of libres) if (!x.usado && x.abs === obj && distFecha(g, x.m.fecha) <= ventana && mismoCentro(g, x.m, principal) === mismo && nombreEnConcepto(g, x.m, alias)) lista.push({ g, x, d: distFecha(g, x.m.fecha) });
     }
     lista.sort((a, b) => a.d - b.d);
     for (const { g, x } of lista) {
@@ -153,8 +155,8 @@ export function conciliarDevoluciones(gastos, movimientos, { ventana = 90, enlac
   const out = [];
   for (const m of cobros) {
     const imp = restanteMov(m, enlaces);
-    const cand = abonos.filter((x) => !x.usado && Math.round(restanteGasto(x.g, enlaces) * 100) === Math.round(imp * 100) && dias(fechaGasto(x.g), m.fecha) <= ventana && mismoCentro(x.g, m, principal))
-      .sort((a, b) => Number(nombreEnConcepto(b.g, m, alias)) - Number(nombreEnConcepto(a.g, m, alias)) || dias(fechaGasto(a.g), m.fecha) - dias(fechaGasto(b.g), m.fecha));
+    const cand = abonos.filter((x) => !x.usado && Math.round(restanteGasto(x.g, enlaces) * 100) === Math.round(imp * 100) && distFecha(x.g, m.fecha) <= ventana && mismoCentro(x.g, m, principal))
+      .sort((a, b) => Number(nombreEnConcepto(b.g, m, alias)) - Number(nombreEnConcepto(a.g, m, alias)) || distFecha(a.g, m.fecha) - distFecha(b.g, m.fecha));
     if (cand[0]) { cand[0].usado = true; out.push({ gasto: cand[0].g, gastos: [cand[0].g], movs: [m], asignaciones: [{ mov: m, gasto: cand[0].g, importe: imp }] }); }
   }
   return out;
@@ -166,7 +168,7 @@ export function motivoGasto(g, mov, enlaces = [], alias = null) {
   const m = [];
   if (Math.abs(rest - imp) <= 0.01) m.push('mismo importe'); else if (rest < imp - 0.01) m.push('importe menor (puede ser parte)');
   if (nombreEnConcepto(g, mov, alias)) m.push('empresa en el concepto');
-  if (f) { const d = Math.round(dias(f, mov.fecha)); m.push(d === 0 ? 'mismo día' : `${d} día${d === 1 ? '' : 's'}`); }
+  if (f) { const d = Math.round(distFecha(g, mov.fecha)); m.push(d === 0 ? 'mismo día' : `${d} día${d === 1 ? '' : 's'}`); }
   return m.join(' · ');
 }
 // Búsqueda manual: gastos que puede pagar este movimiento (pago -> facturas; cobro/devolución -> abonos).
@@ -176,11 +178,11 @@ export function gastosParaMov(mov, gastos, enlaces, q = '', { limite = 40, princ
   const signo = num(mov.importe) < 0 ? 1 : -1, imp = Math.abs(num(mov.importe)), nq = normalizar(String(q).trim());
   const puntos = (g) => {
     const rest = restanteGasto(g, enlaces), f = fechaGasto(g);
-    return (Math.abs(rest - imp) <= 0.01 ? 4 : 0) + (nombreEnConcepto(g, mov, alias) ? 3 : 0) - (f ? Math.min(dias(f, mov.fecha), 365) / 400 : 0.9);
+    return (Math.abs(rest - imp) <= 0.01 ? 4 : 0) + (nombreEnConcepto(g, mov, alias) ? 3 : 0) - (f ? Math.min(distFecha(g, mov.fecha), 365) / 400 : 0.9);
   };
   const claro = (g) => {
     const rest = restanteGasto(g, enlaces), f = fechaGasto(g);
-    if (f && dias(f, mov.fecha) > ventana) return false;
+    if (f && distFecha(g, mov.fecha) > ventana) return false;
     if (Math.abs(rest - imp) <= 0.01 || nombreEnConcepto(g, mov, alias)) return true;
     return false;
   };

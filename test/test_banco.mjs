@@ -103,5 +103,11 @@ ok(conciliar([gc('e1', 'Iberdrola', 244.07, '2026-08-18', AL)], [mc('e2', 'ELECT
 ok(conciliar([gc('e3', 'Maria Lopez Garcia', 244.06, '2026-08-18', AL)], [mc('e4', 'ELECTRICIDAD IBERDROLA CLIENTES', -244.06, '2026-08-26', AL)], { principal: AL }).length === 0, 'mismo importe sin la empresa: no es automático');
 ok(conciliar([gc('e5', 'Iberdrola', 244.06, '2026-08-18', AL)], [mc('e6', 'ELECTRICIDAD IBERDROLA CLIENTES', -244.06, '2026-08-26', AL)], { principal: AL }).length === 1, 'importe exacto y empresa: sí');
 
+
+// la fecha de pago puede ser la del periodo contable: vale la más cercana entre fecha de pago y de factura (caso Hidrogea 56,47)
+const gh = gc('gh', 'Hidrogea Agua Murcia', 56.47, '2026-11-16', AL, { fecha_pago: '2026-06-30' });
+const mh = mc('mh', 'AGUA VEOLIA, GESTION INTEGRAL DE AGU SERVICIO AGUA VEO', -56.47, '2026-11-16', AL);
+ok(gastosParaMov(mh, [gh], [], '', { principal: MO }).map((x) => x.id).join() === 'gh', 'manual: sale aunque la fecha de pago esté lejos si la de factura es la del pago');
+
 console.log(ing(mr, env, 'SABADELL') === 880 && asig({ id: 'b' }, mr) === 120 ? '  ok: la devolución del banco resta del ingresado' : '  FALLO: devolución');
 }
