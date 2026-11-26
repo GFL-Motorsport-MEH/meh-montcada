@@ -344,6 +344,14 @@ export async function crearCuenta(datos) {
 export async function actualizarCuenta(id, cambios) {
   return check(await supabase.from('cuentas_bancarias').update(cambios).eq('id', id).select(CTA_COLS).single());
 }
+// Borra una cuenta bancaria. Solo es posible si no tiene movimientos ni extractos (lo impide la base de datos).
+export async function borrarCuenta(id) {
+  const { error } = await supabase.from('cuentas_bancarias').delete().eq('id', id);
+  if (error) {
+    if (error.code === '23503') throw new Error('Esta cuenta tiene movimientos o extractos importados y no se puede eliminar.');
+    throw new Error(error.message);
+  }
+}
 export async function getMovimientos() {
   return selectAll('movimientos_banco', MOV_COLS, (q) => q.order('fecha', { ascending: false }).order('id', { ascending: true }));
 }
