@@ -19,7 +19,7 @@ async function renderFactcheck(cont, ctx) {
   clear(cont, cargando());
   const { state } = ctx;
   const curso = ctx.cursoActual();
-  const [ingresos, metodosIng, manual] = await Promise.all([ctx.ingresos(curso.id), db.getIngresosMetodo(curso.id), db.getFactcheckManual()]);
+  const [ingresos, metodosIng, manual] = await Promise.all([ctx.ingresosPagos(curso.id, curso.nombre), db.getIngresosMetodo(curso.id), db.getFactcheckManual()]);
   if (!state.facturacion) state.facturacion = await db.getFacturacion();
   if (!state.movimientos) state.movimientos = await db.getMovimientos().catch(() => []);
   const ingCentro = ctx.ingresosDelCentro(ingresos);

@@ -7,7 +7,7 @@ import * as db from './db.js';
 import { renderLogin, renderNuevaPassword, renderPendiente } from './views/auth.js';
 import { renderPanel } from './views/panel.js';
 import { renderGastos } from './views/gastos.js';
-import { renderIngresos } from './views/ingresos.js';
+import { renderIngresos, ingresosConPagos } from './views/ingresos.js';
 import { renderUsuarios } from './views/usuarios.js';
 import { renderBalance } from './views/balance.js';
 import { renderFacturacion } from './views/facturacion.js';
@@ -69,6 +69,8 @@ const ctx = {
     if (!state.ingresos.has(cursoId)) state.ingresos.set(cursoId, await db.getIngresos(cursoId));
     return state.ingresos.get(cursoId);
   },
+  // ingresos del curso con lo cobrado en Pagos aplicado (Balance, Panel…)
+  async ingresosPagos(cursoId, cursoNombre) { return ingresosConPagos(await ctx.ingresos(cursoId), cursoId, cursoNombre); },
   // Olvida los datos cargados (p.ej. tras restaurar un cambio del historial) para que se vuelvan a leer
   limpiarCache() {
     state.gastos.clear(); state.ingresos.clear();

@@ -84,6 +84,36 @@ async function pagosDelCurso(cursoId) {
   const alumnosMes = {}; for (const [g, mm] of Object.entries(nAlu)) alumnosMes[g] = Object.fromEntries(Object.entries(mm).map(([m, st]) => [m, st.size]));
   return { filas: [...res.values()], metodos, alumnos: alumnosMes };
 }
+// Cruza lo cobrado en Pagos con las filas de la cuadrícula (crea las que falten)
+function aplicarPagos(filas, entradas) {
+  let hay = false;
+  for (const e of entradas) {
+    let f = filas.find((x) => x.grupo === e.grupo && x.level === e.level && !/extra/i.test(x.tipo) && x.tipo);
+    if (!f) { f = { grupo: e.grupo, level: e.level, tipo: 'Mensualidad', celdas: {}, wp: null }; filas.push(f); }
+    f.pagos = e; hay = true;
+  }
+  return hay;
+}
+
+// Ingresos del curso tal como los ve Balance, Panel y Factcheck: lo guardado, pero con lo cobrado en Pagos por encima.
+export async function ingresosConPagos(registros, cursoId, cursoNombre) {
+  let entradas;
+  try { entradas = (await pagosDelCurso(cursoId)).filas; } catch { return registros; }
+  const filas = construirFilas(registros);
+  aplicarPagos(filas, entradas);
+  const out = [];
+  for (const f of filas) {
+    for (const m of MESES) {
+      const cantidad = val(f, m);
+      if (!cantidad && !f.celdas[m]) continue;
+      out.push({ ...(f.celdas[m] || {}), curso_id: cursoId, trimestre: f.celdas[m]?.trimestre || trimestreDe(cursoNombre, m), mes: m, grupo: f.grupo, level: f.level, tipo: f.tipo, cantidad });
+    }
+    const wp = val(f, null);
+    if (wp || f.wp) out.push({ ...(f.wp || {}), curso_id: cursoId, mes: f.wp?.mes || '', grupo: f.grupo, level: f.level, tipo: f.wp?.tipo || WP_TIPO, cantidad: wp });
+  }
+  return out;
+}
+
 // valor efectivo de una celda: lo de Pagos si hay pagos marcados; si no, lo guardado en Ingresos
 const val = (f, mes) => (mes ? (f.pagos?.meses[mes] ?? num(f.celdas[mes]?.cantidad)) : (f.pagos?.wp ?? num(f.wp?.cantidad)));
 const deriva = (f, mes) => (mes ? f.pagos?.meses[mes] != null : f.pagos?.wp != null);
@@ -96,11 +126,7 @@ export async function renderIngresos(view, ctx) {
   let hayPagos = false; let derivado = null;
   try {
     const pc = await pagosDelCurso(curso.id); derivado = { metodos: pc.metodos, alumnos: pc.alumnos };
-    for (const e of pc.filas) {
-      let f = filas.find((x) => x.grupo === e.grupo && x.level === e.level && !/extra/i.test(x.tipo) && x.tipo);
-      if (!f) { f = { grupo: e.grupo, level: e.level, tipo: 'Mensualidad', celdas: {}, wp: null }; filas.push(f); }
-      f.pagos = e; hayPagos = true;
-    }
+    hayPagos = aplicarPagos(filas, pc.filas);
     filas = filas.sort((a, b) => ordenGrupo(a.grupo) - ordenGrupo(b.grupo) || String(a.level).localeCompare(String(b.level), 'es', { numeric: true }) || String(a.tipo).localeCompare(String(b.tipo)));
   } catch { /* sin acceso a Pagos: se ve lo guardado */ }
 

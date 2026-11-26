@@ -41,7 +41,7 @@ export function calcularResumen(gastos, ingresos, taxonomia) {
 export async function renderPanel(view, ctx) {
   clear(view, cargando());
   const curso = ctx.cursoActual();
-  const [g0, i0] = await Promise.all([ctx.gastos(curso.id), ctx.ingresos(curso.id)]);
+  const [g0, i0] = await Promise.all([ctx.gastos(curso.id), ctx.ingresosPagos(curso.id, curso.nombre)]);
   const gastos = ctx.filtrarCentro(g0), ingresos = ctx.ingresosDelCentro(i0);
   const r = calcularResumen(gastos, ingresos, ctx.state.taxonomia);
   const balance = r.ingresos - r.gastos;

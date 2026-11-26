@@ -120,7 +120,7 @@ async function vistaGraficos(ctx, curso, gastos, ingresos, isPct) {
   // comparación entre cursos
   const datos = [];
   for (const c of ctx.state.cursosVisibles) {
-    const [g0, i0] = await Promise.all([ctx.gastos(c.id), ctx.ingresos(c.id)]);
+    const [g0, i0] = await Promise.all([ctx.gastos(c.id), ctx.ingresosPagos(c.id, c.nombre)]);
     const g = ctx.filtrarCentro(g0), i = ctx.ingresosDelCentro(i0);
     if (g.length || i.length) datos.push({ curso: c, a: calcularAnual(g, i, ctx.state.taxonomia) });
   }
@@ -168,7 +168,7 @@ async function vistaAnual(ctx) {
   const cursos = ctx.state.cursosVisibles;
   const datos = [];
   for (const c of cursos) {
-    const [g0, i0] = await Promise.all([ctx.gastos(c.id), ctx.ingresos(c.id)]);
+    const [g0, i0] = await Promise.all([ctx.gastos(c.id), ctx.ingresosPagos(c.id, c.nombre)]);
     const g = ctx.filtrarCentro(g0), i = ctx.ingresosDelCentro(i0);
     if (g.length || i.length) datos.push({ curso: c, a: calcularAnual(g, i, ctx.state.taxonomia) });
   }
@@ -213,7 +213,7 @@ function vistaInforme(curso, gastos, taxonomia, dim, excluir) {
 export async function renderBalance(view, ctx) {
   clear(view, cargando());
   const curso = ctx.cursoActual();
-  const [g0, i0] = await Promise.all([ctx.gastos(curso.id), ctx.ingresos(curso.id)]);
+  const [g0, i0] = await Promise.all([ctx.gastos(curso.id), ctx.ingresosPagos(curso.id, curso.nombre)]);
   const gastos = ctx.filtrarCentro(g0), ingresos = ctx.ingresosDelCentro(i0);
   let modo = pref('modo', 'curso');
   let isPct = pref('is', 0.25);

@@ -532,3 +532,10 @@ main table.data.ac-compacta > thead { top: 0; }
 .ac-cmp-b { background: rgba(234, 88, 12, .10); color: #c2410c; }
 th.ac-cmp-a, th.ac-cmp-b { font-weight: 700; }
 .ac-celda-num { width: 64px; }
+
+.ac-minis { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--text-muted); margin: 2px 0 6px; }
+.ac-minis b { color: var(--text); }
+tr.ac-resumen.ac-met th { padding-top: 1px; padding-bottom: 1px; font-size: 10px; border-bottom: 0; }
+tr.ac-resumen.ac-met th.l { color: var(--text-muted); }
+tr.ac-resumen.ac-met th b { display: inline; font-size: 10px; }
+tr.ac-resumen.ac-met .ac-de { display: inline; font-size: 8px; }
